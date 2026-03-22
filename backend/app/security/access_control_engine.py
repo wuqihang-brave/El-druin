@@ -245,12 +245,15 @@ class AccessControlEngine:
             Modified SQL query with tenant filter appended.
 
         Note:
-            This is a simple string-based approach for illustration.
-            Production use should use parameterised queries via SQLAlchemy.
+            This method returns a tuple of (modified_query, params) where params
+            is a dict containing the tenant_id binding. Callers must pass params
+            to the underlying execute call to prevent SQL injection.
+
+            Production use should use SQLAlchemy ORM filters instead.
         """
         if "WHERE" in query.upper():
-            return f"{query} AND tenant_id = '{tenant_id}'"
-        return f"{query} WHERE tenant_id = '{tenant_id}'"
+            return (f"{query} AND tenant_id = :tenant_id", {"tenant_id": tenant_id})
+        return (f"{query} WHERE tenant_id = :tenant_id", {"tenant_id": tenant_id})
 
     # ------------------------------------------------------------------
     # Policy evaluation

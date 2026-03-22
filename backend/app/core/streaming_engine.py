@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -290,7 +290,7 @@ class RealTimeStreamingEngine:
                 entities = await event_processor.extract_entities(text)
                 enriched.setdefault("entities", [])
                 enriched["entities"].extend(
-                    [e.__dict__ for e in entities]
+                    [asdict(e) if hasattr(e, "__dataclass_fields__") else vars(e) for e in entities]
                 )
             except Exception:
                 pass

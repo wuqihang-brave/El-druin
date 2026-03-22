@@ -1,8 +1,12 @@
 """Configuration management using pydantic-settings."""
 
+import warnings
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
+
+_INSECURE_JWT_DEFAULT = "change-me-in-production-use-256-bit-key"
+_INSECURE_SALT_DEFAULT = "change-me-in-production-anon-salt"
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +48,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60)
 
+    # Anonymisation
+    ANONYMIZATION_SALT: str = Field(default="change-me-in-production-anon-salt")
+
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = Field(default="localhost:9092")
     KAFKA_TOPIC_EVENTS: str = Field(default="eldruin.events")
@@ -64,6 +71,31 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = Field(default=100)
     RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60)
+
+    @model_validator(mode="after")
+    def _warn_insecure_defaults(self) -> "Settings":
+        """Emit warnings (or raise in production) when insecure defaults are used."""
+        if self.ENVIRONMENT == "production":
+            if self.JWT_SECRET_KEY == _INSECURE_JWT_DEFAULT:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a secure value in production."
+                )
+            if self.ANONYMIZATION_SALT == _INSECURE_SALT_DEFAULT:
+                raise ValueError(
+                    "ANONYMIZATION_SALT must be set to a secure value in production."
+                )
+        else:
+            if self.JWT_SECRET_KEY == _INSECURE_JWT_DEFAULT:
+                warnings.warn(
+                    "JWT_SECRET_KEY is using the insecure default. Set a strong secret in production.",
+                    stacklevel=2,
+                )
+            if self.ANONYMIZATION_SALT == _INSECURE_SALT_DEFAULT:
+                warnings.warn(
+                    "ANONYMIZATION_SALT is using the insecure default. Set a strong salt in production.",
+                    stacklevel=2,
+                )
+        return self
 
 
 settings = Settings()

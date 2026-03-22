@@ -149,7 +149,8 @@ class DataGovernanceFramework:
     """
 
     def __init__(self) -> None:
-        self._anonymization_salt = "eldruin-anon-salt"
+        from app.config import settings
+        self._anonymization_salt = settings.ANONYMIZATION_SALT
 
     # ------------------------------------------------------------------
     # Classification

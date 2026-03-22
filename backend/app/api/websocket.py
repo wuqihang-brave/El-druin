@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -141,8 +142,8 @@ async def events_stream(
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    client_id = id(websocket)
-    await manager.connect(websocket, str(client_id), "events")
+    client_id = str(uuid.uuid4())
+    await manager.connect(websocket, client_id, "events")
 
     # Subscribe to Redis pub/sub for new events
     pubsub = None
@@ -227,8 +228,8 @@ async def predictions_updates(
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    client_id = id(websocket)
-    await manager.connect(websocket, str(client_id), "predictions")
+    client_id = str(uuid.uuid4())
+    await manager.connect(websocket, client_id, "predictions")
 
     pubsub = None
     try:
@@ -292,8 +293,8 @@ async def watchlist_alerts(
 
     token_data = decode_token(token or "")
     user_id = token_data.user_id if token_data else "anonymous"
-    client_id = id(websocket)
-    await manager.connect(websocket, str(client_id), "alerts")
+    client_id = str(uuid.uuid4())
+    await manager.connect(websocket, client_id, "alerts")
 
     pubsub = None
     try:

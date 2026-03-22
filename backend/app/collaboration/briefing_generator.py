@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -309,14 +311,20 @@ class BriefingGenerator:
                 ]
                 response = await asyncio.to_thread(llm.invoke, messages)
                 raw = response.content
-                start = raw.find("{")
-                end = raw.rfind("}") + 1
-                if start != -1 and end > start:
-                    parsed = json.loads(raw[start:end])
-                    executive_summary = parsed.get("executive_summary", "")
-                    key_findings = parsed.get("key_findings", [])
-                    detailed_analysis = parsed.get("detailed_analysis", "")
-                    recommendations = parsed.get("recommendations", [])
+                # Extract JSON from the response using a robust regex that handles
+                # nested braces by finding the outermost JSON object.
+                json_match = re.search(r"\{[\s\S]*\}", raw)
+                if json_match:
+                    try:
+                        parsed = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        parsed = {}
+                else:
+                    parsed = {}
+                executive_summary = parsed.get("executive_summary", "")
+                key_findings = parsed.get("key_findings", [])
+                detailed_analysis = parsed.get("detailed_analysis", "")
+                recommendations = parsed.get("recommendations", [])
         except Exception as exc:
             logger.warning("LLM briefing synthesis failed: %s", exc)
 

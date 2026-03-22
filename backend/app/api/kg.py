@@ -8,6 +8,11 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.auth import get_current_user
+
+# Whitelist of allowed entity class names (maps to Neo4j node labels)
+_ALLOWED_ENTITY_CLASSES: frozenset[str] = frozenset(
+    {"Person", "Organization", "Event", "Location", "Asset"}
+)
 from app.models.schemas import EntityResponse, RelationshipResponse, TokenData
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,11 @@ async def list_entities(
         from app.db.neo4j_client import neo4j_client
 
         if entity_class:
+            if entity_class not in _ALLOWED_ENTITY_CLASSES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid entity_class '{entity_class}'. Allowed: {sorted(_ALLOWED_ENTITY_CLASSES)}",
+                )
             cypher = (
                 f"MATCH (n:{entity_class}) RETURN n SKIP {skip} LIMIT {limit}"
             )
