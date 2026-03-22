@@ -1,28 +1,15 @@
-# All project dependencies (backend + frontend).
-# Install with: pip install -r requirements.txt
-
-# ── Web framework ─────────────────────────────────────────────────────────────
+# Backend
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
-pydantic>=2.0.0
-
-# ── HTTP / feeds ──────────────────────────────────────────────────────────────
-requests>=2.31.0
 feedparser>=6.0.10
+requests>=2.31.0
 beautifulsoup4>=4.12.0
-httpx>=0.25.0
-
-# ── NLP ───────────────────────────────────────────────────────────────────────
 spacy>=3.7.0
+pyyaml>=6.0
+python-dateutil>=2.8.0
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-python-dotenv>=1.0.0
-pyyaml>=6.0.0
-
-# ── Frontend ──────────────────────────────────────────────────────────────────
+# Frontend
 streamlit>=1.28.0
-plotly>=5.18.0
-pandas>=2.1.0
-
-# ── Utilities ─────────────────────────────────────────────────────────────────
-python-dateutil>=2.8.2
+plotly>=5.17.0
+pandas>=2.0.0
+numpy>=1.24.0
