@@ -172,7 +172,7 @@ async def test_anomaly_detection_flags_high_severity(engine):
     event = {**_make_event(), "severity": "critical", "sentiment_score": -0.95}
 
     with patch("app.db.postgres.fetch_all", new_callable=AsyncMock, return_value=[]):
-        score = await engine._detect_anomalies(event)
+        score = await engine._detect_anomalies(event, [])
 
     assert hasattr(score, "score")
     assert hasattr(score, "is_anomaly")
@@ -184,7 +184,7 @@ async def test_anomaly_detection_normal_event_not_flagged(engine):
     event = {**_make_event(), "severity": "low", "sentiment_score": 0.1}
 
     with patch("app.db.postgres.fetch_all", new_callable=AsyncMock, return_value=[]):
-        score = await engine._detect_anomalies(event)
+        score = await engine._detect_anomalies(event, [])
 
     assert hasattr(score, "is_anomaly")
     assert score.is_anomaly is False
