@@ -1,15 +1,22 @@
-# Backend
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-feedparser>=6.0.10
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-spacy>=3.7.0
-pyyaml>=6.0
-python-dateutil>=2.8.0
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Data processing
+feedparser==6.0.10
+requests==2.31.0
+beautifulsoup4==4.12.2
+pandas==2.0.3
+numpy==1.24.3
+
+# NLP
+spacy==3.7.2
+
+# Config
+pyyaml==6.0
+python-dateutil==2.8.2
 
 # Frontend
-streamlit>=1.28.0
-plotly>=5.17.0
-pandas>=2.0.0
-numpy>=1.24.0
+streamlit==1.28.1
+plotly==5.17.0
