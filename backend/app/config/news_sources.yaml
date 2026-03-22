@@ -1,0 +1,50 @@
+# EL'druin – News source configuration
+# Each entry describes an RSS feed to poll during ingestion.
+
+sources:
+  - name: "BBC News"
+    url: "http://feeds.bbc.co.uk/news/rss.xml"
+    category: "general"
+    priority: 1
+    enabled: true
+
+  - name: "Reuters Top News"
+    url: "https://feeds.reuters.com/reuters/topNews"
+    category: "general"
+    priority: 1
+    enabled: true
+
+  - name: "Al Jazeera"
+    url: "https://www.aljazeera.com/xml/rss/all.xml"
+    category: "politics"
+    priority: 2
+    enabled: true
+
+  - name: "TechCrunch"
+    url: "https://techcrunch.com/feed/"
+    category: "technology"
+    priority: 2
+    enabled: true
+
+  - name: "Financial Times"
+    url: "https://www.ft.com/rss/home/uk"
+    category: "business"
+    priority: 2
+    enabled: true
+
+  - name: "CNN"
+    url: "http://rss.cnn.com/rss/edition.rss"
+    category: "general"
+    priority: 3
+    enabled: true
+
+  - name: "The Guardian"
+    url: "https://www.theguardian.com/world/rss"
+    category: "politics"
+    priority: 3
+    enabled: true
+
+settings:
+  max_articles_per_source: 30
+  default_hours_window: 24
+  request_timeout_seconds: 10
