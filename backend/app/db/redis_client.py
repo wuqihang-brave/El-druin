@@ -374,7 +374,12 @@ def cache(ttl: int = 300, key_prefix: str = "cache"):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            cache_key = f"{key_prefix}:{func.__name__}:{hash((args, tuple(sorted(kwargs.items()))))}"
+            import json as _json
+            try:
+                key_parts = _json.dumps({"a": list(args), "k": kwargs}, sort_keys=True, default=str)
+            except Exception:
+                key_parts = str(args) + str(kwargs)
+            cache_key = f"{key_prefix}:{func.__name__}:{hash(key_parts)}"
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return cached

@@ -149,7 +149,9 @@ async def create_prediction(
     except Exception as exc:
         logger.error("Prediction analysis failed: %s", exc)
         prediction.status = "failed"
-        prediction.prediction_metadata = {**(prediction.prediction_metadata or {}), "error": str(exc)}
+        existing_meta = dict(prediction.prediction_metadata or {})
+        existing_meta["error"] = str(exc)
+        prediction.prediction_metadata = existing_meta
 
     await db.flush()
     await db.refresh(prediction)

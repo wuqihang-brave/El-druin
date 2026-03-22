@@ -57,10 +57,17 @@ async def list_entities(
             node = rec.get("n") or {}
             if not isinstance(node, dict):
                 node = dict(node) if hasattr(node, "__iter__") else {}
+            labels = node.get("__labels__")
+            if entity_class:
+                resolved_class = entity_class
+            elif isinstance(labels, list) and labels:
+                resolved_class = labels[0]
+            else:
+                resolved_class = "Unknown"
             entities.append(
                 EntityResponse(
                     id=str(node.get("id", "")),
-                    entity_class=entity_class or node.get("__labels__", ["Unknown"])[0] if isinstance(node.get("__labels__"), list) else "Unknown",
+                    entity_class=resolved_class,
                     properties={k: v for k, v in node.items() if not k.startswith("__")},
                 )
             )

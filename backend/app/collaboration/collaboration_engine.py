@@ -143,6 +143,7 @@ class CollaborationEngine:
         workspaces: list[Workspace] = []
         try:
             from app.db.postgres import fetch_all
+            import json as _json
 
             rows = await fetch_all(
                 """
@@ -153,7 +154,7 @@ class CollaborationEngine:
                 """,
                 {
                     "uid": user_id,
-                    "member_filter": f'[{{"user_id": "{user_id}"}}]',
+                    "member_filter": _json.dumps([{"user_id": user_id}]),
                 },
             )
             for row in rows:

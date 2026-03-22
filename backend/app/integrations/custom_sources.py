@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -209,7 +209,7 @@ class CustomSourceConnector:
         while source_id in self._polling_tasks:
             try:
                 raw_events = await self._fetch_rest(config, since=last_fetch)
-                last_fetch = datetime.utcnow()
+                last_fetch = datetime.now(UTC)
                 if raw_events:
                     from app.core.streaming_engine import streaming_engine
 

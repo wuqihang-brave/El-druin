@@ -333,19 +333,18 @@ class DataGovernanceFramework:
             from app.db.postgres import fetch_all, fetch_val
 
             tables = ["events", "predictions", "users", "analysis_results"]
-            for table in data_map.entity_types:
-                count = await fetch_val(
-                    f"SELECT COUNT(*) FROM {table} WHERE tenant_id = :tid",
-                    {"tid": tenant_id},
-                )
-                data_map.total_records += count or 0
-
             data_map.entity_types = tables
             data_map.pii_entity_types = ["users"]
             data_map.retention_policies = {
                 etype: f"{_RETENTION_POLICIES.get(etype, {}).get('days', 365)} days"
                 for etype in tables
             }
+            for table in tables:
+                count = await fetch_val(
+                    f"SELECT COUNT(*) FROM {table} WHERE tenant_id = :tid",
+                    {"tid": tenant_id},
+                )
+                data_map.total_records += count or 0
         except Exception as exc:
             logger.warning("Data map generation partial: %s", exc)
         return data_map
