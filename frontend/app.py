@@ -151,9 +151,18 @@ if page == "📰 实时新闻":
 
         st.divider()
 
+        # Session-state cache: {article_cache_key -> kg extraction result}
+        if "kg_cache" not in st.session_state:
+            st.session_state.kg_cache = {}
+
         if articles:
             for i, article in enumerate(articles, 1):
                 title_preview = (article.get("title") or "（无标题）")[:80]
+                # Stable cache key: hashlib md5 of article URL or title (not process-bound)
+                import hashlib as _hashlib
+                _key_src = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
+                _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
+
                 with st.expander(f"🔹 [{i}] {title_preview}…", expanded=False):
                     c1, c2, c3 = st.columns(3)
                     c1.caption(f"📌 来源：{article.get('source', 'N/A')}")
@@ -162,6 +171,178 @@ if page == "📰 实时新闻":
                     st.write(article.get("description") or "（暂无摘要）")
                     if article.get("link"):
                         st.markdown(f"[📖 阅读原文]({article['link']})")
+
+                    # ── Knowledge Graph extraction ────────────────────────────
+                    already_extracted = _cache_key in st.session_state.kg_cache
+                    btn_label = "✅ 已提取知识图" if already_extracted else "🧠 提取知识图"
+                    if st.button(btn_label, key=f"kg_btn_{i}"):
+                        _text = " ".join(
+                            filter(None, [
+                                article.get("title", ""),
+                                article.get("description", ""),
+                            ])
+                        ).strip()
+                        if _text:
+                            with st.spinner("提取中..."):
+                                _kg_resp = _api.extract_knowledge(_text)
+                            if _kg_resp.get("status") == "error" or (
+                                "error" in _kg_resp and "entities" not in _kg_resp
+                            ):
+                                st.error(f"❌ 知识图提取失败：{_kg_resp['error']}")
+                            else:
+                                st.session_state.kg_cache[_cache_key] = _kg_resp
+                                st.rerun()
+                        else:
+                            st.warning("⚠️ 该文章暂无文本内容可供提取。")
+
+                    # ── Display cached KG results ─────────────────────────────
+                    if _cache_key in st.session_state.kg_cache:
+                        _kg_data = st.session_state.kg_cache[_cache_key]
+                        _entities_kg: List[Dict[str, Any]] = _kg_data.get("entities", [])
+                        _relations_kg: List[Dict[str, Any]] = _kg_data.get("relations", [])
+
+                        with st.expander(
+                            f"🕸️ 知识图谱结果（实体: {len(_entities_kg)}, 关系: {len(_relations_kg)}）",
+                            expanded=True,
+                        ):
+                            if _entities_kg:
+                                st.write("**📋 实体**")
+                                try:
+                                    import pandas as pd
+                                    st.dataframe(
+                                        pd.DataFrame(_entities_kg),
+                                        use_container_width=True,
+                                    )
+                                except ImportError:
+                                    for _e in _entities_kg:
+                                        st.write(f"- **{_e.get('name')}** ({_e.get('type', '?')})")
+                            else:
+                                st.info("未提取到实体。")
+
+                            if _relations_kg:
+                                st.write("**🔗 关系**")
+                                try:
+                                    import pandas as pd
+                                    st.dataframe(
+                                        pd.DataFrame([
+                                            {
+                                                "主体 (subject)": r.get("from", ""),
+                                                "关系 (predicate)": r.get("relation", ""),
+                                                "客体 (object)": r.get("to", ""),
+                                            }
+                                            for r in _relations_kg
+                                        ]),
+                                        use_container_width=True,
+                                    )
+                                except ImportError:
+                                    for _r in _relations_kg:
+                                        st.write(
+                                            f"- {_r.get('from')} "
+                                            f"–[{_r.get('relation')}]→ "
+                                            f"{_r.get('to')}"
+                                        )
+
+                            # ── Interactive graph visualisation ────────────────
+                            if _entities_kg and _relations_kg:
+                                st.write("**🌐 图谱可视化**")
+                                _COLOR_MAP = {
+                                    "PERSON": "#e74c3c",
+                                    "ORG": "#3498db",
+                                    "GPE": "#2ecc71",
+                                    "EVENT": "#f39c12",
+                                }
+                                try:
+                                    from streamlit_agraph import (
+                                        Config,
+                                        Edge,
+                                        Node,
+                                        agraph,
+                                    )
+
+                                    _ag_nodes = [
+                                        Node(
+                                            id=_e["name"],
+                                            label=_e["name"],
+                                            size=25,
+                                            color=_COLOR_MAP.get(_e.get("type", ""), "#95a5a6"),
+                                        )
+                                        for _e in _entities_kg
+                                    ]
+                                    _ag_edges = [
+                                        Edge(
+                                            source=_r["from"],
+                                            target=_r["to"],
+                                            label=_r.get("relation", ""),
+                                        )
+                                        for _r in _relations_kg
+                                        if _r.get("from") and _r.get("to")
+                                    ]
+                                    _ag_config = Config(
+                                        width=700,
+                                        height=400,
+                                        directed=True,
+                                        physics=True,
+                                        hierarchical=False,
+                                    )
+                                    agraph(nodes=_ag_nodes, edges=_ag_edges, config=_ag_config)
+                                except ImportError:
+                                    # Fallback: plotly + networkx (already in requirements)
+                                    try:
+                                        import networkx as nx
+                                        import plotly.graph_objects as go
+
+                                        _G = nx.DiGraph()
+                                        for _r in _relations_kg:
+                                            if _r.get("from") and _r.get("to"):
+                                                _G.add_edge(
+                                                    _r["from"],
+                                                    _r["to"],
+                                                    label=_r.get("relation", ""),
+                                                )
+                                        if _G.nodes():
+                                            _pos = nx.spring_layout(_G, seed=42)
+                                            _ex, _ey = [], []
+                                            for _u, _v in _G.edges():
+                                                _x0, _y0 = _pos[_u]
+                                                _x1, _y1 = _pos[_v]
+                                                _ex += [_x0, _x1, None]
+                                                _ey += [_y0, _y1, None]
+                                            _fig_kg = go.Figure(
+                                                data=[
+                                                    go.Scatter(
+                                                        x=_ex, y=_ey, mode="lines",
+                                                        line={"width": 1, "color": "#888"},
+                                                        hoverinfo="none",
+                                                    ),
+                                                    go.Scatter(
+                                                        x=[_pos[n][0] for n in _G.nodes()],
+                                                        y=[_pos[n][1] for n in _G.nodes()],
+                                                        mode="markers+text",
+                                                        text=list(_G.nodes()),
+                                                        textposition="top center",
+                                                        marker={"size": 12, "color": "#3498db"},
+                                                        hoverinfo="text",
+                                                    ),
+                                                ],
+                                                layout=go.Layout(
+                                                    showlegend=False,
+                                                    hovermode="closest",
+                                                    height=400,
+                                                    xaxis={
+                                                        "showgrid": False,
+                                                        "zeroline": False,
+                                                        "showticklabels": False,
+                                                    },
+                                                    yaxis={
+                                                        "showgrid": False,
+                                                        "zeroline": False,
+                                                        "showticklabels": False,
+                                                    },
+                                                ),
+                                            )
+                                            st.plotly_chart(_fig_kg, use_container_width=True)
+                                    except ImportError:
+                                        pass
         else:
             st.warning("⚠️ 暂无文章，请先点击「立即刷新」聚合新闻。")
 

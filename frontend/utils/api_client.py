@@ -184,6 +184,18 @@ class APIClient:
         """Return knowledge graph statistics."""
         return self._get("/knowledge/stats")
 
+    def extract_knowledge(self, text: str) -> Dict[str, Any]:
+        """Extract entities and relations from raw text without persisting.
+
+        Args:
+            text: The news article text to analyse.
+
+        Returns:
+            Dict with ``"entities"``, ``"relations"``, ``"nodes_count"``,
+            and ``"edges_count"`` keys.
+        """
+        return self._post("/knowledge/extract", json={"text": text})
+
     # ------------------------------------------------------------------
     # Health / system endpoints
     # ------------------------------------------------------------------

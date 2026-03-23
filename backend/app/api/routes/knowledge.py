@@ -90,3 +90,42 @@ def run_cypher_query(
 def graph_stats() -> Dict[str, Any]:
     """Return knowledge graph statistics (node and edge counts)."""
     return get_knowledge_graph().stats()
+
+
+@router.post("/extract")
+def extract_from_text(
+    text: str = Body(..., embed=True, description="Raw text to extract entities and relations from"),
+) -> Dict[str, Any]:
+    """Extract entities and relations from arbitrary text without persisting to the graph.
+
+    Request body::
+
+        {"text": "Federal Reserve raises rates amid inflation fears."}
+
+    Returns extracted entities and relations along with summary counts.
+    """
+    from app.knowledge.entity_extractor import EntityRelationExtractor
+
+    if not text or not text.strip():
+        return {
+            "status": "ok",
+            "entities": [],
+            "relations": [],
+            "nodes_count": 0,
+            "edges_count": 0,
+        }
+
+    try:
+        result = EntityRelationExtractor().extract(text)
+        entities = result.get("entities", [])
+        relations = result.get("relations", [])
+        return {
+            "status": "ok",
+            "entities": entities,
+            "relations": relations,
+            "nodes_count": len(entities),
+            "edges_count": len(relations),
+        }
+    except Exception as exc:
+        logger.error("Knowledge extraction error: %s", exc, exc_info=True)
+        return {"status": "error", "error": str(exc), "entities": [], "relations": [], "nodes_count": 0, "edges_count": 0}
