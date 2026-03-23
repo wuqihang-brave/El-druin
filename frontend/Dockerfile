@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir \
     pandas>=2.1.0 \
     requests>=2.31.0 \
     python-dateutil>=2.8.2 \
-    networkx>=3.2.0
+    networkx>=3.2.0 \
+    streamlit-agraph>=0.0.45
 
 COPY . /app
 
