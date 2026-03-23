@@ -12,6 +12,17 @@ httpx>=0.25.0
 # ── NLP ───────────────────────────────────────────────────────────────────────
 spacy>=3.7.0
 
+# ── LangChain / LLM ───────────────────────────────────────────────────────────
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-openai>=0.1.0   # optional: set OPENAI_API_KEY to enable
+langchain-groq>=0.1.0     # optional: set GROQ_API_KEY to enable
+
+# ── Knowledge graph ───────────────────────────────────────────────────────────
+kuzu>=0.3.0               # embedded graph DB (primary)
+networkx>=3.2.0           # in-memory graph fallback
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
