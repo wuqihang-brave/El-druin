@@ -9,13 +9,16 @@ Usage::
 """
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BASE_URL = "http://localhost:8001/api/v1"
+# Read backend URL from environment variable, defaults to localhost for local development
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
+_DEFAULT_BASE_URL = f"{BACKEND_URL}/api/v1"
 _TIMEOUT = 10  # seconds
 
 
@@ -178,7 +181,7 @@ class APIClient:
 
     def run_kg_query(self, query: str) -> Dict[str, Any]:
         """Run a Cypher query against the knowledge graph."""
-        return self._post("/knowledge/query", json={"query": query})
+        return self._get("/knowledge/query", params={"query": query})
 
     def get_kg_stats(self) -> Dict[str, Any]:
         """Return knowledge graph statistics."""

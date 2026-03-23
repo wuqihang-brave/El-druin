@@ -137,6 +137,29 @@ class KnowledgeGraph:
         """Return graph statistics."""
         return self._store.stats()
 
+    def add_entity(self, name: str, entity_type: str) -> None:
+        """Add a single entity node to the graph."""
+        self._store.add_entity(name, entity_type)
+
+    def add_relation(
+        self,
+        from_name: str,
+        from_type: str,
+        to_name: str,
+        to_type: str,
+        relation_type: str,
+        weight: float = 0.5,
+    ) -> None:
+        """Add a single relation edge to the graph."""
+        self._store.add_relation(
+            from_name=from_name,
+            from_type=from_type,
+            to_name=to_name,
+            to_type=to_type,
+            relation_type=relation_type,
+            weight=weight,
+        )
+
 
 @lru_cache(maxsize=1)
 def get_knowledge_graph() -> KnowledgeGraph:
