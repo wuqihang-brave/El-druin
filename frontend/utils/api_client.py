@@ -157,6 +157,34 @@ class APIClient:
         return self._get("/events", params={"limit": limit})
 
     # ------------------------------------------------------------------
+    # Knowledge graph endpoints
+    # ------------------------------------------------------------------
+
+    def ingest_knowledge_graph(self, limit: int = 100, hours: int = 24) -> Dict[str, Any]:
+        """Fetch recent news and ingest it into the knowledge graph."""
+        return self._post("/knowledge/ingest", params={"limit": limit, "hours": hours})
+
+    def get_kg_entities(self, limit: int = 100) -> Dict[str, Any]:
+        """Return entity nodes from the knowledge graph."""
+        return self._get("/knowledge/entities", params={"limit": limit})
+
+    def get_kg_relations(self, limit: int = 200) -> Dict[str, Any]:
+        """Return relation edges from the knowledge graph."""
+        return self._get("/knowledge/relations", params={"limit": limit})
+
+    def get_kg_neighbours(self, entity: str, depth: int = 1) -> Dict[str, Any]:
+        """Return neighbours of a named entity."""
+        return self._get("/knowledge/neighbours", params={"entity": entity, "depth": depth})
+
+    def run_kg_query(self, query: str) -> Dict[str, Any]:
+        """Run a Cypher query against the knowledge graph."""
+        return self._post("/knowledge/query", json={"query": query})
+
+    def get_kg_stats(self) -> Dict[str, Any]:
+        """Return knowledge graph statistics."""
+        return self._get("/knowledge/stats")
+
+    # ------------------------------------------------------------------
     # Health / system endpoints
     # ------------------------------------------------------------------
 
