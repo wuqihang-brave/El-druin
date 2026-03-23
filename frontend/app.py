@@ -79,6 +79,7 @@ page = st.sidebar.radio(
     [
         "📰 实时新闻",
         "🔍 事件监控",
+        "🕸️ 知识图谱",
         "📊 仪表板",
         "⚙️ 系统状态",
     ],
@@ -256,6 +257,169 @@ elif page == "🔍 事件监控":
             st.info("📭 暂无相关事件。请先聚合新闻并触发事件提取。")
 
 # ===========================================================================
+# Page: 🕸️ 知识图谱
+# ===========================================================================
+elif page == "🕸️ 知识图谱":
+    st.title("🕸️ 知识图谱")
+
+    col_title, col_btn = st.columns([3, 1])
+    with col_title:
+        st.subheader("实体与关系网络")
+    with col_btn:
+        if st.button("🔄 更新图谱", key="ingest_kg"):
+            with st.spinner("📡 正在提取实体并构建知识图谱…"):
+                result = _api.ingest_knowledge_graph(limit=100, hours=24)
+                if "error" not in result:
+                    ingested = result.get("ingested", {})
+                    st.success(
+                        f"✅ 知识图谱已更新！"
+                        f" 文章: {ingested.get('articles_added', 0)}"
+                        f" | 实体: {ingested.get('entities_added', 0)}"
+                        f" | 关系: {ingested.get('relations_added', 0)}"
+                    )
+                else:
+                    st.error(f"❌ 错误：{result['error']}")
+
+    # ── Stats ─────────────────────────────────────────────────────────────────
+    stats_resp = _api.get_kg_stats()
+    if "error" not in stats_resp:
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("🔵 实体节点", stats_resp.get("entities", 0))
+        s2.metric("📰 文章节点", stats_resp.get("articles", 0))
+        s3.metric("🔗 提及关系", stats_resp.get("mentions", 0))
+        s4.metric("⚡ 实体关系", stats_resp.get("relations", 0))
+    else:
+        st.warning("⚠️ 无法获取图谱统计，请确认后端正在运行。")
+
+    st.divider()
+
+    tab_entities, tab_relations, tab_neighbours, tab_query = st.tabs(
+        ["📋 实体列表", "🔗 关系列表", "🔍 邻居查询", "💬 Cypher 查询"]
+    )
+
+    # ── Entities ─────────────────────────────────────────────────────────────
+    with tab_entities:
+        entities_resp = _api.get_kg_entities(limit=200)
+        if "error" in entities_resp:
+            st.error(f"❌ {entities_resp['error']}")
+        else:
+            entities_list: List[Dict[str, Any]] = entities_resp.get("entities", [])
+            if entities_list:
+                try:
+                    import pandas as pd
+                    df = pd.DataFrame(entities_list)
+                    st.dataframe(df, use_container_width=True, height=400)
+                except ImportError:
+                    for e in entities_list:
+                        st.write(f"**{e.get('name')}** ({e.get('type', '?')})")
+            else:
+                st.info("📭 图谱中暂无实体。请点击「更新图谱」按钮先进行数据摄入。")
+
+    # ── Relations ─────────────────────────────────────────────────────────────
+    with tab_relations:
+        relations_resp = _api.get_kg_relations(limit=300)
+        if "error" in relations_resp:
+            st.error(f"❌ {relations_resp['error']}")
+        else:
+            relations_list: List[Dict[str, Any]] = relations_resp.get("relations", [])
+            if relations_list:
+                try:
+                    import pandas as pd
+                    df_rel = pd.DataFrame(relations_list)
+                    st.dataframe(df_rel, use_container_width=True, height=400)
+                except ImportError:
+                    for r in relations_list:
+                        st.write(f"**{r.get('from')}** –[{r.get('relation')}]→ **{r.get('to')}**")
+
+                # Simple network visualization with plotly
+                if relations_list:
+                    try:
+                        import plotly.graph_objects as go
+                        import networkx as nx
+
+                        G = nx.DiGraph()
+                        for r in relations_list[:50]:
+                            from_node = r.get("from", "")
+                            to_node = r.get("to", "")
+                            if not from_node or not to_node:
+                                continue
+                            G.add_edge(from_node, to_node, label=r.get("relation", ""))
+
+                        pos = nx.spring_layout(G, seed=42)
+                        edge_x, edge_y = [], []
+                        for u, v in G.edges():
+                            x0, y0 = pos[u]
+                            x1, y1 = pos[v]
+                            edge_x += [x0, x1, None]
+                            edge_y += [y0, y1, None]
+
+                        node_x = [pos[n][0] for n in G.nodes()]
+                        node_y = [pos[n][1] for n in G.nodes()]
+                        node_labels = list(G.nodes())
+
+                        fig_net = go.Figure(
+                            data=[
+                                go.Scatter(x=edge_x, y=edge_y, mode="lines",
+                                           line={"width": 1, "color": "#888"}, hoverinfo="none"),
+                                go.Scatter(x=node_x, y=node_y, mode="markers+text",
+                                           text=node_labels, textposition="top center",
+                                           marker={"size": 10, "color": "#3498db"},
+                                           hoverinfo="text"),
+                            ],
+                            layout=go.Layout(
+                                title="知识图谱网络图（前50条关系）",
+                                showlegend=False,
+                                hovermode="closest",
+                                xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
+                                yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
+                                height=500,
+                            ),
+                        )
+                        st.plotly_chart(fig_net, use_container_width=True)
+                    except ImportError:
+                        pass
+            else:
+                st.info("📭 图谱中暂无关系。请先进行数据摄入。")
+
+    # ── Neighbours ────────────────────────────────────────────────────────────
+    with tab_neighbours:
+        entity_query = st.text_input("输入实体名称", placeholder="例如：Federal Reserve")
+        if entity_query:
+            nbr_resp = _api.get_kg_neighbours(entity_query)
+            if "error" in nbr_resp:
+                st.error(f"❌ {nbr_resp['error']}")
+            else:
+                neighbours: List[Dict[str, Any]] = nbr_resp.get("neighbours", [])
+                if neighbours:
+                    st.success(f"找到 {len(neighbours)} 个邻居节点")
+                    try:
+                        import pandas as pd
+                        st.dataframe(pd.DataFrame(neighbours), use_container_width=True)
+                    except ImportError:
+                        for n in neighbours:
+                            st.write(f"→ **{n.get('name')}** ({n.get('type')}) via [{n.get('relation')}]")
+                else:
+                    st.info(f"未找到「{entity_query}」的邻居节点。")
+
+    # ── Cypher Query ──────────────────────────────────────────────────────────
+    with tab_query:
+        st.caption("仅 Kuzu 后端支持 Cypher 查询（GRAPH_BACKEND=kuzu）")
+        default_query = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
+        cypher_input = st.text_area("Cypher 查询", value=default_query, height=100)
+        if st.button("▶ 执行查询"):
+            with st.spinner("执行中…"):
+                query_resp = _api.run_kg_query(cypher_input)
+                if "error" in query_resp:
+                    st.error(f"❌ {query_resp['error']}")
+                else:
+                    results = query_resp.get("results", [])
+                    if results:
+                        st.success(f"返回 {len(results)} 条结果")
+                        st.json(results)
+                    else:
+                        st.info("查询无结果。")
+
+# ===========================================================================
 # Page: 📊 仪表板
 # ===========================================================================
 elif page == "📊 仪表板":
@@ -287,6 +451,16 @@ elif page == "📊 仪表板":
     m2.metric("🎯 提取事件", total_events)
     m3.metric("🔴 高危事件", high_events)
     m4.metric("📊 平均置信度", avg_conf_str)
+
+    # ── Knowledge graph metrics ───────────────────────────────────────────────
+    kg_stats_resp = _api.get_kg_stats()
+    if "error" not in kg_stats_resp:
+        st.subheader("🕸️ 知识图谱")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("🔵 实体", kg_stats_resp.get("entities", 0))
+        k2.metric("📰 文章", kg_stats_resp.get("articles", 0))
+        k3.metric("🔗 提及", kg_stats_resp.get("mentions", 0))
+        k4.metric("⚡ 关系", kg_stats_resp.get("relations", 0))
 
     st.divider()
 
@@ -375,5 +549,6 @@ elif page == "⚙️ 系统状态":
         f"**版本：** 1.0.0  \n"
         f"**后端地址：** {_backend_url}  \n"
         f"**页面刷新时间：** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n"
-        "**平台：** EL'druin Intelligence Platform"
+        "**平台：** EL'druin Intelligence Platform  \n"
+        "**知识图谱：** Kuzu（嵌入式）/ NetworkX（备用）"
     )
