@@ -200,6 +200,42 @@ class APIClient:
         return self._post("/knowledge/extract", json={"text": text})
 
     # ------------------------------------------------------------------
+    # Simulation endpoints
+    # ------------------------------------------------------------------
+
+    def run_simulation(
+        self,
+        news_event: str,
+        max_steps: int = 8,
+        initial_tension: float = 0.45,
+        seed: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Run the multi-agent crisis simulation.
+
+        Args:
+            news_event:      Triggering event text to inject into the simulation.
+            max_steps:       Number of simulation steps (5–10).
+            initial_tension: Starting tension level [0.0, 1.0].
+            seed:            Optional random seed for reproducibility.
+
+        Returns:
+            Dict with ``"messages"``, ``"path"``, ``"tension_level"``,
+            ``"resolution_probabilities"``, ``"steps_run"``, and more.
+        """
+        payload: Dict[str, Any] = {
+            "news_event": news_event,
+            "max_steps": max_steps,
+            "initial_tension": initial_tension,
+        }
+        if seed is not None:
+            payload["seed"] = seed
+        return self._post("/simulation/run", json=payload)
+
+    def get_simulation_agents(self) -> Dict[str, Any]:
+        """Return metadata for all simulation agents."""
+        return self._get("/simulation/agents")
+
+    # ------------------------------------------------------------------
     # Health / system endpoints
     # ------------------------------------------------------------------
 

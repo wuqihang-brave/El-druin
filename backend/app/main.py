@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.news import router as news_router
+from app.api.routes.simulation import router as simulation_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -65,6 +66,7 @@ _API_PREFIX = "/api/v1"
 app.include_router(health_router, prefix=_API_PREFIX)
 app.include_router(news_router, prefix=_API_PREFIX)
 app.include_router(knowledge_router, prefix=_API_PREFIX)
+app.include_router(simulation_router, prefix=_API_PREFIX)
 
 
 # ---------------------------------------------------------------------------
