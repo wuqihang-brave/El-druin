@@ -90,3 +90,65 @@ def run_cypher_query(
 def graph_stats() -> Dict[str, Any]:
     """Return knowledge graph statistics (node and edge counts)."""
     return get_knowledge_graph().stats()
+
+
+@router.post("/extract")
+def extract_from_text(
+    text: str = Body(..., embed=True, description="Raw text to extract entities and relations from"),
+) -> Dict[str, Any]:
+    """Extract entities and relations from arbitrary text without persisting to the graph.
+
+    Request body::
+
+        {"text": "Federal Reserve raises rates amid inflation fears."}
+
+    Returns extracted entities and relations along with summary counts.
+    """
+    from app.knowledge.entity_extractor import EntityRelationExtractor
+
+    if not text or not text.strip():
+        return {
+            "status": "ok",
+            "entities": [],
+            "relations": [],
+            "nodes_count": 0,
+            "edges_count": 0,
+        }
+
+    try:
+        result = EntityRelationExtractor().extract(text)
+        # Normalize entity fields: always include name, type, description, confidence
+        def _safe_confidence(val: Any, default: float = 0.7) -> float:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
+        entities = [
+            {
+                "name": e.get("name", ""),
+                "type": e.get("type", ""),
+                "description": e.get("description", ""),
+                "confidence": _safe_confidence(e.get("confidence"), 0.7),
+            }
+            for e in result.get("entities", [])
+        ]
+        # Normalize relation fields: subject / predicate / object
+        relations = [
+            {
+                "subject": r.get("from", ""),
+                "predicate": r.get("relation", ""),
+                "object": r.get("to", ""),
+            }
+            for r in result.get("relations", [])
+        ]
+        return {
+            "status": "ok",
+            "entities": entities,
+            "relations": relations,
+            "nodes_count": len(entities),
+            "edges_count": len(relations),
+        }
+    except Exception as exc:
+        logger.error("Knowledge extraction error: %s", exc, exc_info=True)
+        return {"status": "error", "error": str(exc), "entities": [], "relations": [], "nodes_count": 0, "edges_count": 0}
