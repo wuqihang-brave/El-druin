@@ -155,11 +155,12 @@ if page == "📰 实时新闻":
         if "kg_cache" not in st.session_state:
             st.session_state.kg_cache = {}
 
+        import hashlib as _hashlib  # stable across process restarts (unlike built-in hash())
+
         if articles:
             for i, article in enumerate(articles, 1):
                 title_preview = (article.get("title") or "（无标题）")[:80]
                 # Stable cache key: hashlib md5 of article URL or title (not process-bound)
-                import hashlib as _hashlib
                 _key_src = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
                 _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
 
@@ -209,10 +210,16 @@ if page == "📰 实时新闻":
                                 st.write("**📋 实体**")
                                 try:
                                     import pandas as pd
-                                    st.dataframe(
-                                        pd.DataFrame(_entities_kg),
-                                        use_container_width=True,
-                                    )
+                                    _ent_df = pd.DataFrame([
+                                        {
+                                            "name": e.get("name", ""),
+                                            "type": e.get("type", ""),
+                                            "description": e.get("description", ""),
+                                            "confidence": e.get("confidence", ""),
+                                        }
+                                        for e in _entities_kg
+                                    ])
+                                    st.dataframe(_ent_df, use_container_width=True)
                                 except ImportError:
                                     for _e in _entities_kg:
                                         st.write(f"- **{_e.get('name')}** ({_e.get('type', '?')})")
@@ -223,23 +230,21 @@ if page == "📰 实时新闻":
                                 st.write("**🔗 关系**")
                                 try:
                                     import pandas as pd
-                                    st.dataframe(
-                                        pd.DataFrame([
-                                            {
-                                                "主体 (subject)": r.get("from", ""),
-                                                "关系 (predicate)": r.get("relation", ""),
-                                                "客体 (object)": r.get("to", ""),
-                                            }
-                                            for r in _relations_kg
-                                        ]),
-                                        use_container_width=True,
-                                    )
+                                    _rel_df = pd.DataFrame([
+                                        {
+                                            "subject": r.get("subject", ""),
+                                            "predicate": r.get("predicate", ""),
+                                            "object": r.get("object", ""),
+                                        }
+                                        for r in _relations_kg
+                                    ])
+                                    st.dataframe(_rel_df, use_container_width=True)
                                 except ImportError:
                                     for _r in _relations_kg:
                                         st.write(
-                                            f"- {_r.get('from')} "
-                                            f"–[{_r.get('relation')}]→ "
-                                            f"{_r.get('to')}"
+                                            f"- {_r.get('subject')} "
+                                            f"–[{_r.get('predicate')}]→ "
+                                            f"{_r.get('object')}"
                                         )
 
                             # ── Interactive graph visualisation ────────────────
@@ -270,12 +275,12 @@ if page == "📰 实时新闻":
                                     ]
                                     _ag_edges = [
                                         Edge(
-                                            source=_r["from"],
-                                            target=_r["to"],
-                                            label=_r.get("relation", ""),
+                                            source=_r["subject"],
+                                            target=_r["object"],
+                                            label=_r.get("predicate", ""),
                                         )
                                         for _r in _relations_kg
-                                        if _r.get("from") and _r.get("to")
+                                        if _r.get("subject") and _r.get("object")
                                     ]
                                     _ag_config = Config(
                                         width=700,
@@ -293,11 +298,11 @@ if page == "📰 实时新闻":
 
                                         _G = nx.DiGraph()
                                         for _r in _relations_kg:
-                                            if _r.get("from") and _r.get("to"):
+                                            if _r.get("subject") and _r.get("object"):
                                                 _G.add_edge(
-                                                    _r["from"],
-                                                    _r["to"],
-                                                    label=_r.get("relation", ""),
+                                                    _r["subject"],
+                                                    _r["object"],
+                                                    label=_r.get("predicate", ""),
                                                 )
                                         if _G.nodes():
                                             _pos = nx.spring_layout(_G, seed=42)

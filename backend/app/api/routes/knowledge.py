@@ -117,8 +117,31 @@ def extract_from_text(
 
     try:
         result = EntityRelationExtractor().extract(text)
-        entities = result.get("entities", [])
-        relations = result.get("relations", [])
+        # Normalize entity fields: always include name, type, description, confidence
+        def _safe_confidence(val: Any, default: float = 0.7) -> float:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
+        entities = [
+            {
+                "name": e.get("name", ""),
+                "type": e.get("type", ""),
+                "description": e.get("description", ""),
+                "confidence": _safe_confidence(e.get("confidence"), 0.7),
+            }
+            for e in result.get("entities", [])
+        ]
+        # Normalize relation fields: subject / predicate / object
+        relations = [
+            {
+                "subject": r.get("from", ""),
+                "predicate": r.get("relation", ""),
+                "object": r.get("to", ""),
+            }
+            for r in result.get("relations", [])
+        ]
         return {
             "status": "ok",
             "entities": entities,
