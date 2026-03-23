@@ -34,6 +34,8 @@ class Settings:
     # "kuzu" (default, embedded) | "neo4j" | "networkx" (in-memory fallback)
     graph_backend: str = os.getenv("GRAPH_BACKEND", "kuzu")
     kuzu_db_path: str = os.getenv("KUZU_DB_PATH", "./data/kuzu_db")
+    # Path for the embedded Kuzu knowledge-graph file (KuzuKnowledgeGraph)
+    kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", "./data/el_druin.kuzu")
     neo4j_uri: Optional[str] = os.getenv("NEO4J_URI")
     neo4j_user: Optional[str] = os.getenv("NEO4J_USER", "neo4j")
     neo4j_password: Optional[str] = os.getenv("NEO4J_PASSWORD")
