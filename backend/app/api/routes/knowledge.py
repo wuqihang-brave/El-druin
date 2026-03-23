@@ -7,20 +7,39 @@ Endpoints:
   GET  /knowledge/relations       – list relation edges
   GET  /knowledge/neighbours      – get neighbours of a named entity
   POST /knowledge/query           – run a Cypher query (Kuzu backend only)
+  GET  /knowledge/query           – run a Cypher query via query parameter (cached)
   GET  /knowledge/stats           – graph statistics
+  POST /knowledge/extract         – extract entities/relations from text and persist
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.knowledge.knowledge_graph import get_knowledge_graph
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+_DEFAULT_ENTITY_TYPE = "MISC"
+_DEFAULT_RELATION_WEIGHT = 0.5
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+class ExtractRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=10000, description="Raw text to extract entities and relations from")
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(..., min_length=5, description="Cypher query string")
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +90,16 @@ def get_neighbours(
     return {"entity": entity, "neighbours": neighbours, "total": len(neighbours)}
 
 
+@lru_cache(maxsize=128)
+def _cached_cypher_query(query: str) -> Tuple[Any, ...]:
+    """Execute and cache a Cypher query. Returns results as a tuple for hashability."""
+    results = get_knowledge_graph().cypher_query(query)
+    return tuple(results)
+
+
 @router.post("/query")
 def run_cypher_query(
-    query: str = Body(..., embed=True, description="Cypher query string"),
+    request: QueryRequest,
 ) -> Dict[str, Any]:
     """Execute a Cypher query against the knowledge graph (Kuzu backend only).
 
@@ -82,8 +108,30 @@ def run_cypher_query(
         POST /knowledge/query
         {"query": "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"}
     """
-    results = get_knowledge_graph().cypher_query(query)
-    return {"results": results, "total": len(results)}
+    try:
+        results = list(_cached_cypher_query(request.query))
+        return {"results": results, "total": len(results)}
+    except Exception as exc:
+        logger.error("Cypher query error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/query")
+def query_knowledge(
+    query: str = Query(..., min_length=5, description="Cypher query string"),
+) -> Dict[str, Any]:
+    """Execute a Cypher query via query parameter (cached).
+
+    Example::
+
+        GET /knowledge/query?query=MATCH (e:Entity) RETURN e.name, e.type LIMIT 10
+    """
+    try:
+        results = list(_cached_cypher_query(query))
+        return {"results": results, "total": len(results)}
+    except Exception as exc:
+        logger.error("Cypher query error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/stats")
@@ -94,29 +142,20 @@ def graph_stats() -> Dict[str, Any]:
 
 @router.post("/extract")
 def extract_from_text(
-    text: str = Body(..., embed=True, description="Raw text to extract entities and relations from"),
+    request: ExtractRequest,
 ) -> Dict[str, Any]:
-    """Extract entities and relations from arbitrary text without persisting to the graph.
+    """Extract entities and relations from arbitrary text and persist to the knowledge graph.
 
     Request body::
 
         {"text": "Federal Reserve raises rates amid inflation fears."}
 
-    Returns extracted entities and relations along with summary counts.
+    Returns extracted triples along with summary counts.
     """
     from app.knowledge.entity_extractor import EntityRelationExtractor
 
-    if not text or not text.strip():
-        return {
-            "status": "ok",
-            "entities": [],
-            "relations": [],
-            "nodes_count": 0,
-            "edges_count": 0,
-        }
-
     try:
-        result = EntityRelationExtractor().extract(text)
+        result = EntityRelationExtractor().extract(request.text)
         # Normalize entity fields: always include name, type, description, confidence
         def _safe_confidence(val: Any, default: float = 0.7) -> float:
             try:
@@ -142,6 +181,26 @@ def extract_from_text(
             }
             for r in result.get("relations", [])
         ]
+
+        # Persist entities and relations to the knowledge graph
+        kg = get_knowledge_graph()
+        for entity in entities:
+            name = entity["name"].strip()
+            if name:
+                kg.add_entity(name, entity["type"] or _DEFAULT_ENTITY_TYPE)
+        for rel in relations:
+            from_name = rel["subject"].strip()
+            to_name = rel["object"].strip()
+            if from_name and to_name:
+                kg.add_relation(
+                    from_name=from_name,
+                    from_type=_DEFAULT_ENTITY_TYPE,
+                    to_name=to_name,
+                    to_type=_DEFAULT_ENTITY_TYPE,
+                    relation_type=rel["predicate"] or "related_to",
+                    weight=_DEFAULT_RELATION_WEIGHT,
+                )
+
         return {
             "status": "ok",
             "entities": entities,
@@ -151,4 +210,4 @@ def extract_from_text(
         }
     except Exception as exc:
         logger.error("Knowledge extraction error: %s", exc, exc_info=True)
-        return {"status": "error", "error": str(exc), "entities": [], "relations": [], "nodes_count": 0, "edges_count": 0}
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
