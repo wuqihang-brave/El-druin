@@ -31,6 +31,8 @@ if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
+from components.order_critique import display_order_critique  # noqa: E402
+from utils.deep_extraction import extract_causal_chains, visualize_confidence  # noqa: E402
 
 # streamlit-agraph (optional – graceful degradation when absent)
 try:
@@ -464,6 +466,13 @@ if page == "🏠 主页":
         st.session_state.home_graph_data: Dict[str, Any] = {"nodes": [], "edges": []}
     if "home_analysis" not in st.session_state:
         st.session_state.home_analysis: Dict[str, Any] = {}
+    if "home_causal_chains" not in st.session_state:
+        st.session_state.home_causal_chains: Dict[str, Any] = {
+            "entities": [],
+            "relations": [],
+            "causal_chains": [],
+            "overall_order_score": 50,
+        }
 
     # ── Three-column layout ──────────────────────────────────────────────────
     col_left, col_mid, col_right = st.columns([2, 5, 3], gap="medium")
@@ -587,6 +596,29 @@ if page == "🏠 主页":
                     }
                     _log_entry2 = f"[{datetime.now().strftime('%H:%M:%S')}] 图谱加载完成 · {len(_ents)} 节点 · {len(_rels)} 边"
                     st.session_state.home_logs.insert(0, _log_entry2)
+
+                    # ── Deep causal chain extraction from latest news ──────────
+                    _news_r = _api.get_latest_news(limit=3, hours=24)
+                    _news_articles = _news_r.get("articles", []) if "error" not in _news_r else []
+                    if _news_articles:
+                        # Aggregate text from the most recent articles for causal extraction
+                        _combined_text = " ".join(
+                            filter(None, [
+                                _a.get("title", "") + ". " + (_a.get("description") or "")
+                                for _a in _news_articles[:3]
+                            ])
+                        ).strip()
+                        if _combined_text:
+                            _causal_resp = extract_causal_chains(_combined_text, _api)
+                            st.session_state.home_causal_chains = _causal_resp
+                            # Clear stale philosophical critique cache
+                            st.session_state.pop("order_critique_text", None)
+                            st.session_state.pop("_critique_signal", None)
+                            _log_entry3 = (
+                                f"[{datetime.now().strftime('%H:%M:%S')}] 因果链提取完成 · "
+                                f"{len(_causal_resp.get('causal_chains', []))} 条因果链"
+                            )
+                            st.session_state.home_logs.insert(0, _log_entry3)
                 else:
                     st.warning("⚠️ 后端无数据，请先摄入新闻。")
             st.rerun()
@@ -655,56 +687,79 @@ if page == "🏠 主页":
             )
 
             _analysis = st.session_state.home_analysis
+            _causal_data = st.session_state.home_causal_chains
+
             if not _analysis:
                 st.info("▶ 点击左侧「开始分析」以生成秩序报告。")
             else:
-                # AI logic bullet points
-                st.markdown("**🔍 深层逻辑**")
-                for _pt in _analysis.get("logic_points", []):
-                    st.markdown(f"• {_pt}")
+                # ── Determine whether deep causal data is available ──────────
+                _causal_chains_list = _causal_data.get("causal_chains", [])
+                _causal_entities = _causal_data.get("entities", [])
+                _causal_relations = _causal_data.get("relations", [])
 
-                st.markdown("")
+                _has_causal = bool(_causal_chains_list)
 
-                # Core conclusions (highlighted)
-                st.markdown("**💡 核心结论**")
-                for _c in _analysis.get("conclusions", []):
+                if _has_causal:
+                    # ── Deep analysis: display_order_critique ────────────────
+                    display_order_critique(
+                        entities=_causal_entities,
+                        relations=_causal_relations,
+                        causal_chains=_causal_chains_list,
+                        api_client=_api,
+                    )
+
+                    # ── Confidence visualisation ──────────────────────────────
+                    st.markdown("### 📊 因果链置信度")
+                    visualize_confidence(_causal_chains_list)
+
+                else:
+                    # ── Fallback: classic logic / conclusion view ─────────────
+                    st.markdown("**🔍 深层逻辑**")
+                    for _pt in _analysis.get("logic_points", []):
+                        st.markdown(f"• {_pt}")
+
+                    st.markdown("")
+
+                    st.markdown("**💡 核心结论**")
+                    for _c in _analysis.get("conclusions", []):
+                        st.markdown(
+                            f"<div style='background:#fff8e1;border-left:3px solid #d4af37;"
+                            f"padding:6px 10px;border-radius:4px;margin:4px 0'>{_c}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                    st.markdown("")
+
+                    _score = _analysis.get("order_score", 0)
                     st.markdown(
-                        f"<div style='background:#fff8e1;border-left:3px solid #d4af37;"
-                        f"padding:6px 10px;border-radius:4px;margin:4px 0'>{_c}</div>",
+                        f"**📐 秩序评分** &nbsp;"
+                        f"<span class='score-label'>{_score}</span>"
+                        f"<span style='color:#999;font-size:0.9rem'> / 100</span>",
+                        unsafe_allow_html=True,
+                    )
+                    st.progress(_score / 100)
+
+                    _conf = _analysis.get("confidence", 0.0)
+                    _conf_color = (
+                        "#27ae60" if _conf >= 0.75
+                        else ("#f39c12" if _conf >= 0.5 else "#e74c3c")
+                    )
+                    st.markdown(
+                        f"**🎯 置信度** &nbsp;"
+                        f"<span style='color:{_conf_color};font-weight:700'>{_conf:.1%}</span>",
                         unsafe_allow_html=True,
                     )
 
-                st.markdown("")
+                    st.markdown("")
 
-                # Order score
-                _score = _analysis.get("order_score", 0)
-                st.markdown(
-                    f"**📐 秩序评分** &nbsp;"
-                    f"<span class='score-label'>{_score}</span><span style='color:#999;font-size:0.9rem'> / 100</span>",
-                    unsafe_allow_html=True,
-                )
-                st.progress(_score / 100)
-
-                # Confidence
-                _conf = _analysis.get("confidence", 0.0)
-                _conf_color = "#27ae60" if _conf >= 0.75 else ("#f39c12" if _conf >= 0.5 else "#e74c3c")
-                st.markdown(
-                    f"**🎯 置信度** &nbsp;"
-                    f"<span style='color:{_conf_color};font-weight:700'>{_conf:.1%}</span>",
-                    unsafe_allow_html=True,
-                )
-
-                st.markdown("")
-
-                # Key entity tags
-                _entities = _analysis.get("key_entities", [])
-                if _entities:
-                    st.markdown("**🏷️ 关键实体**")
-                    _tags_html = " ".join(
-                        f"<span class='entity-tag'>{e}</span>"
-                        for e in _entities[:12]
-                    )
-                    st.markdown(_tags_html, unsafe_allow_html=True)
+                    _entities_list = _analysis.get("key_entities", [])
+                    if _entities_list:
+                        st.markdown("**🏷️ 关键实体**")
+                        _tags_html = " ".join(
+                            f"<span class='entity-tag'>{e}</span>"
+                            for e in _entities_list[:12]
+                        )
+                        st.markdown(_tags_html, unsafe_allow_html=True)
 
         # ── Export buttons ────────────────────────────────────────────────────
         if st.session_state.home_analysis:
@@ -716,6 +771,7 @@ if page == "🏠 主页":
                 _export_payload = {
                     "analysis": st.session_state.home_analysis,
                     "graph": st.session_state.home_graph_data,
+                    "causal_chains": st.session_state.home_causal_chains,
                 }
                 st.download_button(
                     "⬇ JSON",
