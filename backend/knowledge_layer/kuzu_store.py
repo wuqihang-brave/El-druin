@@ -100,7 +100,7 @@ DEFAULT_DB_PATH: str = "./data/el_druin_strict.kuzu"
 NODE_TYPES: Tuple[str, ...] = ("Person", "Organization", "Location", "Event", "Concept")
 
 #: All 3 core relationship types defined by the strict ontology.
-RELATION_TYPES: Tuple[str, ...] = ("INVOLVED_IN", "INFLUENCES", "LOCATED_AT")
+RELATION_TYPES: Tuple[str, ...] = ("INVOLVED_IN", "INFLUENCES", "LOCATED_AT", "CONTRADICTS")
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +275,12 @@ class KuzuStore:
             "CREATE REL TABLE IF NOT EXISTS LOCATED_AT"
             "(FROM _Entity TO _Entity,"
             " confidence DOUBLE, source_reliability DOUBLE, timestamp TIMESTAMP)",
+
+            # CONTRADICTS: any two entities whose asserted facts conflict
+            "CREATE REL TABLE IF NOT EXISTS CONTRADICTS"
+            "(FROM _Entity TO _Entity,"
+            " reason STRING, confidence DOUBLE,"
+            " source_reliability DOUBLE, timestamp TIMESTAMP)",
         ]
 
         for stmt in node_ddl + [hub_ddl] + rel_ddl:
@@ -692,6 +698,76 @@ class KuzuStore:
             )
         except Exception as exc:
             logger.debug("add_located_at %s→%s: %s", entity_id, location_id, exc)
+
+    def add_contradicts(
+        self,
+        from_id: str,
+        to_id: str,
+        reason: str,
+        confidence: float = 0.8,
+        source_reliability: float = 0.7,
+        timestamp: Optional[datetime] = None,
+    ) -> None:
+        """Create a CONTRADICTS edge between two entity nodes.
+
+        Semantics: the assertion represented by *from_id* contradicts the
+        assertion represented by *to_id*.  Both nodes must already exist in
+        the ``_Entity`` hub table.
+
+        Parameters
+        ----------
+        from_id:
+            ID of the first entity (source of the contradiction edge).
+        to_id:
+            ID of the second entity (target of the contradiction edge).
+        reason:
+            Human-readable explanation of why these facts contradict.
+        confidence:
+            Confidence score for this contradiction in [0.0, 1.0].
+        source_reliability:
+            Reliability of the data source that triggered this contradiction.
+        timestamp:
+            When the contradiction was recorded.  Defaults to the current UTC
+            time.
+
+        Raises
+        ------
+        ValueError
+            If *confidence* or *source_reliability* is outside [0.0, 1.0].
+
+        Examples
+        --------
+        ::
+
+            store.add_contradicts(
+                from_id="ev1",
+                to_id="ev2",
+                reason="Report A says rate raised; Report B says rate cut",
+                confidence=0.9,
+                source_reliability=0.8,
+            )
+        """
+        conf = validate_reliability(confidence, "confidence")
+        sr = validate_reliability(source_reliability)
+        ts = validate_timestamp(timestamp)
+        try:
+            self._conn.execute(
+                "MATCH (a:_Entity {id: $from_id})"
+                " MATCH (b:_Entity {id: $to_id})"
+                " CREATE (a)-[:CONTRADICTS"
+                "  {reason: $reason, confidence: $conf,"
+                "   source_reliability: $sr, timestamp: $ts}]->(b)",
+                {
+                    "from_id": from_id,
+                    "to_id": to_id,
+                    "reason": reason,
+                    "conf": conf,
+                    "sr": sr,
+                    "ts": ts,
+                },
+            )
+        except Exception as exc:
+            logger.debug("add_contradicts %s→%s: %s", from_id, to_id, exc)
 
     # ------------------------------------------------------------------
     # Query helpers – public API

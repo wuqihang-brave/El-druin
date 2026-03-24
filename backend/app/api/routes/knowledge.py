@@ -10,6 +10,7 @@ Endpoints:
   GET  /knowledge/query                        – run a Cypher query via query parameter (cached)
   GET  /knowledge/stats                        – graph statistics
   POST /knowledge/extract                      – extract entities/relations from text and persist
+  POST /knowledge/extract-incremental          – incremental delta-update extraction with conflict detection
   POST /knowledge/filter                       – evaluate and filter triples via Order Critic Agent
   GET  /knowledge/graph/hierarchy              – degree-filtered hierarchical graph
   GET  /knowledge/graph/node-narrative/{name}  – Order Narrative for a single node
@@ -75,6 +76,30 @@ class CausalChainRequest(BaseModel):
     model: str = Field(
         default="llama3-8b-8192",
         description="LLM model name to use for extraction",
+    )
+
+
+class IncrementalExtractRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=10,
+        max_length=10000,
+        description="Raw text to extract entities and relations from",
+    )
+    source_url: str = Field(
+        default="",
+        description="URL of the source article (used in audit logs)",
+    )
+    source_reliability: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Reliability of the source (0.0–1.0)",
+    )
+    incremental: bool = Field(
+        default=True,
+        description="When True (default) use incremental update logic; "
+                    "when False fall back to simple insert behaviour",
     )
 
 
@@ -261,6 +286,122 @@ def extract_from_text(
         }
     except Exception as exc:
         logger.error("Knowledge extraction error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/extract-incremental")
+def extract_incremental(
+    request: IncrementalExtractRequest,
+) -> Dict[str, Any]:
+    """Extract entities/relations with incremental delta-update logic.
+
+    Unlike the basic ``/extract`` endpoint which always inserts or overwrites,
+    this endpoint:
+
+    * Performs **entity disambiguation** via fuzzy string matching to detect
+      whether a newly extracted entity already exists in the graph.
+    * Performs **conflict detection** on relations: if a new relation
+      contradicts an existing one (e.g. *raises* vs *cuts* for the same pair),
+      a ``CONTRADICTS`` edge is created instead of inserting the new relation.
+    * Returns a structured summary with counts of insertions and conflicts.
+
+    Set ``incremental=false`` to fall back to the simple insert behaviour of
+    the ``/extract`` endpoint.
+
+    Request body::
+
+        {
+            "text": "The ECB cut interest rates today despite earlier guidance...",
+            "source_url": "https://example.com/article",
+            "source_reliability": 0.8,
+            "incremental": true
+        }
+
+    Returns entities, relations, and a metrics summary including
+    ``conflicts_found`` and ``contradicts_created``.
+    """
+    from app.knowledge.entity_extractor import EntityRelationExtractor
+
+    try:
+        result = EntityRelationExtractor().extract(request.text)
+
+        def _safe_float(val: Any, default: float) -> float:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
+        entities = [
+            {
+                "name": e.get("name", ""),
+                "type": e.get("type", ""),
+                "description": e.get("description", ""),
+                "confidence": _safe_float(e.get("confidence"), 0.7),
+            }
+            for e in result.get("entities", [])
+        ]
+        relations = [
+            {
+                "from": r.get("from", ""),
+                "relation": r.get("relation", ""),
+                "to": r.get("to", ""),
+                "weight": _safe_float(r.get("weight"), _DEFAULT_RELATION_WEIGHT),
+            }
+            for r in result.get("relations", [])
+        ]
+
+        if request.incremental:
+            from knowledge_layer.incremental_extractor import incremental_update
+
+            kg = get_knowledge_graph()
+            summary = incremental_update(
+                entities=entities,
+                relations=relations,
+                source_reliability=request.source_reliability,
+                source_url=request.source_url,
+                store=kg,
+            )
+        else:
+            # Non-incremental path: simple insert (mirrors /extract behaviour)
+            kg = get_knowledge_graph()
+            for entity in entities:
+                name = entity["name"].strip()
+                if name:
+                    kg.add_entity(name, entity["type"] or _DEFAULT_ENTITY_TYPE)
+            for rel in relations:
+                from_name = rel["from"].strip()
+                to_name = rel["to"].strip()
+                if from_name and to_name:
+                    kg.add_relation(
+                        from_name=from_name,
+                        from_type=_DEFAULT_ENTITY_TYPE,
+                        to_name=to_name,
+                        to_type=_DEFAULT_ENTITY_TYPE,
+                        relation_type=rel["relation"] or "related_to",
+                        weight=rel["weight"],
+                    )
+            summary = {
+                "entities_added": len([e for e in entities if e["name"].strip()]),
+                "entities_merged": 0,
+                "relations_added": len(
+                    [r for r in relations if r["from"].strip() and r["to"].strip()]
+                ),
+                "conflicts_found": 0,
+                "contradicts_created": 0,
+                "contradictions": [],
+            }
+
+        return {
+            "status": "ok",
+            "incremental": request.incremental,
+            "source_url": request.source_url,
+            "source_reliability": request.source_reliability,
+            "entities": entities,
+            "relations": relations,
+            **summary,
+        }
+    except Exception as exc:
+        logger.error("Incremental extraction error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

@@ -115,7 +115,11 @@ def _rule_based_relations(
 
 
 def _llm_extract(text: str) -> Dict[str, Any]:
-    """LLM-based entity and relation extraction via LangChain."""
+    """LLM-based entity and relation extraction via LangChain.
+
+    Uses a few-shot causal-link prompt that instructs the model to focus on
+    "A causes B" patterns in addition to standard entity/relation extraction.
+    """
     settings = get_settings()
     try:
         from langchain_core.prompts import ChatPromptTemplate
@@ -138,8 +142,14 @@ def _llm_extract(text: str) -> Dict[str, Any]:
         else:
             return {}
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", (
+        # Import the shared few-shot causal prompt.
+        try:
+            from knowledge_layer.incremental_extractor import FEW_SHOT_CAUSAL_PROMPT
+            system_prompt = FEW_SHOT_CAUSAL_PROMPT
+        except ImportError:
+            # Fallback to the basic prompt if the incremental extractor is not
+            # on the Python path (e.g. during isolated unit tests).
+            system_prompt = (
                 "You are a knowledge-graph builder. Extract entities and relations "
                 "from the given text and return ONLY valid JSON in this exact format:\n"
                 '{"entities": [{"name": "...", "type": "ORG|GPE|PERSON|EVENT|PRODUCT", '
@@ -147,7 +157,10 @@ def _llm_extract(text: str) -> Dict[str, Any]:
                 '"relations": [{"from": "...", "relation": "...", "to": "...", "weight": 0.8}]}\n'
                 "confidence must be a float between 0.0 and 1.0. "
                 "Limit to the 10 most important entities and 5 most important relations."
-            )),
+            )
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
             ("human", "{text}"),
         ])
         parser = JsonOutputParser()
