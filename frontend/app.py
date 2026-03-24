@@ -79,9 +79,20 @@ except FileNotFoundError:
     st.markdown(
         """
         <style>
-        .stApp, .main, body { background-color: #0D0D0D !important; color: #F0F0F0 !important; }
-        section[data-testid="stSidebar"] { background-color: #0A0A0A !important; }
-        h1, h2, h3 { color: #F0F0F0 !important; }
+        :root {
+          --color-gold: #D4AF37; --color-black: #0D1117;
+          --color-white: #F0F0F0; --color-elevated: #161B22;
+          --color-border: #30363D; --color-silver: #A8A8A8;
+        }
+        .stApp, .main, body { background-color: var(--color-black) !important; color: var(--color-white) !important; }
+        [data-testid="stAppViewContainer"] { background-color: var(--color-black) !important; }
+        section[data-testid="stSidebar"] { background-color: var(--color-black) !important; border-right: 1px solid var(--color-border) !important; }
+        section[data-testid="stSidebar"] * { color: var(--color-white) !important; }
+        h1, h2, h3, h4, h5, h6 { color: var(--color-white) !important; }
+        .stMarkdown, .stMarkdown p { color: var(--color-white) !important; }
+        a { color: var(--color-gold) !important; }
+        a:hover { color: #FFE066 !important; }
+        a:visited { color: #C9A227 !important; }
         </style>
         """,
         unsafe_allow_html=True,
