@@ -10,6 +10,7 @@ Endpoints:
   GET  /knowledge/query           – run a Cypher query via query parameter (cached)
   GET  /knowledge/stats           – graph statistics
   POST /knowledge/extract         – extract entities/relations from text and persist
+  POST /knowledge/filter          – evaluate and filter triples via Order Critic Agent
 """
 
 from __future__ import annotations
@@ -40,6 +41,26 @@ class ExtractRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=5, description="Cypher query string")
+
+
+class FilterRequest(BaseModel):
+    triples: List[Dict[str, Any]] = Field(
+        ...,
+        description=(
+            "List of raw triples to evaluate. Each triple should contain "
+            "'subject' (or 'from'), 'relation' (or 'predicate'), and 'object' (or 'to') keys."
+        ),
+    )
+    min_order_score: float = Field(
+        default=50.0,
+        ge=0.0,
+        le=100.0,
+        description="Minimum order score threshold (overridden by mode if provided)",
+    )
+    mode: str = Field(
+        default="balanced",
+        description="Filter mode: 'strict' (keep score>=80) or 'balanced' (keep score>=50)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,4 +231,55 @@ def extract_from_text(
         }
     except Exception as exc:
         logger.error("Knowledge extraction error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/filter")
+def filter_triples(
+    request: FilterRequest,
+) -> Dict[str, Any]:
+    """Evaluate and filter knowledge triples using the Order Critic Agent.
+
+    The Order Critic assigns an *order score* (0–100) to each triple, reflecting
+    how structurally significant the knowledge is for civilisation-level reasoning.
+    Trivial information (celebrity gossip, market noise) is filtered out; triples
+    about technology breakthroughs, geopolitical shifts, institutional changes, and
+    causal chains are preserved.
+
+    Request body::
+
+        {
+            "triples": [
+                {"subject": "Federal Reserve", "relation": "raises", "object": "interest rates"},
+                {"subject": "Taylor Swift",    "relation": "attends", "object": "Grammy Awards"}
+            ],
+            "min_order_score": 50,
+            "mode": "balanced"
+        }
+
+    Returns a list of evaluated triples that passed the threshold, sorted by
+    order_score descending.
+    """
+    try:
+        from knowledge_layer.order_critic import OrderCritic
+
+        valid_modes = {"strict", "balanced"}
+        mode = request.mode if request.mode in valid_modes else "balanced"
+
+        critic = OrderCritic()
+        ordered = critic.filter_triples(
+            triples=request.triples,
+            min_order_score=request.min_order_score,
+            mode=mode,  # type: ignore[arg-type]
+        )
+        return {
+            "status": "ok",
+            "mode": mode,
+            "threshold": 80.0 if mode == "strict" else 50.0,
+            "total_input": len(request.triples),
+            "total_passed": len(ordered),
+            "triples": [t.to_dict() for t in ordered],
+        }
+    except Exception as exc:
+        logger.error("Order Critic filter error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
