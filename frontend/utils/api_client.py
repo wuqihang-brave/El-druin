@@ -329,6 +329,74 @@ class APIClient:
         """Ping the backend health endpoint."""
         return self._get("/health")
 
+    # ------------------------------------------------------------------
+    # Intelligence / Bayesian Bridge endpoints
+    # ------------------------------------------------------------------
+
+    def process_report_with_audit(
+        self,
+        text: str,
+        source_url: str = "",
+        source_reliability: float = 0.7,
+        source_type: str = "news_article",
+    ) -> Dict[str, Any]:
+        """Submit a news report for full Bayesian audit processing.
+
+        Args:
+            text: Raw news article text.
+            source_url: URL of the originating article.
+            source_reliability: Reliability score of the source (0.0–1.0).
+            source_type: One of ``"news_article"``, ``"user_input"``,
+                or ``"inference"``.
+
+        Returns:
+            Dict with ``"reasoning_path_id"``, ``"probability_tree"``,
+            ``"selected_branch"``, ``"graph_changes"``,
+            ``"final_confidence"``, and ``"audit_status"`` keys.
+        """
+        return self._post(
+            "/intelligence/report-with-audit",
+            json={
+                "text": text,
+                "source_url": source_url,
+                "source_reliability": source_reliability,
+                "source_type": source_type,
+            },
+        )
+
+    def get_reasoning_path(self, path_id: str) -> Dict[str, Any]:
+        """Retrieve a completed reasoning path by UUID.
+
+        Args:
+            path_id: UUID of the reasoning path.
+
+        Returns:
+            Serialised ``ReasoningPath`` dict.
+        """
+        return self._get(f"/intelligence/reasoning-path/{path_id}")
+
+    def get_probability_tree(self, report_id: str) -> Dict[str, Any]:
+        """Retrieve a stored probability tree by report UUID.
+
+        Args:
+            report_id: UUID of the intelligence report.
+
+        Returns:
+            Serialised ``ProbabilityTree`` dict.
+        """
+        return self._get(f"/intelligence/probability-tree/{report_id}")
+
+    def get_audit_log(self, limit: int = 20) -> Dict[str, Any]:
+        """Return the most recent completed reasoning paths.
+
+        Args:
+            limit: Maximum number of paths to return (default 20).
+
+        Returns:
+            Dict with ``"paths"`` list and ``"total"`` count.
+        """
+        return self._get("/intelligence/audit-log", params={"limit": limit})
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()
