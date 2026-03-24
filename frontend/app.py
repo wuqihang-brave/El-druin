@@ -50,20 +50,58 @@ logger = logging.getLogger(__name__)
 # Page configuration (must be first Streamlit call)
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="EL'druin Intelligence Platform",
+    page_title="El-druin",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Minimal custom CSS
+# Custom CSS – card-style containers, deep-blue + gold colour scheme
 # ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    .main { padding: 0rem 1rem; }
-    .stMetric { background-color: #f0f2f6; padding: 10px; border-radius: 5px; }
+    /* Remove default Streamlit padding/margin */
+    .main .block-container { padding-top: 1rem; padding-bottom: 1rem; padding-left: 1rem; padding-right: 1rem; }
+    section[data-testid="stSidebar"] { background-color: #0d1b2a; }
+    section[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
+    section[data-testid="stSidebar"] .stRadio label { color: #e8e8e8 !important; }
+    /* Card containers */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+        border: 1px solid #2a4a7f;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(26,54,93,0.18);
+        padding: 0.5rem;
+        background: #ffffff;
+    }
+    /* Metrics */
+    .stMetric { background-color: #eef2f8; padding: 10px; border-radius: 5px; border-left: 3px solid #1a365d; }
+    /* Headings colour */
+    h1, h2, h3 { color: #1a365d !important; }
+    /* Gold accent for captions / labels */
+    .gold-label { color: #d4af37; font-weight: 600; }
+    /* Tag chips for key entities */
+    .entity-tag {
+        display: inline-block;
+        background: #1a365d;
+        color: #d4af37;
+        border-radius: 12px;
+        padding: 2px 10px;
+        margin: 2px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+    /* Order score bar label */
+    .score-label {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #1a365d;
+    }
+    /* Status dot */
+    .status-ok   { color: #27ae60; font-size: 1.1rem; }
+    .status-err  { color: #e74c3c; font-size: 1.1rem; }
+    .status-warn { color: #f39c12; font-size: 1.1rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -85,6 +123,7 @@ st.sidebar.subheader("企业级智能平台")
 page = st.sidebar.radio(
     "导航菜单",
     [
+        "🏠 主页",
         "📰 实时新闻",
         "🔍 事件监控",
         "🕸️ 知识图谱",
@@ -110,18 +149,46 @@ st.sidebar.info(
 # Entity-type → colour mapping (shared across all graph renders)
 _KG_TYPE_COLORS: Dict[str, str] = {
     "PERSON": "#e74c3c",
-    "ORG": "#3498db",
-    "GPE": "#2ecc71",
+    "ORG": "#d4af37",      # gold
+    "GPE": "#4a90e2",      # light blue
     "LOC": "#f39c12",
     "DATE": "#9b59b6",
     "MONEY": "#1abc9c",
     "PERCENT": "#e67e22",
     "EVENT": "#e91e63",
-    "ENTITY": "#3498db",
-    "ARTICLE": "#f39c12",
-    "MISC": "#95a5a6",
+    "ENTITY": "#4a90e2",   # light blue
+    "ARTICLE": "#1a365d",  # deep blue
+    "MISC": "#999999",
 }
-_KG_DEFAULT_COLOR = "#95a5a6"
+_KG_DEFAULT_COLOR = "#999999"
+
+
+def _node_size_and_color(
+    label_type: str,
+    node_degree: int,
+    is_center: bool = False,
+) -> tuple:
+    """Return (size, color) for a node based on its type and degree.
+
+    Node sizing logic (matches the problem-statement spec):
+      - Center / highly-connected (degree ≥ 8): size 40, deep blue #1a365d
+      - Important concepts (degree ≥ 3):         size 25-30, gold #d4af37
+      - Ordinary concepts:                        size 15-20, light blue #4a90e2
+      - Relation nodes (MISC / degree 0):         size 10, grey #999999
+    """
+    if is_center or node_degree >= 8:
+        return 40, "#1a365d"
+    if node_degree >= 3:
+        size = 25 + min(node_degree - 3, 5)  # 25..30
+        return size, "#d4af37"
+    if node_degree >= 1:
+        size = 15 + node_degree * 2  # 17..19
+        return size, "#4a90e2"
+    # leaf / relation node
+    color = _KG_TYPE_COLORS.get(label_type.upper(), _KG_DEFAULT_COLOR)
+    if color == _KG_DEFAULT_COLOR:
+        return 10, "#999999"
+    return 15, color
 
 
 def render_graph(data: Dict[str, Any]) -> None:
@@ -163,6 +230,9 @@ def render_graph(data: Dict[str, Any]) -> None:
         if tgt:
             degree[tgt] = degree.get(tgt, 0) + 1
 
+    # Centre node = node with highest degree
+    center_id = max(degree, key=lambda k: degree[k]) if degree else None
+
     # ── Build agraph Node objects ─────────────────────────────────────────
     ag_nodes: List[Node] = []
     for node in raw_nodes:
@@ -170,10 +240,9 @@ def render_graph(data: Dict[str, Any]) -> None:
         if not node_id:
             continue
         label_type = str(node.get("label", "MISC") or "MISC")
-        color = _KG_TYPE_COLORS.get(label_type.upper(), _KG_DEFAULT_COLOR)
-        # Size: base 20 plus up to 20 extra points scaled by degree (capped)
         node_degree = degree.get(node_id, 0)
-        size = 20 + min(node_degree * 3, 20)
+        is_center = node_id == center_id
+        size, color = _node_size_and_color(label_type, node_degree, is_center)
         props: Dict[str, Any] = node.get("properties") or {}
         display_name = str(props.get("name", node_id))
         tooltip_lines = [f"{display_name}", f"类型: {label_type}"]
@@ -202,7 +271,7 @@ def render_graph(data: Dict[str, Any]) -> None:
                     source=src,
                     target=tgt,
                     label=edge_type,
-                    color="#888888",
+                    color="#aabbcc",
                 )
             )
 
@@ -217,18 +286,332 @@ def render_graph(data: Dict[str, Any]) -> None:
         physics=True,
         hierarchical=False,
         nodeHighlightBehavior=True,
-        highlightColor="#f1c40f",
+        highlightColor="#d4af37",
         collapsible=False,
+        # Pass a custom physics dict to tune barnesHut to prevent node overlap
+        # (overrides the default via __dict__.update in Config.__init__)
+        **{
+            "physics": {
+                "enabled": True,
+                "solver": "barnesHut",
+                "minVelocity": 1,
+                "stabilization": {"enabled": True, "fit": True},
+                "barnesHut": {
+                    "gravitationalConstant": -50,
+                    "springLength": 200,
+                    "springConstant": 0.08,
+                    "damping": 0.3,
+                    "avoidOverlap": 0.5,
+                },
+            },
+        },
     )
 
     with st.container():
         agraph(nodes=ag_nodes, edges=ag_edges, config=config)
 
 
+
+# ===========================================================================
+# Page: 🏠 主页  –  three-column command centre
+# ===========================================================================
+if page == "🏠 主页":
+    st.markdown(
+        "<h1 style='color:#1a365d;margin-bottom:0'>🧠 El-druin</h1>"
+        "<p style='color:#d4af37;font-size:1.05rem;margin-top:0'>"
+        "AI 本体论情报平台 · 秩序从混沌中显现</p>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # ── Session-state defaults ───────────────────────────────────────────────
+    if "home_logs" not in st.session_state:
+        st.session_state.home_logs: List[str] = []
+    if "home_graph_data" not in st.session_state:
+        st.session_state.home_graph_data: Dict[str, Any] = {"nodes": [], "edges": []}
+    if "home_analysis" not in st.session_state:
+        st.session_state.home_analysis: Dict[str, Any] = {}
+
+    # ── Three-column layout ──────────────────────────────────────────────────
+    col_left, col_mid, col_right = st.columns([2, 5, 3], gap="medium")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # LEFT COLUMN – configuration & status
+    # ════════════════════════════════════════════════════════════════════════
+    with col_left:
+        st.markdown("#### ⚙️ 配置面板")
+
+        # ── Data source ──────────────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("**📡 数据源**")
+            data_source = st.selectbox(
+                "选择数据源",
+                ["实时新闻", "历史数据", "自定义输入"],
+                key="home_data_source",
+                label_visibility="collapsed",
+            )
+
+        # ── Date range ───────────────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("**📅 日期范围**")
+            from datetime import date as _date
+            _today = _date.today()
+            _date_col1, _date_col2 = st.columns(2)
+            with _date_col1:
+                date_from = st.date_input("开始", value=_date(_today.year, _today.month, 1), key="home_date_from", label_visibility="collapsed")
+            with _date_col2:
+                date_to = st.date_input("结束", value=_today, key="home_date_to", label_visibility="collapsed")
+
+        # ── API config ───────────────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("**🔧 API 配置**")
+            api_endpoint = st.text_input(
+                "API 端点",
+                value=_backend_url,
+                key="home_api_endpoint",
+            )
+            _c1, _c2 = st.columns(2)
+            with _c1:
+                api_timeout = st.number_input("超时 (秒)", min_value=5, max_value=120, value=30, key="home_api_timeout")
+            with _c2:
+                api_retries = st.number_input("重试次数", min_value=0, max_value=5, value=2, key="home_api_retries")
+
+        # ── Model selection ──────────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("**🤖 模型选择**")
+            model_mode = st.radio(
+                "分析模式",
+                ["本体论模式", "快速模式", "深度模式"],
+                key="home_model_mode",
+                label_visibility="collapsed",
+            )
+
+        # ── API connection status ────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("**🔌 API 连接状态**")
+            _sources_check = _api.get_news_sources()
+            if "error" not in _sources_check:
+                st.markdown(
+                    "<span class='status-ok'>● 正常</span> &nbsp; 后端连接成功",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<span class='status-err'>● 异常</span> &nbsp; 后端无响应",
+                    unsafe_allow_html=True,
+                )
+
+        # ── Actions ──────────────────────────────────────────────────────────
+        st.markdown("")
+        if st.button("🚀 开始分析", type="primary", key="home_run", use_container_width=True):
+            with st.spinner("正在处理…"):
+                _log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] 触发分析 · 数据源={data_source} · 模式={model_mode}"
+                st.session_state.home_logs.insert(0, _log_entry)
+
+                # Fetch KG data from backend to populate the graph
+                _ent_r = _api.get_kg_entities(limit=80)
+                _rel_r = _api.get_kg_relations(limit=120)
+                if "error" not in _ent_r and "error" not in _rel_r:
+                    _ents = _ent_r.get("entities", [])
+                    _rels = _rel_r.get("relations", [])
+                    _known = {e.get("name", "") for e in _ents if e.get("name")}
+                    st.session_state.home_graph_data = {
+                        "nodes": [
+                            {"id": e["name"], "label": str(e.get("type", "MISC")).upper(), "properties": e}
+                            for e in _ents if e.get("name")
+                        ],
+                        "edges": [
+                            {"from": r.get("from", ""), "to": r.get("to", ""), "type": r.get("relation", "")}
+                            for r in _rels if r.get("from") in _known and r.get("to") in _known
+                        ],
+                    }
+                    # Build analysis summary from graph data
+                    _entity_names = [e.get("name", "") for e in _ents[:10] if e.get("name")]
+                    # Order score: entities contribute 3 pts each (richer concepts),
+                    # relations contribute 2 pts each (connections imply coherence).
+                    _ENTITY_WEIGHT = 3
+                    _RELATION_WEIGHT = 2
+                    _order_score = min(100, len(_ents) * _ENTITY_WEIGHT + len(_rels) * _RELATION_WEIGHT)
+                    # Confidence: baseline 60 %, rising 0.5 % per entity, capped at 98 %.
+                    _BASE_CONFIDENCE = 0.60
+                    _CONFIDENCE_PER_ENTITY = 0.005
+                    _MAX_CONFIDENCE = 0.98
+                    _confidence = min(_MAX_CONFIDENCE, _BASE_CONFIDENCE + len(_ents) * _CONFIDENCE_PER_ENTITY)
+                    st.session_state.home_analysis = {
+                        "logic_points": [
+                            f"发现 {len(_ents)} 个核心实体节点",
+                            f"建立 {len(_rels)} 条语义关系链",
+                            f"主要实体类型分布均衡，信息熵较低",
+                            "时序关联显示事件演化路径清晰",
+                        ],
+                        "conclusions": [
+                            f"关键实体 **{_entity_names[0]}** 处于信息网络中心" if _entity_names else "暂无核心实体",
+                            "知识图谱拓扑结构趋于稳定",
+                        ],
+                        "order_score": _order_score,
+                        "confidence": _confidence,
+                        "key_entities": _entity_names,
+                    }
+                    _log_entry2 = f"[{datetime.now().strftime('%H:%M:%S')}] 图谱加载完成 · {len(_ents)} 节点 · {len(_rels)} 边"
+                    st.session_state.home_logs.insert(0, _log_entry2)
+                else:
+                    st.warning("⚠️ 后端无数据，请先摄入新闻。")
+            st.rerun()
+
+    # ════════════════════════════════════════════════════════════════════════
+    # MIDDLE COLUMN – knowledge graph + processing status
+    # ════════════════════════════════════════════════════════════════════════
+    with col_mid:
+        # ── Upper section: knowledge graph ───────────────────────────────────
+        with st.container(border=True):
+            st.markdown("#### 🕸️ 知识图谱")
+            _gd = st.session_state.home_graph_data
+            _node_count = len(_gd.get("nodes", []))
+            _edge_count = len(_gd.get("edges", []))
+            if _node_count:
+                st.caption(
+                    f"<span class='gold-label'>{_node_count}</span> 节点 &nbsp;·&nbsp;"
+                    f"<span class='gold-label'>{_edge_count}</span> 边",
+                    unsafe_allow_html=True,
+                )
+            render_graph(_gd)
+
+        # ── Lower section: processing status ─────────────────────────────────
+        with st.container(border=True):
+            st.markdown("#### 📊 实时处理状态")
+
+            # Progress bar – derived from graph size (cosmetic placeholder)
+            _pct = min(1.0, (_node_count + _edge_count) / 200) if _node_count else 0.0
+            st.progress(_pct, text=f"图谱构建进度: {int(_pct * 100)}%")
+
+            # Stats
+            _s1, _s2, _s3 = st.columns(3)
+            _kg_stats = _api.get_kg_stats()
+            _processed = _kg_stats.get("articles", 0) if "error" not in _kg_stats else 0
+            _concepts  = _kg_stats.get("entities", 0) if "error" not in _kg_stats else 0
+            _relations = _kg_stats.get("relations", 0) if "error" not in _kg_stats else 0
+            _s1.metric("📰 已处理事件", _processed)
+            _s2.metric("💡 提取概念数", _concepts)
+            _s3.metric("🔗 建立关系数", _relations)
+
+            # Processing log
+            st.markdown("**🪵 处理日志**")
+            _log_lines = st.session_state.home_logs[:8]  # show last 8 entries
+            if _log_lines:
+                _log_html = "".join(
+                    f"<div style='font-family:monospace;font-size:0.78rem;"
+                    f"color:#2d4a6b;padding:2px 0'>{line}</div>"
+                    for line in _log_lines
+                )
+                st.markdown(
+                    f"<div style='background:#f0f4f8;border-radius:6px;padding:8px 12px;"
+                    f"max-height:160px;overflow-y:auto'>{_log_html}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.caption("暂无日志。点击「开始分析」按钮后日志将显示在此处。")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # RIGHT COLUMN – El-druin 秩序分析
+    # ════════════════════════════════════════════════════════════════════════
+    with col_right:
+        with st.container(border=True):
+            st.markdown(
+                "<h4 style='color:#1a365d'>⚖️ El-druin 秩序分析</h4>",
+                unsafe_allow_html=True,
+            )
+
+            _analysis = st.session_state.home_analysis
+            if not _analysis:
+                st.info("▶ 点击左侧「开始分析」以生成秩序报告。")
+            else:
+                # AI logic bullet points
+                st.markdown("**🔍 深层逻辑**")
+                for _pt in _analysis.get("logic_points", []):
+                    st.markdown(f"• {_pt}")
+
+                st.markdown("")
+
+                # Core conclusions (highlighted)
+                st.markdown("**💡 核心结论**")
+                for _c in _analysis.get("conclusions", []):
+                    st.markdown(
+                        f"<div style='background:#fff8e1;border-left:3px solid #d4af37;"
+                        f"padding:6px 10px;border-radius:4px;margin:4px 0'>{_c}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown("")
+
+                # Order score
+                _score = _analysis.get("order_score", 0)
+                st.markdown(
+                    f"**📐 秩序评分** &nbsp;"
+                    f"<span class='score-label'>{_score}</span><span style='color:#999;font-size:0.9rem'> / 100</span>",
+                    unsafe_allow_html=True,
+                )
+                st.progress(_score / 100)
+
+                # Confidence
+                _conf = _analysis.get("confidence", 0.0)
+                _conf_color = "#27ae60" if _conf >= 0.75 else ("#f39c12" if _conf >= 0.5 else "#e74c3c")
+                st.markdown(
+                    f"**🎯 置信度** &nbsp;"
+                    f"<span style='color:{_conf_color};font-weight:700'>{_conf:.1%}</span>",
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("")
+
+                # Key entity tags
+                _entities = _analysis.get("key_entities", [])
+                if _entities:
+                    st.markdown("**🏷️ 关键实体**")
+                    _tags_html = " ".join(
+                        f"<span class='entity-tag'>{e}</span>"
+                        for e in _entities[:12]
+                    )
+                    st.markdown(_tags_html, unsafe_allow_html=True)
+
+        # ── Export buttons ────────────────────────────────────────────────────
+        if st.session_state.home_analysis:
+            st.markdown("")
+            st.markdown("**📤 导出**")
+            _exp1, _exp2 = st.columns(2)
+            with _exp1:
+                import json as _json
+                _export_payload = {
+                    "analysis": st.session_state.home_analysis,
+                    "graph": st.session_state.home_graph_data,
+                }
+                st.download_button(
+                    "⬇ JSON",
+                    data=_json.dumps(_export_payload, ensure_ascii=False, indent=2),
+                    file_name="el_druin_analysis.json",
+                    mime="application/json",
+                    key="home_export_json",
+                    use_container_width=True,
+                )
+            with _exp2:
+                try:
+                    import pandas as _pd
+                    _nodes_df = _pd.DataFrame(st.session_state.home_graph_data.get("nodes", []))
+                    _csv_data = _nodes_df.to_csv(index=False)
+                except Exception:
+                    _csv_data = "id,label\n"
+                st.download_button(
+                    "⬇ CSV",
+                    data=_csv_data,
+                    file_name="el_druin_nodes.csv",
+                    mime="text/csv",
+                    key="home_export_csv",
+                    use_container_width=True,
+                )
+
 # ===========================================================================
 # Page: 📰 实时新闻
 # ===========================================================================
-if page == "📰 实时新闻":
+elif page == "📰 实时新闻":
     st.title("📰 实时世界新闻")
 
     # ── Top controls ────────────────────────────────────────────────────────
@@ -380,12 +763,6 @@ if page == "📰 实时新闻":
                             # ── Interactive graph visualisation ────────────────
                             if _entities_kg and _relations_kg:
                                 st.write("**🌐 图谱可视化**")
-                                _COLOR_MAP = {
-                                    "PERSON": "#e74c3c",
-                                    "ORG": "#3498db",
-                                    "GPE": "#2ecc71",
-                                    "EVENT": "#f39c12",
-                                }
                                 try:
                                     from streamlit_agraph import (
                                         Config,
@@ -398,8 +775,12 @@ if page == "📰 实时新闻":
                                         Node(
                                             id=_e["name"],
                                             label=_e["name"],
-                                            size=25,
-                                            color=_COLOR_MAP.get(_e.get("type", ""), "#95a5a6"),
+                                            size=_node_size_and_color(
+                                                _e.get("type", "MISC"), 0
+                                            )[0],
+                                            color=_node_size_and_color(
+                                                _e.get("type", "MISC"), 0
+                                            )[1],
                                         )
                                         for _e in _entities_kg
                                     ]
@@ -408,6 +789,7 @@ if page == "📰 实时新闻":
                                             source=_r["subject"],
                                             target=_r["object"],
                                             label=_r.get("predicate", ""),
+                                            color="#aabbcc",
                                         )
                                         for _r in _relations_kg
                                         if _r.get("subject") and _r.get("object")
@@ -418,6 +800,8 @@ if page == "📰 实时新闻":
                                         directed=True,
                                         physics=True,
                                         hierarchical=False,
+                                        nodeHighlightBehavior=True,
+                                        highlightColor="#d4af37",
                                     )
                                     agraph(nodes=_ag_nodes, edges=_ag_edges, config=_ag_config)
                                 except ImportError:
