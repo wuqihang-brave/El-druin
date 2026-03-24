@@ -53,6 +53,8 @@ class _KuzuStore:
             "CREATE NODE TABLE IF NOT EXISTS Article(id STRING, title STRING, source STRING, published STRING, link STRING, category STRING, PRIMARY KEY(id))",
             "CREATE REL TABLE IF NOT EXISTS MENTIONED_IN(FROM Entity TO Article, confidence DOUBLE)",
             "CREATE REL TABLE IF NOT EXISTS RELATED_TO(FROM Entity TO Entity, relation_type STRING, weight DOUBLE)",
+            "CREATE REL TABLE IF NOT EXISTS CONTRADICTS(FROM Entity TO Entity,"
+            " reason STRING, confidence DOUBLE, source_reliability DOUBLE, timestamp TIMESTAMP)",
         ]
         for stmt in stmts:
             try:
@@ -197,6 +199,82 @@ class _KuzuStore:
             logger.warning("Cypher query failed: %s", exc)
             return [{"error": str(exc)}]
 
+    def add_contradicts(
+        self,
+        from_name: str,
+        to_name: str,
+        reason: str,
+        confidence: float = 0.8,
+        source_reliability: float = 0.7,
+    ) -> None:
+        """Create a CONTRADICTS edge between two Entity nodes.
+
+        Both entity nodes are created (if absent) before the edge is written.
+
+        Parameters
+        ----------
+        from_name:
+            Name of the first entity node.
+        to_name:
+            Name of the second entity node.
+        reason:
+            Human-readable explanation of the contradiction.
+        confidence:
+            Confidence that this is a genuine contradiction (0.0–1.0).
+        source_reliability:
+            Reliability of the source that reported the contradicting fact.
+        """
+        import datetime as _dt
+
+        self.add_entity(from_name, "MISC")
+        self.add_entity(to_name, "MISC")
+        ts = _dt.datetime.now(_dt.timezone.utc)
+        try:
+            self._conn.execute(
+                "MATCH (a:Entity {name:$fn}), (b:Entity {name:$tn})"
+                " CREATE (a)-[:CONTRADICTS"
+                "  {reason:$reason, confidence:$conf,"
+                "   source_reliability:$sr, timestamp:$ts}]->(b)",
+                {
+                    "fn": from_name,
+                    "tn": to_name,
+                    "reason": reason,
+                    "conf": confidence,
+                    "sr": source_reliability,
+                    "ts": ts,
+                },
+            )
+        except Exception as exc:
+            logger.debug("add_contradicts %s→%s: %s", from_name, to_name, exc)
+
+    def get_contradicts(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return all CONTRADICTS edges stored in the graph."""
+        try:
+            result = self._conn.execute(
+                "MATCH (a:Entity)-[r:CONTRADICTS]->(b:Entity)"
+                " RETURN a.name, b.name, r.reason, r.confidence,"
+                "        r.source_reliability, r.timestamp"
+                " LIMIT $lim",
+                {"lim": limit},
+            )
+            rows = []
+            while result.has_next():
+                r = result.get_next()
+                rows.append(
+                    {
+                        "from": r[0],
+                        "to": r[1],
+                        "reason": r[2],
+                        "confidence": r[3],
+                        "source_reliability": r[4],
+                        "timestamp": str(r[5]) if r[5] else None,
+                    }
+                )
+            return rows
+        except Exception as exc:
+            logger.debug("get_contradicts: %s", exc)
+            return []
+
     def stats(self) -> Dict[str, Any]:
         counts: Dict[str, Any] = {}
         for label, col in [("entities", "Entity"), ("articles", "Article")]:
@@ -208,7 +286,7 @@ class _KuzuStore:
                     counts[label] = 0
             except Exception:
                 counts[label] = 0
-        for label, rel in [("mentions", "MENTIONED_IN"), ("relations", "RELATED_TO")]:
+        for label, rel in [("mentions", "MENTIONED_IN"), ("relations", "RELATED_TO"), ("contradicts", "CONTRADICTS")]:
             try:
                 r = self._conn.execute(f"MATCH ()-[r:{rel}]->() RETURN count(r)")
                 if r.has_next():
@@ -259,6 +337,48 @@ class _NetworkXStore:
         self.add_entity(to_name, to_type)
         self._graph.add_edge(from_name, to_name, edge_type="RELATED_TO", relation_type=relation_type, weight=weight)
 
+    def add_contradicts(
+        self,
+        from_name: str,
+        to_name: str,
+        reason: str,
+        confidence: float = 0.8,
+        source_reliability: float = 0.7,
+    ) -> None:
+        """Create a CONTRADICTS edge in the in-memory graph."""
+        import datetime as _dt
+
+        self.add_entity(from_name, "MISC")
+        self.add_entity(to_name, "MISC")
+        self._graph.add_edge(
+            from_name,
+            to_name,
+            edge_type="CONTRADICTS",
+            reason=reason,
+            confidence=confidence,
+            source_reliability=source_reliability,
+            timestamp=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+        )
+
+    def get_contradicts(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return all CONTRADICTS edges from the in-memory graph."""
+        rows = []
+        for u, v, data in self._graph.edges(data=True):
+            if data.get("edge_type") == "CONTRADICTS":
+                rows.append(
+                    {
+                        "from": u,
+                        "to": v,
+                        "reason": data.get("reason", ""),
+                        "confidence": data.get("confidence", 0.8),
+                        "source_reliability": data.get("source_reliability", 0.7),
+                        "timestamp": data.get("timestamp"),
+                    }
+                )
+                if len(rows) >= limit:
+                    break
+        return rows
+
     def get_neighbours(self, entity_name: str, depth: int = 1) -> List[Dict[str, Any]]:
         rows = []
         for _, nbr, data in self._graph.out_edges(entity_name, data=True):
@@ -304,11 +424,13 @@ class _NetworkXStore:
         article_count = sum(1 for _, d in self._graph.nodes(data=True) if d.get("node_type") == "article")
         mention_count = sum(1 for _, _, d in self._graph.edges(data=True) if d.get("edge_type") == "MENTIONED_IN")
         relation_count = sum(1 for _, _, d in self._graph.edges(data=True) if d.get("edge_type") == "RELATED_TO")
+        contradicts_count = sum(1 for _, _, d in self._graph.edges(data=True) if d.get("edge_type") == "CONTRADICTS")
         return {
             "entities": entity_count,
             "articles": article_count,
             "mentions": mention_count,
             "relations": relation_count,
+            "contradicts": contradicts_count,
         }
 
 
@@ -358,6 +480,21 @@ class GraphStore:
 
     def add_relation(self, from_name: str, from_type: str, to_name: str, to_type: str, relation_type: str, weight: float = 0.5) -> None:
         self._impl.add_relation(from_name, from_type, to_name, to_type, relation_type, weight)
+
+    def add_contradicts(
+        self,
+        from_name: str,
+        to_name: str,
+        reason: str,
+        confidence: float = 0.8,
+        source_reliability: float = 0.7,
+    ) -> None:
+        """Create a CONTRADICTS edge between two entity nodes."""
+        self._impl.add_contradicts(from_name, to_name, reason, confidence, source_reliability)
+
+    def get_contradicts(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return all CONTRADICTS edges stored in the knowledge graph."""
+        return self._impl.get_contradicts(limit)
 
     def get_neighbours(self, entity_name: str, depth: int = 1) -> List[Dict[str, Any]]:
         return self._impl.get_neighbours(entity_name, depth)
