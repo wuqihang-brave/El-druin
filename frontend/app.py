@@ -1094,6 +1094,204 @@ elif page == "📰 实时新闻":
                 "点击上方「🎯 Analyze Order」按钮，从原始数据流中提取最具结构性价值的新闻。"
             )
 
+    # ── Human Feedback Loop (RLHF Foundation) ───────────────────────────────
+    st.divider()
+    st.subheader("🧠 Human Feedback Loop — RLHF 数据收集")
+    st.caption(
+        "输入新闻文本，系统自动提取实体与关系，并生成 El-druin 的哲学解读。"
+        " 对每条关系标记 ✅ Accept 或 👎 Reject，数据将保存用于未来的 RLHF 模型训练。"
+    )
+
+    # ── Input ────────────────────────────────────────────────────────────────
+    _hf_col1, _hf_col2 = st.columns([4, 1])
+    with _hf_col1:
+        _hf_query = st.text_input(
+            "📰 输入新闻文本或标题",
+            placeholder="粘贴新闻内容或关键词…",
+            key="hf_news_input",
+        )
+    with _hf_col2:
+        _hf_extract = st.button(
+            "🔍 提取 & 解读",
+            key="hf_extract_btn",
+            use_container_width=True,
+        )
+
+    # ── Session state ─────────────────────────────────────────────────────────
+    if "hf_extraction_result" not in st.session_state:
+        st.session_state.hf_extraction_result = None
+    if "hf_feedback_data" not in st.session_state:
+        st.session_state.hf_feedback_data = []
+
+    # ── Trigger extraction ────────────────────────────────────────────────────
+    if _hf_extract and _hf_query:
+        with st.spinner("🤖 提取实体与关系，生成哲学解读…"):
+            _hf_result = _api.extract_with_interpretation(
+                news_text=_hf_query,
+                news_title=_hf_query[:100],
+            )
+        if "error" in _hf_result:
+            st.error(f"❌ 提取失败：{_hf_result['error']}")
+        else:
+            st.session_state.hf_extraction_result = _hf_result
+            st.session_state.hf_feedback_data = []
+
+    # ── Display results ───────────────────────────────────────────────────────
+    if st.session_state.hf_extraction_result:
+        _hf_res = st.session_state.hf_extraction_result
+
+        # --- Philosophical interpretation ------------------------------------
+        st.markdown("#### 🧠 El-druin's Interpretation")
+        _interpretation = _hf_res.get("philosophical_interpretation", "")
+        st.text_area(
+            label="Philosophical Summary",
+            value=_interpretation,
+            height=100,
+            help="LLM 生成的哲学解读（可手动编辑）",
+            key="hf_interpretation_display",
+        )
+
+        st.divider()
+
+        # --- Extracted entities ---------------------------------------------
+        st.markdown("#### 🏷️ Extracted Entities")
+        _hf_entities: List[Dict[str, Any]] = _hf_res.get("entities", [])
+        if _hf_entities:
+            try:
+                import pandas as _pd_hf
+                _ent_hf_df = _pd_hf.DataFrame([
+                    {
+                        "Entity": e.get("name", ""),
+                        "Type": e.get("type", ""),
+                        "Confidence": (
+                            f"{float(e['confidence']):.0%}"
+                            if e.get("confidence") is not None
+                            else "N/A"
+                        ),
+                    }
+                    for e in _hf_entities
+                ])
+                st.dataframe(_ent_hf_df, use_container_width=True)
+            except Exception:
+                for _e in _hf_entities:
+                    st.write(f"- **{_e.get('name')}** ({_e.get('type', '?')})")
+        else:
+            st.info("未提取到实体。")
+
+        st.divider()
+
+        # --- Relations + feedback buttons ------------------------------------
+        st.markdown("#### 🔗 Extracted Relations with Feedback")
+        _hf_relations: List[Dict[str, Any]] = _hf_res.get("relations", [])
+
+        if _hf_relations:
+            # Header row
+            _hdr = st.columns([2, 2, 2, 1, 1, 1])
+            _hdr[0].write("**From**")
+            _hdr[1].write("**Relation**")
+            _hdr[2].write("**To**")
+            _hdr[3].write("**Conf.**")
+            _hdr[4].write("**✅**")
+            _hdr[5].write("**👎**")
+            st.divider()
+
+            # Per-relation rows
+            for _ri, _rel in enumerate(_hf_relations):
+                _rel_id = _rel.get("id", f"rel_{_ri}")
+                _from_e = _rel.get("from", _rel.get("subject", ""))
+                _rel_type = _rel.get("relation", _rel.get("predicate", ""))
+                _to_e = _rel.get("to", _rel.get("object", ""))
+                _conf = float(_rel.get("weight", _rel.get("confidence", 0.5)))
+
+                _rcols = st.columns([2, 2, 2, 1, 1, 1])
+                _rcols[0].write(_from_e)
+                _rcols[1].write(_rel_type)
+                _rcols[2].write(_to_e)
+                _rcols[3].write(f"{_conf:.0%}")
+
+                with _rcols[4]:
+                    if st.button("✅", key=f"hf_accept_{_ri}", help="Accept this relation"):
+                        # Avoid duplicate entries for the same relation
+                        _existing_ids = [f["relation_id"] for f in st.session_state.hf_feedback_data]
+                        if _rel_id not in _existing_ids:
+                            st.session_state.hf_feedback_data.append({
+                                "relation_id": _rel_id,
+                                "from_entity": _from_e,
+                                "to_entity": _to_e,
+                                "relation_type": _rel_type,
+                                "action": "accept",
+                                "confidence": _conf,
+                                "reason": None,
+                            })
+                        else:
+                            # Update existing entry
+                            for _fb in st.session_state.hf_feedback_data:
+                                if _fb["relation_id"] == _rel_id:
+                                    _fb["action"] = "accept"
+                                    _fb["reason"] = None
+                        st.rerun()
+
+                with _rcols[5]:
+                    if st.button("👎", key=f"hf_reject_{_ri}", help="Reject this relation"):
+                        _existing_ids = [f["relation_id"] for f in st.session_state.hf_feedback_data]
+                        if _rel_id not in _existing_ids:
+                            st.session_state.hf_feedback_data.append({
+                                "relation_id": _rel_id,
+                                "from_entity": _from_e,
+                                "to_entity": _to_e,
+                                "relation_type": _rel_type,
+                                "action": "reject",
+                                "confidence": _conf,
+                                "reason": None,
+                            })
+                        else:
+                            for _fb in st.session_state.hf_feedback_data:
+                                if _fb["relation_id"] == _rel_id:
+                                    _fb["action"] = "reject"
+                        st.rerun()
+        else:
+            st.info("未提取到关系。")
+
+        st.divider()
+
+        # --- Feedback summary + save/clear ----------------------------------
+        if st.session_state.hf_feedback_data:
+            st.markdown("#### 📊 Feedback Summary")
+            _hf_accepts = sum(1 for f in st.session_state.hf_feedback_data if f["action"] == "accept")
+            _hf_rejects = sum(1 for f in st.session_state.hf_feedback_data if f["action"] == "reject")
+            _fm1, _fm2 = st.columns(2)
+            _fm1.metric("✅ Accepted", _hf_accepts)
+            _fm2.metric("👎 Rejected", _hf_rejects)
+
+            # Show pending feedback items
+            for _fb in st.session_state.hf_feedback_data:
+                _icon = "✅" if _fb["action"] == "accept" else "👎"
+                st.caption(f"{_icon} {_fb['from_entity']} → {_fb['to_entity']} ({_fb['action']})")
+
+        _fsave_col, _fclear_col = st.columns(2)
+        with _fsave_col:
+            if st.button("💾 Save Feedback", key="hf_save_btn", use_container_width=True):
+                if st.session_state.hf_feedback_data:
+                    with st.spinner("保存反馈数据…"):
+                        _save_resp = _api.save_human_feedback(
+                            news_id=_hf_res.get("news_id", "unknown"),
+                            feedback_list=st.session_state.hf_feedback_data,
+                        )
+                    if _save_resp.get("status") == "success":
+                        st.success(
+                            f"✅ 已保存 {_save_resp.get('feedback_count', 0)} 条反馈！"
+                            f"（{_save_resp.get('saved_to', '')}）"
+                        )
+                        st.session_state.hf_feedback_data = []
+                    else:
+                        st.error(f"❌ 保存失败：{_save_resp.get('error', _save_resp.get('message', ''))}")
+                else:
+                    st.warning("⚠️ 暂无反馈数据。请先对关系进行 Accept / Reject 标记。")
+        with _fclear_col:
+            if st.button("🔄 Clear Feedback", key="hf_clear_btn", use_container_width=True):
+                st.session_state.hf_feedback_data = []
+                st.info("反馈数据已清空。")
+
 # ===========================================================================
 # Page: 🔍 事件监控
 # ===========================================================================
