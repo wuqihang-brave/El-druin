@@ -160,6 +160,27 @@ class KnowledgeGraph:
             weight=weight,
         )
 
+    def add_contradicts(
+        self,
+        from_name: str,
+        to_name: str,
+        reason: str,
+        confidence: float = 0.8,
+        source_reliability: float = 0.7,
+    ) -> None:
+        """Add a CONTRADICTS edge between two entity nodes."""
+        self._store.add_contradicts(
+            from_name=from_name,
+            to_name=to_name,
+            reason=reason,
+            confidence=confidence,
+            source_reliability=source_reliability,
+        )
+
+    def get_contradicts(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return all CONTRADICTS edges stored in the knowledge graph."""
+        return self._store.get_contradicts(limit=limit)
+
 
 @lru_cache(maxsize=1)
 def get_knowledge_graph() -> KnowledgeGraph:
