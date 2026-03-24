@@ -279,36 +279,38 @@ def render_graph(data: Dict[str, Any]) -> None:
         st.info("📭 节点数据为空，无法渲染图谱。")
         return
 
-    config = Config(
-        width="100%",
-        height=550,
-        directed=True,
-        physics=True,
-        hierarchical=False,
-        nodeHighlightBehavior=True,
-        highlightColor="#d4af37",
-        collapsible=False,
-        # Pass a custom physics dict to tune barnesHut to prevent node overlap
-        # (overrides the default via __dict__.update in Config.__init__)
-        **{
-            "physics": {
-                "enabled": True,
-                "solver": "barnesHut",
-                "minVelocity": 1,
-                "stabilization": {"enabled": True, "fit": True},
-                "barnesHut": {
-                    "gravitationalConstant": -50,
-                    "springLength": 200,
-                    "springConstant": 0.08,
-                    "damping": 0.3,
-                    "avoidOverlap": 0.5,
-                },
-            },
-        },
-    )
-
-    with st.container():
-        agraph(nodes=ag_nodes, edges=ag_edges, config=config)
+    try:
+        config = Config(
+            width="100%",
+            height=550,
+            directed=True,
+            physics=True,
+            hierarchical=False,
+            nodeHighlightBehavior=True,
+            highlightColor="#d4af37",
+            collapsible=False,
+            # Tune barnesHut physics via individual kwargs (Config.__init__ kwargs)
+            solver="barnesHut",
+            minVelocity=1,
+            stabilization=True,
+            fit=True,
+        )
+        # Apply barnesHut-specific tuning to prevent node overlap
+        config.physics["barnesHut"] = {
+            "gravitationalConstant": -50,
+            "springLength": 200,
+            "springConstant": 0.08,
+            "damping": 0.3,
+            "avoidOverlap": 0.5,
+        }
+        with st.container():
+            agraph(nodes=ag_nodes, edges=ag_edges, config=config)
+    except (TypeError, ValueError) as exc:
+        logger.error("render_graph Config error (%s): %s", type(exc).__name__, exc)
+        st.error(f"⚠️ 知识图谱渲染失败：{exc}")
+    except Exception as exc:
+        logger.error("render_graph unexpected error (%s): %s", type(exc).__name__, exc)
+        st.error(f"⚠️ 知识图谱渲染失败：{exc}")
 
 
 
