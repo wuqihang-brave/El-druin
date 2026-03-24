@@ -147,20 +147,151 @@ st.sidebar.info(
 # ===========================================================================
 
 # Entity-type → colour mapping (shared across all graph renders)
+# Soft, harmonious palette replacing harsh primary colours
 _KG_TYPE_COLORS: Dict[str, str] = {
-    "PERSON": "#e74c3c",
-    "ORG": "#d4af37",      # gold
-    "GPE": "#4a90e2",      # light blue
-    "LOC": "#f39c12",
-    "DATE": "#9b59b6",
-    "MONEY": "#1abc9c",
-    "PERCENT": "#e67e22",
-    "EVENT": "#e91e63",
-    "ENTITY": "#4a90e2",   # light blue
-    "ARTICLE": "#1a365d",  # deep blue
-    "MISC": "#999999",
+    "PERSON": "#E8AB5D",    # warm earth
+    "ORG": "#4A90E2",       # intellect blue
+    "GPE": "#7ED321",       # vitality green
+    "LOC": "#BD10E0",       # deep violet
+    "DATE": "#9B8EA8",      # muted purple
+    "MONEY": "#50C8A8",     # soft teal
+    "PERCENT": "#F5A623",   # soft amber
+    "EVENT": "#E8AB5D",     # warm earth
+    "ENTITY": "#4A90E2",    # intellect blue
+    "ARTICLE": "#5B7FA6",   # slate blue
+    "MISC": "#C8C8C8",      # neutral grey
 }
-_KG_DEFAULT_COLOR = "#999999"
+_KG_DEFAULT_COLOR = "#C8C8C8"
+
+# Graph rendering constants
+_KG_MAIN_HEIGHT = 800    # Main knowledge graph canvas height (px)
+_KG_MINI_HEIGHT = 600    # In-article mini-graph canvas height (px)
+_KG_EDGE_COLOR = "#D0D0D0"  # Soft grey edge colour for all graph renders
+
+# Category colour mapping for news cards
+_NEWS_CATEGORY_COLORS: Dict[str, str] = {
+    "technology": "#4A90E2",    # intellect blue
+    "geopolitics": "#E8AB5D",   # warm earth
+    "institution": "#7ED321",   # vitality green
+    "causality": "#BD10E0",     # deep violet
+    "unknown": "#C8C8C8",       # neutral grey
+}
+_NEWS_CATEGORY_DEFAULT_COLOR = "#C8C8C8"
+
+
+def _get_color_by_category(category: str) -> str:
+    """Return a soft-palette colour hex for a news category."""
+    return _NEWS_CATEGORY_COLORS.get(category.lower(), _NEWS_CATEGORY_DEFAULT_COLOR)
+
+
+def _score_article_locally(article: Dict[str, Any]) -> tuple:
+    """Compute a heuristic order score (0–100) and category for a news article.
+
+    Used when no backend scoring is available.  Weights:
+    - Keyword matching for high-value structural topics (technology, geopolitics …)
+    - Article length (longer descriptions → more context → slightly higher score)
+    - Presence of a URL (source credibility proxy)
+    """
+    _HIGH_VALUE: Dict[str, str] = {
+        "technology": ("tech", "ai", "artificial intelligence", "quantum", "innovation",
+                        "breakthrough", "科技", "人工智能", "量子", "技术突破"),
+        "geopolitics": ("war", "sanction", "treaty", "election", "invasion", "diplomacy",
+                         "geopolit", "战争", "制裁", "条约", "选举", "入侵", "外交"),
+        "institution": ("regulation", "legislation", "reform", "merger", "acquisition",
+                         "法规", "立法", "改革", "并购", "收购"),
+        "causality": ("crisis", "collapse", "revolution", "climate", "nuclear",
+                       "危机", "崩溃", "革命", "气候", "核"),
+    }
+    _LOW_VALUE_KW = ("celebrity", "gossip", "award", "concert", "selfie",
+                     "明星", "八卦", "颁奖", "演唱会")
+
+    combined = " ".join(filter(None, [
+        article.get("title", ""),
+        article.get("description", ""),
+        article.get("category", ""),
+    ])).lower()
+
+    # Disqualify entertainment fluff immediately
+    if any(kw in combined for kw in _LOW_VALUE_KW):
+        return 15.0, "unknown"
+
+    best_score = 40.0
+    best_category = "unknown"
+    for cat, keywords in _HIGH_VALUE.items():
+        hits = sum(1 for kw in keywords if kw in combined)
+        if hits:
+            score = min(40.0 + hits * 12.0, 95.0)
+            if score > best_score:
+                best_score = score
+                best_category = cat
+
+    # Slight bonus for longer descriptions (up to +5 pts)
+    desc_len = len(article.get("description") or "")
+    best_score = min(best_score + min(desc_len / 200, 5.0), 100.0)
+
+    return round(best_score, 1), best_category
+
+
+def render_news_card(article: Dict[str, Any], order_score: float, category: str) -> None:
+    """Render a single news article as a styled card.
+
+    Args:
+        article: News article dict with keys ``title``, ``description``,
+                 ``source``, ``published``, ``link``.
+        order_score: Structural importance score (0–100) computed by the
+                     order scoring heuristic.
+        category: Computed semantic category string (e.g. ``"technology"``),
+                  as returned by ``_score_article_locally()``.  This may
+                  differ from ``article.get("category")``.
+    """
+    color = _get_color_by_category(category)
+    score_int = int(round(order_score))
+    title = article.get("title") or "（无标题）"
+    summary = (article.get("description") or "（暂无摘要）")[:200]
+    if len(article.get("description") or "") > 200:
+        summary += "…"
+    source = article.get("source", "")
+    pub = str(article.get("published", ""))[:10]
+    url = article.get("link", "")
+    cat_label = category.capitalize()
+
+    st.markdown(
+        f"""
+        <div style="
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 14px 16px 14px 20px;
+            background-color: #f8f9fa;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-left: 5px solid {color};
+        ">
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <strong style="font-size:1.05rem; color:#1a365d;">{title}</strong>
+                <span style="
+                    background:{color};
+                    color:#fff;
+                    border-radius:12px;
+                    padding:2px 10px;
+                    font-size:0.78rem;
+                    font-weight:600;
+                    white-space:nowrap;
+                    margin-left:8px;
+                ">{cat_label}</span>
+            </div>
+            <p style="color:#555; font-size:0.88rem; margin:6px 0 4px 0;">{summary}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                <span style="font-size:0.8rem; color:#888;">
+                    {("📌 " + source) if source else ""}{"&nbsp;&nbsp;" if source and pub else ""}
+                    {("⏰ " + pub) if pub else ""}
+                </span>
+                {"<a href='" + url + "' target='_blank' style='font-size:0.85rem;'>View Full →</a>" if url else ""}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.progress(score_int / 100, text=f"Order Score: {score_int}/100")
 
 
 def _node_size_and_color(
@@ -170,24 +301,24 @@ def _node_size_and_color(
 ) -> tuple:
     """Return (size, color) for a node based on its type and degree.
 
-    Node sizing logic (matches the problem-statement spec):
-      - Center / highly-connected (degree ≥ 8): size 40, deep blue #1a365d
-      - Important concepts (degree ≥ 3):         size 25-30, gold #d4af37
-      - Ordinary concepts:                        size 15-20, light blue #4a90e2
-      - Relation nodes (MISC / degree 0):         size 10, grey #999999
+    Node sizing logic:
+      - Center / highly-connected (degree ≥ 8): size 40, slate blue #5B7FA6
+      - Important concepts (degree ≥ 3):         size 25-30, warm earth #E8AB5D
+      - Ordinary concepts:                        size 15-20, intellect blue #4A90E2
+      - Relation nodes (MISC / degree 0):         size 10, neutral grey #C8C8C8
     """
     if is_center or node_degree >= 8:
-        return 40, "#1a365d"
+        return 40, "#5B7FA6"
     if node_degree >= 3:
         size = 25 + min(node_degree - 3, 5)  # 25..30
-        return size, "#d4af37"
+        return size, "#E8AB5D"
     if node_degree >= 1:
         size = 15 + node_degree * 2  # 17..19
-        return size, "#4a90e2"
+        return size, "#4A90E2"
     # leaf / relation node
     color = _KG_TYPE_COLORS.get(label_type.upper(), _KG_DEFAULT_COLOR)
     if color == _KG_DEFAULT_COLOR:
-        return 10, "#999999"
+        return 10, "#C8C8C8"
     return 15, color
 
 
@@ -271,7 +402,7 @@ def render_graph(data: Dict[str, Any]) -> None:
                     source=src,
                     target=tgt,
                     label=edge_type,
-                    color="#aabbcc",
+                    color=_KG_EDGE_COLOR,
                 )
             )
 
@@ -282,12 +413,12 @@ def render_graph(data: Dict[str, Any]) -> None:
     try:
         config = Config(
             width="100%",
-            height=550,
+            height=_KG_MAIN_HEIGHT,
             directed=True,
             physics=True,
             hierarchical=False,
             nodeHighlightBehavior=True,
-            highlightColor="#d4af37",
+            highlightColor="#E8AB5D",
             collapsible=False,
             # Tune barnesHut physics via individual kwargs (Config.__init__ kwargs)
             solver="barnesHut",
@@ -666,206 +797,247 @@ elif page == "📰 实时新闻":
 
         st.divider()
 
+        # ── Raw News Stream (folded by default) ──────────────────────────────
+        import hashlib as _hashlib  # stable across process restarts (unlike built-in hash())
+
         # Session-state cache: {article_cache_key -> kg extraction result}
         if "kg_cache" not in st.session_state:
             st.session_state.kg_cache = {}
 
-        import hashlib as _hashlib  # stable across process restarts (unlike built-in hash())
+        # Session state for order analysis result
+        if "news_order_analysis" not in st.session_state:
+            st.session_state.news_order_analysis = None
 
-        if articles:
-            for i, article in enumerate(articles, 1):
-                title_preview = (article.get("title") or "（无标题）")[:80]
-                # Stable cache key: hashlib md5 of article URL or title (not process-bound)
-                _key_src = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
-                _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
+        with st.expander("🌊 Raw News Stream (Entropic Data) — 原始数据流", expanded=False):
+            st.caption(
+                "⚠️ 以下为未经秩序过滤的原始数据流。信息密度高，认知负担大。"
+                " 点击下方「🎯 Analyze Order」提取结构性重要信息。"
+            )
+            if articles:
+                for i, article in enumerate(articles, 1):
+                    title_preview = (article.get("title") or "（无标题）")[:80]
+                    _key_src = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
+                    _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
 
-                with st.expander(f"🔹 [{i}] {title_preview}…", expanded=False):
-                    c1, c2, c3 = st.columns(3)
-                    c1.caption(f"📌 来源：{article.get('source', 'N/A')}")
-                    c2.caption(f"📍 分类：{article.get('category', 'N/A')}")
-                    c3.caption(f"⏰ 时间：{str(article.get('published', 'N/A'))[:10]}")
-                    st.write(article.get("description") or "（暂无摘要）")
-                    if article.get("link"):
-                        st.markdown(f"[📖 阅读原文]({article['link']})")
+                    with st.expander(f"🔹 [{i}] {title_preview}…", expanded=False):
+                        c1, c2, c3 = st.columns(3)
+                        c1.caption(f"📌 来源：{article.get('source', 'N/A')}")
+                        c2.caption(f"📍 分类：{article.get('category', 'N/A')}")
+                        c3.caption(f"⏰ 时间：{str(article.get('published', 'N/A'))[:10]}")
+                        st.write(article.get("description") or "（暂无摘要）")
+                        if article.get("link"):
+                            st.markdown(f"[📖 阅读原文]({article['link']})")
 
-                    # ── Knowledge Graph extraction ────────────────────────────
-                    already_extracted = _cache_key in st.session_state.kg_cache
-                    btn_label = "✅ 已提取知识图" if already_extracted else "🧠 提取知识图"
-                    if st.button(btn_label, key=f"kg_btn_{i}"):
-                        _text = " ".join(
-                            filter(None, [
-                                article.get("title", ""),
-                                article.get("description", ""),
-                            ])
-                        ).strip()
-                        if _text:
-                            with st.spinner("提取中..."):
-                                _kg_resp = _api.extract_knowledge(_text)
-                            if _kg_resp.get("status") == "error" or (
-                                "error" in _kg_resp and "entities" not in _kg_resp
+                        # ── Knowledge Graph extraction ────────────────────────
+                        already_extracted = _cache_key in st.session_state.kg_cache
+                        btn_label = "✅ 已提取知识图" if already_extracted else "🧠 提取知识图"
+                        if st.button(btn_label, key=f"kg_btn_{i}"):
+                            _text = " ".join(
+                                filter(None, [
+                                    article.get("title", ""),
+                                    article.get("description", ""),
+                                ])
+                            ).strip()
+                            if _text:
+                                with st.spinner("提取中..."):
+                                    _kg_resp = _api.extract_knowledge(_text)
+                                if _kg_resp.get("status") == "error" or (
+                                    "error" in _kg_resp and "entities" not in _kg_resp
+                                ):
+                                    st.error(f"❌ 知识图提取失败：{_kg_resp['error']}")
+                                else:
+                                    st.session_state.kg_cache[_cache_key] = _kg_resp
+                                    st.rerun()
+                            else:
+                                st.warning("⚠️ 该文章暂无文本内容可供提取。")
+
+                        # ── Display cached KG results ─────────────────────────
+                        if _cache_key in st.session_state.kg_cache:
+                            _kg_data = st.session_state.kg_cache[_cache_key]
+                            _entities_kg: List[Dict[str, Any]] = _kg_data.get("entities", [])
+                            _relations_kg: List[Dict[str, Any]] = _kg_data.get("relations", [])
+
+                            with st.expander(
+                                f"🕸️ 知识图谱结果（实体: {len(_entities_kg)}, 关系: {len(_relations_kg)}）",
+                                expanded=True,
                             ):
-                                st.error(f"❌ 知识图提取失败：{_kg_resp['error']}")
-                            else:
-                                st.session_state.kg_cache[_cache_key] = _kg_resp
-                                st.rerun()
-                        else:
-                            st.warning("⚠️ 该文章暂无文本内容可供提取。")
-
-                    # ── Display cached KG results ─────────────────────────────
-                    if _cache_key in st.session_state.kg_cache:
-                        _kg_data = st.session_state.kg_cache[_cache_key]
-                        _entities_kg: List[Dict[str, Any]] = _kg_data.get("entities", [])
-                        _relations_kg: List[Dict[str, Any]] = _kg_data.get("relations", [])
-
-                        with st.expander(
-                            f"🕸️ 知识图谱结果（实体: {len(_entities_kg)}, 关系: {len(_relations_kg)}）",
-                            expanded=True,
-                        ):
-                            if _entities_kg:
-                                st.write("**📋 实体**")
-                                try:
-                                    import pandas as pd
-                                    _ent_df = pd.DataFrame([
-                                        {
-                                            "name": e.get("name", ""),
-                                            "type": e.get("type", ""),
-                                            "description": e.get("description", ""),
-                                            "confidence": e.get("confidence", ""),
-                                        }
-                                        for e in _entities_kg
-                                    ])
-                                    st.dataframe(_ent_df, use_container_width=True)
-                                except ImportError:
-                                    for _e in _entities_kg:
-                                        st.write(f"- **{_e.get('name')}** ({_e.get('type', '?')})")
-                            else:
-                                st.info("未提取到实体。")
-
-                            if _relations_kg:
-                                st.write("**🔗 关系**")
-                                try:
-                                    import pandas as pd
-                                    _rel_df = pd.DataFrame([
-                                        {
-                                            "subject": r.get("subject", ""),
-                                            "predicate": r.get("predicate", ""),
-                                            "object": r.get("object", ""),
-                                        }
-                                        for r in _relations_kg
-                                    ])
-                                    st.dataframe(_rel_df, use_container_width=True)
-                                except ImportError:
-                                    for _r in _relations_kg:
-                                        st.write(
-                                            f"- {_r.get('subject')} "
-                                            f"–[{_r.get('predicate')}]→ "
-                                            f"{_r.get('object')}"
-                                        )
-
-                            # ── Interactive graph visualisation ────────────────
-                            if _entities_kg and _relations_kg:
-                                st.write("**🌐 图谱可视化**")
-                                try:
-                                    from streamlit_agraph import (
-                                        Config,
-                                        Edge,
-                                        Node,
-                                        agraph,
-                                    )
-
-                                    _ag_nodes = [
-                                        Node(
-                                            id=_e["name"],
-                                            label=_e["name"],
-                                            size=_node_size_and_color(
-                                                _e.get("type", "MISC"), 0
-                                            )[0],
-                                            color=_node_size_and_color(
-                                                _e.get("type", "MISC"), 0
-                                            )[1],
-                                        )
-                                        for _e in _entities_kg
-                                    ]
-                                    _ag_edges = [
-                                        Edge(
-                                            source=_r["subject"],
-                                            target=_r["object"],
-                                            label=_r.get("predicate", ""),
-                                            color="#aabbcc",
-                                        )
-                                        for _r in _relations_kg
-                                        if _r.get("subject") and _r.get("object")
-                                    ]
-                                    _ag_config = Config(
-                                        width=700,
-                                        height=400,
-                                        directed=True,
-                                        physics=True,
-                                        hierarchical=False,
-                                        nodeHighlightBehavior=True,
-                                        highlightColor="#d4af37",
-                                    )
-                                    agraph(nodes=_ag_nodes, edges=_ag_edges, config=_ag_config)
-                                except ImportError:
-                                    # Fallback: plotly + networkx (already in requirements)
+                                if _entities_kg:
+                                    st.write("**📋 实体**")
                                     try:
-                                        import networkx as nx
-                                        import plotly.graph_objects as go
-
-                                        _G = nx.DiGraph()
-                                        for _r in _relations_kg:
-                                            if _r.get("subject") and _r.get("object"):
-                                                _G.add_edge(
-                                                    _r["subject"],
-                                                    _r["object"],
-                                                    label=_r.get("predicate", ""),
-                                                )
-                                        if _G.nodes():
-                                            _pos = nx.spring_layout(_G, seed=42)
-                                            _ex, _ey = [], []
-                                            for _u, _v in _G.edges():
-                                                _x0, _y0 = _pos[_u]
-                                                _x1, _y1 = _pos[_v]
-                                                _ex += [_x0, _x1, None]
-                                                _ey += [_y0, _y1, None]
-                                            _fig_kg = go.Figure(
-                                                data=[
-                                                    go.Scatter(
-                                                        x=_ex, y=_ey, mode="lines",
-                                                        line={"width": 1, "color": "#888"},
-                                                        hoverinfo="none",
-                                                    ),
-                                                    go.Scatter(
-                                                        x=[_pos[n][0] for n in _G.nodes()],
-                                                        y=[_pos[n][1] for n in _G.nodes()],
-                                                        mode="markers+text",
-                                                        text=list(_G.nodes()),
-                                                        textposition="top center",
-                                                        marker={"size": 12, "color": "#3498db"},
-                                                        hoverinfo="text",
-                                                    ),
-                                                ],
-                                                layout=go.Layout(
-                                                    showlegend=False,
-                                                    hovermode="closest",
-                                                    height=400,
-                                                    xaxis={
-                                                        "showgrid": False,
-                                                        "zeroline": False,
-                                                        "showticklabels": False,
-                                                    },
-                                                    yaxis={
-                                                        "showgrid": False,
-                                                        "zeroline": False,
-                                                        "showticklabels": False,
-                                                    },
-                                                ),
-                                            )
-                                            st.plotly_chart(_fig_kg, use_container_width=True)
+                                        import pandas as pd
+                                        _ent_df = pd.DataFrame([
+                                            {
+                                                "name": e.get("name", ""),
+                                                "type": e.get("type", ""),
+                                                "description": e.get("description", ""),
+                                                "confidence": e.get("confidence", ""),
+                                            }
+                                            for e in _entities_kg
+                                        ])
+                                        st.dataframe(_ent_df, use_container_width=True)
                                     except ImportError:
-                                        pass
+                                        for _e in _entities_kg:
+                                            st.write(f"- **{_e.get('name')}** ({_e.get('type', '?')})")
+                                else:
+                                    st.info("未提取到实体。")
+
+                                if _relations_kg:
+                                    st.write("**🔗 关系**")
+                                    try:
+                                        import pandas as pd
+                                        _rel_df = pd.DataFrame([
+                                            {
+                                                "subject": r.get("subject", ""),
+                                                "predicate": r.get("predicate", ""),
+                                                "object": r.get("object", ""),
+                                            }
+                                            for r in _relations_kg
+                                        ])
+                                        st.dataframe(_rel_df, use_container_width=True)
+                                    except ImportError:
+                                        for _r in _relations_kg:
+                                            st.write(
+                                                f"- {_r.get('subject')} "
+                                                f"–[{_r.get('predicate')}]→ "
+                                                f"{_r.get('object')}"
+                                            )
+
+                                # ── Interactive graph visualisation ────────────
+                                if _entities_kg and _relations_kg:
+                                    st.write("**🌐 图谱可视化**")
+                                    try:
+                                        from streamlit_agraph import (
+                                            Config,
+                                            Edge,
+                                            Node,
+                                            agraph,
+                                        )
+
+                                        _ag_nodes = [
+                                            Node(
+                                                id=_e["name"],
+                                                label=_e["name"],
+                                                size=_node_size_and_color(
+                                                    _e.get("type", "MISC"), 0
+                                                )[0],
+                                                color=_node_size_and_color(
+                                                    _e.get("type", "MISC"), 0
+                                                )[1],
+                                            )
+                                            for _e in _entities_kg
+                                        ]
+                                        _ag_edges = [
+                                            Edge(
+                                                source=_r["subject"],
+                                                target=_r["object"],
+                                                label=_r.get("predicate", ""),
+                                                color=_KG_EDGE_COLOR,
+                                            )
+                                            for _r in _relations_kg
+                                            if _r.get("subject") and _r.get("object")
+                                        ]
+                                        _ag_config = Config(
+                                            width=700,
+                                            height=_KG_MINI_HEIGHT,
+                                            directed=True,
+                                            physics=True,
+                                            hierarchical=False,
+                                            nodeHighlightBehavior=True,
+                                            highlightColor="#E8AB5D",
+                                        )
+                                        agraph(nodes=_ag_nodes, edges=_ag_edges, config=_ag_config)
+                                    except ImportError:
+                                        # Fallback: plotly + networkx (already in requirements)
+                                        try:
+                                            import networkx as nx
+                                            import plotly.graph_objects as go
+
+                                            _G = nx.DiGraph()
+                                            for _r in _relations_kg:
+                                                if _r.get("subject") and _r.get("object"):
+                                                    _G.add_edge(
+                                                        _r["subject"],
+                                                        _r["object"],
+                                                        label=_r.get("predicate", ""),
+                                                    )
+                                            if _G.nodes():
+                                                _pos = nx.spring_layout(_G, seed=42)
+                                                _ex, _ey = [], []
+                                                for _u, _v in _G.edges():
+                                                    _x0, _y0 = _pos[_u]
+                                                    _x1, _y1 = _pos[_v]
+                                                    _ex += [_x0, _x1, None]
+                                                    _ey += [_y0, _y1, None]
+                                                _fig_kg = go.Figure(
+                                                    data=[
+                                                        go.Scatter(
+                                                            x=_ex, y=_ey, mode="lines",
+                                                            line={"width": 1, "color": _KG_EDGE_COLOR},
+                                                            hoverinfo="none",
+                                                        ),
+                                                        go.Scatter(
+                                                            x=[_pos[n][0] for n in _G.nodes()],
+                                                            y=[_pos[n][1] for n in _G.nodes()],
+                                                            mode="markers+text",
+                                                            text=list(_G.nodes()),
+                                                            textposition="top center",
+                                                            marker={"size": 12, "color": "#4A90E2"},
+                                                            hoverinfo="text",
+                                                        ),
+                                                    ],
+                                                    layout=go.Layout(
+                                                        showlegend=False,
+                                                        hovermode="closest",
+                                                        height=_KG_MINI_HEIGHT,
+                                                        xaxis={
+                                                            "showgrid": False,
+                                                            "zeroline": False,
+                                                            "showticklabels": False,
+                                                        },
+                                                        yaxis={
+                                                            "showgrid": False,
+                                                            "zeroline": False,
+                                                            "showticklabels": False,
+                                                        },
+                                                    ),
+                                                )
+                                                st.plotly_chart(_fig_kg, use_container_width=True)
+                                        except ImportError:
+                                            pass
+            else:
+                st.warning("⚠️ 暂无文章，请先点击「立即刷新」聚合新闻。")
+
+        # ── Analyze Order button ─────────────────────────────────────────────
+        st.markdown("---")
+        _analyze_col, _ = st.columns([1, 2])
+        with _analyze_col:
+            if st.button(
+                "🎯 Analyze Order — 提取秩序",
+                type="primary",
+                use_container_width=True,
+                key="analyze_order_btn",
+            ):
+                if articles:
+                    with st.spinner("🔍 正在评估新闻的结构性重要度…"):
+                        _scored = [
+                            (article, *_score_article_locally(article))
+                            for article in articles
+                        ]
+                        _scored.sort(key=lambda x: x[1], reverse=True)
+                        st.session_state.news_order_analysis = _scored[:5]
+                else:
+                    st.warning("⚠️ 暂无文章可供分析，请先点击「立即刷新」。")
+
+        # ── Top 5 Structurally Important News Cards ──────────────────────────
+        if st.session_state.news_order_analysis:
+            st.subheader("🏆 Top 5 结构性重要新闻")
+            st.caption("经过秩序评分筛选，以下新闻具有最高的结构性信息价值。")
+            for _art, _score, _cat in st.session_state.news_order_analysis:
+                render_news_card(_art, _score, _cat)
         else:
-            st.warning("⚠️ 暂无文章，请先点击「立即刷新」聚合新闻。")
+            st.info(
+                "点击上方「🎯 Analyze Order」按钮，从原始数据流中提取最具结构性价值的新闻。"
+            )
 
 # ===========================================================================
 # Page: 🔍 事件监控
