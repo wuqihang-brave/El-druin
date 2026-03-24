@@ -120,10 +120,11 @@ def process_report_with_audit(request: ReportWithAuditRequest) -> Dict[str, Any]
         source_reliability=request.source_reliability,
     )
 
-    # 2. Build probability tree
+    # 2. Build probability tree (use path_id as report_id for unified lookup)
     tree = builder.build_tree(
         text=request.text,
         source_reliability=request.source_reliability,
+        report_id=path_id,
     )
 
     # 3. Select best branch
@@ -159,7 +160,7 @@ def process_report_with_audit(request: ReportWithAuditRequest) -> Dict[str, Any]
 
     # 6. Record graph change based on selected branch
     extracted_facts = best_branch.get("extracted_facts", [])
-    graph_changes: list[Dict[str, Any]] = []
+    graph_changes: List[Dict[str, Any]] = []
 
     if extracted_facts:
         fact = extracted_facts[0]

@@ -115,14 +115,14 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
     source = path.get("source", {})
     col1, col2 = ctx.columns(2)
     with col1:
-        ctx.markdown(
+        st.markdown(
             f"<span style='color:#A8A8A8;font-size:0.75rem'>Source type</span><br>"
             f"<span style='color:#F0F0F0;font-size:0.82rem'>{source.get('type','—')}</span>",
             unsafe_allow_html=True,
         )
     with col2:
         status = path.get("audit_status", "pending_review")
-        ctx.markdown(
+        st.markdown(
             "<span style='color:#A8A8A8;font-size:0.75rem'>Status</span><br>",
             unsafe_allow_html=True,
         )
