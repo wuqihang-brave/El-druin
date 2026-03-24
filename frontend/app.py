@@ -32,6 +32,7 @@ if _FRONTEND_DIR not in sys.path:
 
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
 from components.order_critique import display_order_critique  # noqa: E402
+from components.sidebar import render_sidebar_navigation  # noqa: E402
 from utils.deep_extraction import extract_causal_chains, visualize_confidence  # noqa: E402
 
 # streamlit-agraph (optional – graceful degradation when absent)
@@ -130,31 +131,7 @@ _api = APIClient(base_url=_backend_url)
 # ---------------------------------------------------------------------------
 # Sidebar – navigation
 # ---------------------------------------------------------------------------
-st.sidebar.title("🧠 EL'druin")
-st.sidebar.markdown("---")
-st.sidebar.subheader("企业级智能平台")
-
-page = st.sidebar.radio(
-    "导航菜单",
-    [
-        "🏠 主页",
-        "📰 实时新闻",
-        "🔍 事件监控",
-        "🕸️ 知识图谱",
-        "📊 仪表板",
-        "⚙️ 系统状态",
-    ],
-    label_visibility="collapsed",
-)
-
-st.sidebar.markdown("---")
-st.sidebar.info(
-    "**EL'druin Intelligence Platform**\n\n"
-    "- 实时新闻聚合\n"
-    "- 自动事件提取\n"
-    "- 知识图谱分析\n"
-    "- 预测和预警"
-)
+page = render_sidebar_navigation()
 
 # ===========================================================================
 # Knowledge graph helpers
