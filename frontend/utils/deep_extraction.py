@@ -5,6 +5,11 @@
   - extract_causal_chains(): 通过后端 API 提取因果链
   - calculate_order_score(): 本地计算秩序评分
   - visualize_confidence():  Streamlit 置信度可视化
+  - calculate_systemic_order_score(): 系统秩序评分（仪表板核心指标）
+  - get_order_status():               根据评分返回状态描述
+  - calculate_signal_noise_ratio():   信号/噪音比例
+  - get_entity_order_importance():    实体秩序重要性
+  - categorize_entities_by_order():   按重要性对实体分组
 
 Usage::
 
@@ -15,7 +20,8 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List
+import math
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 if TYPE_CHECKING:
     from utils.api_client import APIClient
@@ -167,3 +173,142 @@ def visualize_confidence(causal_chains: List[Dict[str, Any]]) -> None:
         st.metric("Structural Chains", long_term_count)
     with col3:
         st.metric("Global Impact", global_scope)
+
+
+# ---------------------------------------------------------------------------
+# Systemic Order Metrics  (used by the 📊 仪表板 dashboard page)
+# ---------------------------------------------------------------------------
+
+def calculate_systemic_order_score(
+    relations_count: int,
+    entities_count: int,
+    news_count: int,
+) -> float:
+    """计算系统秩序评分（Systemic Order Score）。
+
+    公式::
+
+        Order Score = (Relations / Entities) × log(Total News) × 10
+
+    范围：0-100
+      - 0-30：混沌状态
+      - 30-60：过渡状态
+      - 60-100：秩序状态
+
+    Args:
+        relations_count: 知识图谱中的关系总数
+        entities_count:  知识图谱中的实体总数
+        news_count:      摄入的新闻总数
+
+    Returns:
+        0-100 的浮点秩序评分
+    """
+    if entities_count == 0:
+        return 0.0
+    relation_density = relations_count / entities_count
+    news_factor = math.log(max(news_count, 1))
+    # × 10 (not × 100) so that typical values land in the 0-100 range.
+    # The problem statement example confirms: (119/78) × ln(71) × 10 ≈ 65.0
+    score = relation_density * news_factor * 10.0
+    return min(100.0, max(0.0, score))
+
+
+def get_order_status(score: float) -> str:
+    """根据秩序评分返回状态描述。
+
+    Args:
+        score: 0-100 的秩序评分
+
+    Returns:
+        带图标的中文状态描述
+    """
+    if score < 30:
+        return "🔴 混沌状态"
+    elif score < 60:
+        return "🟡 过渡状态"
+    else:
+        return "🟢 可控秩序"
+
+
+def calculate_signal_noise_ratio(
+    articles_with_entities: int,
+    total_articles: int,
+) -> Tuple[float, float]:
+    """计算信号/噪音比例。
+
+    Signal: 已提取实体的新闻（有知识图谱条目）
+    Noise:  尚未处理的原始新闻
+
+    Args:
+        articles_with_entities: 已提取到知识图谱的文章数
+        total_articles:         摄入的新闻总数
+
+    Returns:
+        ``(signal_ratio, noise_ratio)`` 均为 0-1 之间的浮点数
+    """
+    if total_articles == 0:
+        return 0.0, 1.0
+    signal_ratio = articles_with_entities / total_articles
+    noise_ratio = 1.0 - signal_ratio
+    return signal_ratio, noise_ratio
+
+
+def get_entity_order_importance(entity_degree: int, max_degree: int) -> float:
+    """计算实体的秩序重要性（0-100）。
+
+    基于该实体在知识图中的连接度数（degree）。
+
+    Args:
+        entity_degree: 该实体的度数（连接边数）
+        max_degree:    全图最高度数
+
+    Returns:
+        0-100 的浮点重要性分
+    """
+    if max_degree == 0:
+        return 0.0
+    return min(100.0, max(0.0, (entity_degree / max_degree) * 100.0))
+
+
+def categorize_entities_by_order(
+    entities: List[Dict[str, Any]],
+    degrees: Dict[str, int],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """按秩序重要性对实体进行分组。
+
+    分组层级：
+      - 🌟 Critical Hubs (90-100)
+      - ⭐ Important Nodes (70-90)
+      - ✦ Bridge Nodes (50-70)
+      - · Leaf Nodes (0-50)
+
+    Args:
+        entities: 实体列表（每个实体含 ``name`` 键）
+        degrees:  实体名称 → 度数的映射字典
+
+    Returns:
+        按分组名称分组的实体字典
+    """
+    max_degree = max(degrees.values()) if degrees else 1
+    categories: Dict[str, List[Dict[str, Any]]] = {
+        "🌟 Critical Hubs (90-100)": [],
+        "⭐ Important Nodes (70-90)": [],
+        "✦ Bridge Nodes (50-70)": [],
+        "· Leaf Nodes (0-50)": [],
+    }
+
+    for entity in entities:
+        entity_name = entity.get("name", "")
+        degree = degrees.get(entity_name, 0)
+        importance = get_entity_order_importance(degree, max_degree)
+
+        if importance >= 90:
+            categories["🌟 Critical Hubs (90-100)"].append(entity)
+        elif importance >= 70:
+            categories["⭐ Important Nodes (70-90)"].append(entity)
+        elif importance >= 50:
+            categories["✦ Bridge Nodes (50-70)"].append(entity)
+        else:
+            categories["· Leaf Nodes (0-50)"].append(entity)
+
+    return categories

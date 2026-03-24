@@ -33,7 +33,14 @@ if _FRONTEND_DIR not in sys.path:
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
 from components.order_critique import display_order_critique  # noqa: E402
 from components.sidebar import render_sidebar_navigation  # noqa: E402
-from utils.deep_extraction import extract_causal_chains, visualize_confidence  # noqa: E402
+from utils.deep_extraction import (  # noqa: E402
+    extract_causal_chains,
+    visualize_confidence,
+    calculate_systemic_order_score,
+    get_order_status,
+    calculate_signal_noise_ratio,
+    categorize_entities_by_order,
+)
 
 # streamlit-agraph (optional – graceful degradation when absent)
 try:
@@ -167,6 +174,22 @@ _NODE_COLOR_HUB = "#FFD700"       # Glowing Gold  – central hub nodes
 # Theme palette
 _THEME_DARK_BLUE = "#1a365d"
 _THEME_ACCENT_GOLD = "#d4af37"
+
+# Order-Chaos gradient (used by dashboard charts)
+# Runs from deep order-blue (most ordered) → deep chaos-red (most chaotic)
+_ORDER_CHAOS_GRADIENT: List[str] = [
+    "#1a365d",  # 秩序蓝（最秩序）
+    "#2d5a8c",
+    "#4a90e2",  # 浅蓝
+    "#7ab8f0",
+    "#f5a623",  # 琥珀
+    "#e8705c",
+    "#d94949",
+    "#722f37",  # 混沌红（最混沌）
+]
+
+# Signal green – used in Signal vs Noise donut chart
+_SIGNAL_GREEN = "#92cc1e"
 
 # Category colour mapping for news cards
 _NEWS_CATEGORY_COLORS: Dict[str, str] = {
@@ -1418,67 +1441,65 @@ elif page == "📊 仪表板":
     _kg_articles = kg_stats_resp.get("articles", 0) if "error" not in kg_stats_resp else 0
     _kg_mentions = kg_stats_resp.get("mentions", 0) if "error" not in kg_stats_resp else 0
 
-    # ── Compute Order Index ───────────────────────────────────────────────────
-    # Formula: three equally-weighted dimensions, each capped at ~33 pts
-    #   • Relation/entity ratio  (×25, max 50): higher ratio → denser knowledge web
-    #   • Entity count           (×0.5, max 25): more entities → richer concept coverage
-    #   • Average event confidence (×25, max 25): higher confidence → more reliable signal
+    # ── Compute Systemic Order Score ──────────────────────────────────────────
+    # Formula: (Relations / Entities) × log(Total News) × 10
+    _news_for_score = max(total_news, _kg_articles)
+    _order_score = calculate_systemic_order_score(
+        relations_count=_kg_relations,
+        entities_count=_kg_entities,
+        news_count=_news_for_score,
+    )
+    _order_status = get_order_status(_order_score)
     _rel_ent_ratio = _kg_relations / max(_kg_entities, 1)
-    _ratio_contrib = min(_rel_ent_ratio * 25, 50)          # max 50 pts from ratio
-    _entity_contrib = min(_kg_entities * 0.5, 25)          # max 25 pts from entity count
-    _conf_contrib = avg_conf * 25                           # max 25 pts from confidence
-    _order_index = min(100, int(_ratio_contrib + _entity_contrib + _conf_contrib))
     _has_data = bool(articles_live or events_live or _kg_entities)
 
-    # ── Order Index gauge + system status ────────────────────────────────────
+    # ── Section 1: Systemic Order Score ───────────────────────────────────────
+    st.markdown("## 📊 Systemic Order Score")
     try:
         import plotly.graph_objects as _go
 
-        _gauge_fig = _go.Figure(_go.Indicator(
-            mode="gauge+number",
-            value=_order_index if _has_data else 0,
-            domain={"x": [0, 1], "y": [0, 1]},
-            title={
-                "text": "秩序指数 · 信息逻辑密度",
-                "font": {"size": 18, "color": _THEME_DARK_BLUE},
-            },
-            gauge={
-                "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": _THEME_DARK_BLUE},
-                "bar": {"color": _THEME_ACCENT_GOLD},
-                "bgcolor": "white",
-                "borderwidth": 2,
-                "bordercolor": "#2c5282",
-                "steps": [
-                    {"range": [0, 33], "color": "#fce8e6"},
-                    {"range": [33, 67], "color": "#fff8e1"},
-                    {"range": [67, 100], "color": "#e8f5e9"},
-                ],
-                "threshold": {
-                    "line": {"color": _THEME_DARK_BLUE, "width": 4},
-                    "thickness": 0.75,
-                    "value": _order_index if _has_data else 0,
-                },
-            },
-            number={
-                "suffix": "/100",
-                "font": {"size": 28, "color": _THEME_DARK_BLUE},
-            },
-        ))
-        _gauge_fig.update_layout(
-            height=260,
-            margin={"t": 70, "b": 20, "l": 20, "r": 20},
-            paper_bgcolor="#ffffff",
-        )
-
-        _order_status = (
-            "🔴 低结构化" if _order_index < 33
-            else ("🟡 中等结构化" if _order_index < 67 else "🟢 高结构化")
-        )
-        _conf_display = f"{avg_conf:.1%}" if _has_data else "–"
         _gauge_col, _status_col = st.columns([2, 1])
         with _gauge_col:
+            _gauge_fig = _go.Figure(_go.Indicator(
+                mode="gauge+number+delta",
+                value=_order_score if _has_data else 0,
+                domain={"x": [0, 1], "y": [0, 1]},
+                title={
+                    "text": "Systemic Order Score",
+                    "font": {"size": 18, "color": _THEME_DARK_BLUE},
+                },
+                delta={"reference": 60},
+                gauge={
+                    "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": _THEME_DARK_BLUE},
+                    "bar": {"color": _ORDER_CHAOS_GRADIENT[1]},
+                    "bgcolor": "white",
+                    "borderwidth": 2,
+                    "bordercolor": "#2c5282",
+                    "steps": [
+                        {"range": [0, 30], "color": "#fce8e6"},
+                        {"range": [30, 60], "color": "#fff8e1"},
+                        {"range": [60, 100], "color": "#e8f5e9"},
+                    ],
+                    "threshold": {
+                        "line": {"color": _ORDER_CHAOS_GRADIENT[0], "width": 4},
+                        "thickness": 0.75,
+                        "value": 90,
+                    },
+                },
+                number={
+                    "suffix": "/100",
+                    "font": {"size": 28, "color": _THEME_DARK_BLUE},
+                },
+            ))
+            _gauge_fig.update_layout(
+                height=280,
+                margin={"t": 70, "b": 20, "l": 20, "r": 20},
+                paper_bgcolor="#ffffff",
+            )
             st.plotly_chart(_gauge_fig, use_container_width=True)
+
         with _status_col:
+            _conf_display = f"{avg_conf:.1%}" if _has_data else "–"
             st.markdown(
                 f"<div class='order-card'>"
                 f"<h3>系统状态</h3>"
@@ -1496,20 +1517,74 @@ elif page == "📊 仪表板":
                 unsafe_allow_html=True,
             )
     except ImportError:
-        _val_str = f"{_order_index}/100" if _has_data else "–"
-        st.metric("秩序指数", _val_str)
+        _val_str = f"{_order_score:.1f}/100" if _has_data else "–"
+        st.metric("秩序指数 (Systemic Order Score)", _val_str)
 
     st.divider()
 
-    # ── Event type breakdown (weighted by impact) ─────────────────────────────
+    # ── Section 2: Signal vs Noise Balance ───────────────────────────────────
+    st.markdown("## 📡 Signal vs Noise Balance")
+    _signal_articles = _kg_articles   # KG-processed articles = signal
+    _total_for_ratio = max(total_news, _kg_articles)
+    _signal_ratio, _noise_ratio = calculate_signal_noise_ratio(
+        articles_with_entities=_signal_articles,
+        total_articles=_total_for_ratio,
+    )
+    _noise_articles = max(0, _total_for_ratio - _signal_articles)
+
+    try:
+        import plotly.graph_objects as _go
+
+        _sn_col1, _sn_col2 = st.columns([1, 2])
+        with _sn_col1:
+            st.metric(
+                label="Signal Rate",
+                value=f"{_signal_ratio:.0%}",
+                delta=f"{_signal_articles} articles processed",
+            )
+            st.metric(
+                label="Noise Rate",
+                value=f"{_noise_ratio:.0%}",
+                delta=f"{_noise_articles} articles pending",
+            )
+        with _sn_col2:
+            if _total_for_ratio > 0:
+                _fig_signal = _go.Figure(data=[
+                    _go.Pie(
+                        labels=["✅ Signal (Processed)", "⚠️ Noise (Raw)"],
+                        values=[max(_signal_articles, 0), max(_noise_articles, 0)],
+                        hole=0.4,
+                        marker=dict(
+                            colors=[_SIGNAL_GREEN, _ORDER_CHAOS_GRADIENT[-1]],
+                            line=dict(color="#ffffff", width=2),
+                        ),
+                        textinfo="label+percent",
+                        hovertemplate="%{label}<br>%{value} articles<br>%{percent}<extra></extra>",
+                    )
+                ])
+                _fig_signal.update_layout(
+                    height=280,
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    paper_bgcolor="#ffffff",
+                    font=dict(color=_THEME_DARK_BLUE),
+                    legend=dict(font=dict(size=11)),
+                )
+                st.plotly_chart(_fig_signal, use_container_width=True)
+            else:
+                st.info("📭 暂无新闻数据，请先聚合新闻。")
+    except ImportError:
+        st.info("安装 plotly 可以查看 Signal/Noise 图：`pip install plotly`")
+
+    st.divider()
+
+    # ── Section 3: Event type breakdown (Order-Chaos gradient) ───────────────
     if events_live:
         try:
             import plotly.express as _px
+            import plotly.graph_objects as _go
             import pandas as _pd
 
             # Impact-weight mapping: long-term / global / irreversible = higher weight.
-            # Both Chinese and English keys are included since the backend may return
-            # event types in either language depending on the extraction model used.
             _EVENT_WEIGHTS: Dict[str, float] = {
                 "地缘政治": 2.5, "政治冲突": 2.5, "军事行动": 2.5, "geopolitics": 2.5,
                 "外交事件": 2.0,
@@ -1518,7 +1593,7 @@ elif page == "📊 仪表板":
                 "经济波动": 1.2, "贸易摩擦": 1.2, "economic": 1.2,
                 "自然灾害": 1.0, "人道危机": 1.0, "恐怖袭击": 1.0,
             }
-            _DEFAULT_WEIGHT = 0.8  # fallback for any unrecognised event type
+            _DEFAULT_WEIGHT = 0.8
 
             _df_events = _pd.DataFrame(events_live)
             _df_types = (
@@ -1527,34 +1602,46 @@ elif page == "📊 仪表板":
                 .size()
                 .rename(columns={"size": "count"})
             )
-            # str() cast handles potential NaN / non-string values from the DataFrame
             _df_types["weight"] = _df_types["event_type"].map(
                 lambda t: _EVENT_WEIGHTS.get(str(t), _DEFAULT_WEIGHT)
             )
             _df_types["weighted_score"] = (_df_types["count"] * _df_types["weight"]).round(1)
             _df_types = _df_types.sort_values("weighted_score", ascending=False)
 
+            # Map each bar to an Order-Chaos gradient colour based on its weighted score
+            _max_ws = float(_df_types["weighted_score"].max()) if len(_df_types) > 0 else 1.0
+            _bar_colors = [
+                _ORDER_CHAOS_GRADIENT[
+                    int((v / max(_max_ws, 0.01)) * (len(_ORDER_CHAOS_GRADIENT) - 1))
+                ]
+                for v in _df_types["weighted_score"].tolist()
+            ]
+
             _chart_col, _pie_col = st.columns(2)
 
             with _chart_col:
-                st.subheader("📊 事件分布（影响力权重）")
-                st.caption("各类事件按影响力权重排序（长期/全球/难逆性越高权重越大）")
-                _fig_w = _px.bar(
-                    _df_types,
-                    x="event_type",
-                    y="weighted_score",
-                    labels={"event_type": "事件类型", "weighted_score": "影响力加权分"},
-                    color="weighted_score",
-                    color_continuous_scale=[_THEME_DARK_BLUE, _THEME_ACCENT_GOLD],
-                    text="weighted_score",
-                )
-                _fig_w.update_traces(textposition="outside")
+                st.subheader("📊 事件分布（影响力权重 · 秩序-混沌渐变）")
+                st.caption("各类事件按影响力权重排序，颜色从蓝（秩序）→ 红（混沌）")
+                _fig_w = _go.Figure(data=[
+                    _go.Bar(
+                        x=_df_types["event_type"].tolist(),
+                        y=_df_types["weighted_score"].tolist(),
+                        marker=dict(
+                            color=_bar_colors,
+                            line=dict(color=_THEME_ACCENT_GOLD, width=1),
+                        ),
+                        text=_df_types["weighted_score"].tolist(),
+                        textposition="auto",
+                        hovertemplate="%{x}<br>%{y:.1f} 加权分<extra></extra>",
+                    )
+                ])
                 _fig_w.update_layout(
                     showlegend=False,
                     plot_bgcolor="#f8f9fa",
                     paper_bgcolor="#ffffff",
                     xaxis_tickangle=-30,
-                    coloraxis_showscale=False,
+                    xaxis_title="事件类型",
+                    yaxis_title="影响力加权分",
                 )
                 st.plotly_chart(_fig_w, use_container_width=True)
 
@@ -1584,7 +1671,87 @@ elif page == "📊 仪表板":
     else:
         st.info("🚧 请先聚合新闻和提取事件，仪表板将显示实时统计。")
 
-    # ── Knowledge graph metrics ───────────────────────────────────────────────
+    st.divider()
+
+    # ── Section 4: Entity Order Importance distribution ───────────────────────
+    st.markdown("## 🌐 Entity Order Importance Distribution")
+    if _kg_entities > 0:
+        try:
+            import plotly.graph_objects as _go
+
+            # Fetch entities and relations to compute per-entity degree
+            _entities_resp = _api.get_kg_entities(limit=500)
+            _relations_resp = _api.get_kg_relations(limit=1000)
+
+            _entities_list = (
+                _entities_resp.get("entities", [])
+                if "error" not in _entities_resp else []
+            )
+            _relations_list = (
+                _relations_resp.get("relations", [])
+                if "error" not in _relations_resp else []
+            )
+
+            if _entities_list:
+                # Compute undirected degree from relations (subject + object)
+                _degrees: Dict[str, int] = {}
+                for _rel in _relations_list:
+                    _subj = _rel.get("subject", _rel.get("from", ""))
+                    _obj = _rel.get("object", _rel.get("to", ""))
+                    if _subj:
+                        _degrees[_subj] = _degrees.get(_subj, 0) + 1
+                    if _obj:
+                        _degrees[_obj] = _degrees.get(_obj, 0) + 1
+
+                _entity_groups = categorize_entities_by_order(_entities_list, _degrees)
+                _group_names = list(_entity_groups.keys())
+                _group_counts = [len(_entity_groups[g]) for g in _group_names]
+
+                if any(c > 0 for c in _group_counts):
+                    _fig_importance = _go.Figure(data=[
+                        _go.Pie(
+                            labels=_group_names,
+                            values=_group_counts,
+                            marker=dict(
+                                colors=_ORDER_CHAOS_GRADIENT[:len(_group_names)],
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                            textposition="auto",
+                            hovertemplate=(
+                                "%{label}<br>%{value} entities<br>%{percent}<extra></extra>"
+                            ),
+                        )
+                    ])
+                    _fig_importance.update_layout(
+                        height=380,
+                        title_text="Entities by Order Importance Tier",
+                        title_font=dict(size=16, color=_THEME_DARK_BLUE),
+                        paper_bgcolor="#ffffff",
+                        font=dict(color=_THEME_DARK_BLUE),
+                        legend=dict(font=dict(size=11)),
+                        margin=dict(l=20, r=20, t=60, b=20),
+                    )
+
+                    _imp_col1, _imp_col2 = st.columns([2, 1])
+                    with _imp_col1:
+                        st.plotly_chart(_fig_importance, use_container_width=True)
+                    with _imp_col2:
+                        st.markdown("**秩序重要性等级**")
+                        for _gname, _gcount in zip(_group_names, _group_counts):
+                            if _gcount > 0:
+                                st.markdown(f"- **{_gname}**: {_gcount} 个实体")
+                else:
+                    st.info("📭 实体度数数据不足，请先构建知识图谱。")
+            else:
+                st.info("📭 暂无实体数据，请先聚合新闻并提取知识图谱。")
+        except ImportError:
+            st.info("安装 plotly 可以查看实体重要性图：`pip install plotly`")
+    else:
+        st.info("📭 知识图谱为空，请先聚合新闻并提取实体。")
+
+    st.divider()
+
+    # ── Knowledge graph summary metrics ──────────────────────────────────────
     if "error" not in kg_stats_resp:
         with st.container(border=True):
             st.subheader("🕸️ 知识图谱")
