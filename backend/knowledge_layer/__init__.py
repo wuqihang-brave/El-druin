@@ -17,6 +17,7 @@ from knowledge_layer.kuzu_store import (  # noqa: F401
     NODE_TYPES,
     RELATION_TYPES,
 )
+from knowledge_layer.entity_resolver import GlobalEntityResolver, Match  # noqa: F401
 
 __all__ = [
     "OrderedTriple",
@@ -27,4 +28,6 @@ __all__ = [
     "validate_timestamp",
     "NODE_TYPES",
     "RELATION_TYPES",
+    "GlobalEntityResolver",
+    "Match",
 ]
