@@ -86,6 +86,27 @@ def _entity_color(entity_type: str) -> str:
     return _TYPE_COLORS.get(entity_type.upper(), _DEFAULT_COLOR)
 
 
+# ---------------------------------------------------------------------------
+# Hierarchical graph tier constants
+# (thresholds must match backend/_importance_tier in knowledge.py)
+# ---------------------------------------------------------------------------
+_HG_TIERS = [
+    # (min_degree, label, color, size)
+    (10, "Critical",  "#FFD700", 80),
+    (5,  "Important", "#0A3D6B", 50),
+    (2,  "Bridge",    "#4A90E2", 35),
+    (0,  "Leaf",      "#D0D0D0", 20),
+]
+
+
+def _node_visual(degree: int):
+    """Return (tier_label, color, size) for a node given its degree."""
+    for min_deg, label, color, size in _HG_TIERS:
+        if degree >= min_deg:
+            return label, color, size
+    return "Leaf", "#D0D0D0", 20
+
+
 # ===========================================================================
 # Page title
 # ===========================================================================
@@ -97,8 +118,8 @@ st.divider()
 # ===========================================================================
 # Tabs
 # ===========================================================================
-tab_extract, tab_viz, tab_query = st.tabs(
-    ["📝 文本提取", "🕸️ 图谱可视化", "💬 Cypher 查询"]
+tab_extract, tab_viz, tab_hierarchy, tab_query = st.tabs(
+    ["📝 文本提取", "🕸️ 图谱可视化", "🎚️ 层级图谱", "💬 Cypher 查询"]
 )
 
 # ===========================================================================
@@ -382,7 +403,220 @@ with tab_viz:
             st.info("📭 图谱中暂无数据。请先通过「更新图谱」进行数据摄入。")
 
 # ===========================================================================
-# Tab 3 – Cypher 查询
+# Tab 3 – 层级图谱 (Hierarchical Graph)
+# ===========================================================================
+with tab_hierarchy:
+    st.subheader("🎚️ Hierarchical Knowledge Graph")
+    st.caption("通过度数过滤器调整节点可见性，点击节点查看其「秩序叙事」。")
+
+    # ── Session state initialisation ─────────────────────────────────────
+    if "hg_min_degree" not in st.session_state:
+        st.session_state.hg_min_degree = 0
+    if "hg_max_degree" not in st.session_state:
+        st.session_state.hg_max_degree = 25
+    if "hg_selected_node" not in st.session_state:
+        st.session_state.hg_selected_node = None
+
+    col_graph, col_narrative = st.columns([3, 1])
+
+    with col_graph:
+        # ── Hierarchy filter controls ─────────────────────────────────────
+        st.markdown("#### 🎚️ Hierarchy Filter")
+
+        filter_col1, filter_col2 = st.columns(2)
+        with filter_col1:
+            hg_min = st.slider(
+                "Min Degree",
+                min_value=0,
+                max_value=50,
+                value=st.session_state.hg_min_degree,
+                help="只显示度数 ≥ 此值的节点",
+                key="hg_slider_min",
+            )
+            st.session_state.hg_min_degree = hg_min
+        with filter_col2:
+            hg_max = st.slider(
+                "Max Degree",
+                min_value=0,
+                max_value=100,
+                value=st.session_state.hg_max_degree,
+                help="只显示度数 ≤ 此值的节点",
+                key="hg_slider_max",
+            )
+            st.session_state.hg_max_degree = hg_max
+
+        # Quick preset buttons
+        preset_col1, preset_col2, preset_col3 = st.columns(3)
+        with preset_col1:
+            if st.button("📊 All Nodes", key="hg_btn_all"):
+                st.session_state.hg_min_degree = 0
+                st.session_state.hg_max_degree = 100
+                st.rerun()
+        with preset_col2:
+            if st.button("🎯 Core Only", key="hg_btn_core"):
+                st.session_state.hg_min_degree = 5
+                st.session_state.hg_max_degree = 100
+                st.rerun()
+        with preset_col3:
+            if st.button("💀 Backbone", key="hg_btn_backbone"):
+                st.session_state.hg_min_degree = 10
+                st.session_state.hg_max_degree = 100
+                st.rerun()
+
+        st.divider()
+
+        # ── Fetch data from backend ───────────────────────────────────────
+        with st.spinner("🔄 Loading hierarchical graph…"):
+            hg_data = _api.get_hierarchical_graph(
+                min_degree=st.session_state.hg_min_degree,
+                max_degree=st.session_state.hg_max_degree,
+            )
+
+        if "error" in hg_data:
+            st.error(f"❌ {hg_data['error']}")
+        else:
+            nodes_raw = hg_data.get("nodes", [])
+            edges_raw = hg_data.get("edges", [])
+            degree_map: Dict[str, int] = hg_data.get("degree_map", {})
+
+            # ── Build agraph nodes ────────────────────────────────────────
+            if _AGRAPH_AVAILABLE:
+                hg_ag_nodes: List[Node] = []
+                for node in nodes_raw:
+                    node_id = node["id"]
+                    node_degree = degree_map.get(node_id, 0)
+                    tier, color, size = _node_visual(node_degree)
+
+                    hg_ag_nodes.append(
+                        Node(
+                            id=node_id,
+                            label=node_id,
+                            size=size,
+                            color=color,
+                            title=f"{node_id}\nType: {node['type']}\nDegree: {node_degree}\nTier: {tier}",
+                        )
+                    )
+
+                # ── Build agraph edges ────────────────────────────────────
+                hg_ag_edges: List[Edge] = []
+                for edge in edges_raw:
+                    from_deg = degree_map.get(edge["from"], 0)
+                    to_deg = degree_map.get(edge["to"], 0)
+
+                    if from_deg >= 10 and to_deg >= 10:
+                        edge_color, width = "#FFD700", 3
+                    elif from_deg >= 5 or to_deg >= 5:
+                        edge_color, width = "#4A90E2", 2
+                    else:
+                        edge_color, width = "#888888", 1
+
+                    hg_ag_edges.append(
+                        Edge(
+                            source=edge["from"],
+                            target=edge["to"],
+                            label=edge.get("type", ""),
+                            color=edge_color,
+                            width=width,
+                        )
+                    )
+
+                # ── Render graph ──────────────────────────────────────────
+                hg_config = Config(
+                    width="100%",
+                    height=800,
+                    directed=True,
+                    physics=True,
+                    hierarchical=False,
+                    nodeHighlightBehavior=True,
+                    highlightColor="#FFD700",
+                    collapsible=False,
+                )
+
+                st.markdown("#### 📊 Graph Visualization")
+                try:
+                    clicked_node = agraph(
+                        nodes=hg_ag_nodes,
+                        edges=hg_ag_edges,
+                        config=hg_config,
+                    )
+                    if clicked_node:
+                        st.session_state.hg_selected_node = clicked_node
+                except Exception as render_err:
+                    st.error(f"Graph rendering error: {render_err}")
+
+            else:
+                st.warning(
+                    "⚠️ `streamlit-agraph` is not installed. "
+                    "Install it with `pip install streamlit-agraph` to enable interactive graph rendering."
+                )
+
+            # ── Statistics panel ──────────────────────────────────────────
+            st.markdown("---")
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
+            with stat_col1:
+                st.metric("Visible Nodes", len(nodes_raw))
+            with stat_col2:
+                st.metric("Visible Edges", len(edges_raw))
+            with stat_col3:
+                avg_deg = (
+                    sum(degree_map.values()) / len(degree_map)
+                    if degree_map else 0.0
+                )
+                st.metric("Avg Degree", f"{avg_deg:.1f}")
+
+    # ── Right panel: Order Narrative ──────────────────────────────────────
+    with col_narrative:
+        st.markdown("#### 📖 Order Narrative")
+
+        if st.session_state.hg_selected_node:
+            selected_id: str = st.session_state.hg_selected_node
+
+            with st.spinner(f"Loading narrative for {selected_id}…"):
+                narrative = _api.get_node_narrative(selected_id)
+
+            if "error" in narrative:
+                st.error(f"❌ {narrative['error']}")
+            else:
+                st.subheader(f"🔹 {narrative.get('node_name', selected_id)}")
+                st.write(f"**Type:** {narrative.get('node_type', '—')}")
+                st.write(f"**Degree:** {narrative.get('degree', 0)}")
+                st.write(f"**Tier:** {narrative.get('importance_tier', '—')}")
+
+                st.divider()
+
+                st.write("**Global Role:**")
+                st.write(narrative.get("global_role", ""))
+
+                definition = narrative.get("definition", "")
+                if definition:
+                    st.divider()
+                    st.write("**Definition:**")
+                    st.write(definition)
+
+                connections = narrative.get("main_connections", [])
+                if connections:
+                    st.divider()
+                    st.write("**Main Connections:**")
+                    for conn in connections:
+                        if "target" in conn:
+                            st.write(f"→ **{conn['target']}** ({conn.get('relation', '')})")
+                        else:
+                            st.write(f"← **{conn['source']}** ({conn.get('relation', '')})")
+        else:
+            st.info("💡 Click a node on the graph to view its Order Narrative.")
+
+        # ── Visual legend ─────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**Node Tiers**")
+        for _, label, color, size in _HG_TIERS:
+            font_size = max(10, min(22, size // 4 + 8))
+            st.markdown(
+                f"<span style='color:{color};font-size:{font_size}px'>●</span> **{label}**",
+                unsafe_allow_html=True,
+            )
+
+# ===========================================================================
+# Tab 4 – Cypher 查询
 # ===========================================================================
 with tab_query:
     st.subheader("💬 Cypher 查询")

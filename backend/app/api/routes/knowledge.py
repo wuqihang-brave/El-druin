@@ -2,15 +2,17 @@
 Knowledge Graph API routes.
 
 Endpoints:
-  POST /knowledge/ingest          – ingest articles into the knowledge graph
-  GET  /knowledge/entities        – list entity nodes
-  GET  /knowledge/relations       – list relation edges
-  GET  /knowledge/neighbours      – get neighbours of a named entity
-  POST /knowledge/query           – run a Cypher query (Kuzu backend only)
-  GET  /knowledge/query           – run a Cypher query via query parameter (cached)
-  GET  /knowledge/stats           – graph statistics
-  POST /knowledge/extract         – extract entities/relations from text and persist
-  POST /knowledge/filter          – evaluate and filter triples via Order Critic Agent
+  POST /knowledge/ingest                       – ingest articles into the knowledge graph
+  GET  /knowledge/entities                     – list entity nodes
+  GET  /knowledge/relations                    – list relation edges
+  GET  /knowledge/neighbours                   – get neighbours of a named entity
+  POST /knowledge/query                        – run a Cypher query (Kuzu backend only)
+  GET  /knowledge/query                        – run a Cypher query via query parameter (cached)
+  GET  /knowledge/stats                        – graph statistics
+  POST /knowledge/extract                      – extract entities/relations from text and persist
+  POST /knowledge/filter                       – evaluate and filter triples via Order Critic Agent
+  GET  /knowledge/graph/hierarchy              – degree-filtered hierarchical graph
+  GET  /knowledge/graph/node-narrative/{name}  – Order Narrative for a single node
 """
 
 from __future__ import annotations
@@ -381,3 +383,176 @@ def generate_order_critique(
     except Exception as exc:
         logger.error("Order critique generation error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical graph endpoints
+# ---------------------------------------------------------------------------
+
+def _compute_degree_map(relations: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Return a mapping from node name to its total degree (in + out)."""
+    degree: Dict[str, int] = {}
+    for rel in relations:
+        from_node = rel.get("from", "")
+        to_node = rel.get("to", "")
+        if from_node:
+            degree[from_node] = degree.get(from_node, 0) + 1
+        if to_node:
+            degree[to_node] = degree.get(to_node, 0) + 1
+    return degree
+
+
+def _importance_tier(degree: int) -> str:
+    """Map a node degree to an importance tier label."""
+    if degree >= 10:
+        return "Critical"
+    if degree >= 5:
+        return "Important"
+    if degree >= 2:
+        return "Bridge"
+    return "Leaf"
+
+
+def _global_role_narrative(
+    node_name: str,
+    importance_tier: str,
+    degree: int,
+    connections: List[Dict[str, Any]],
+) -> str:
+    """Generate a short narrative describing a node's role in the global order."""
+    tier_descriptions = {
+        "Critical": f"{node_name} is a **critical hub** in the global order network",
+        "Important": f"{node_name} is an **important node** driving order transitions",
+        "Bridge": f"{node_name} connects different domains as an **information bridge**",
+        "Leaf": f"{node_name} is an **information source** at the edge of the network",
+    }
+    base = tier_descriptions.get(importance_tier, f"{node_name} is part of the network")
+    if importance_tier == "Critical":
+        return (
+            f"{base}, with {degree} connections. "
+            "This entity's actions directly reshape the global order."
+        )
+    if importance_tier == "Important":
+        return (
+            f"{base}, with {degree} connections. "
+            "It is a key link between multiple domains."
+        )
+    if importance_tier == "Bridge":
+        return (
+            f"{base}, with {degree} connections. "
+            f"It integrates different order dimensions through {len(connections)} main links."
+        )
+    return f"{base}, with {degree} connections. It provides foundational information to the network."
+
+
+@router.get("/graph/hierarchy")
+def get_hierarchical_graph(
+    min_degree: int = Query(0, ge=0, description="Minimum node degree (inclusive)"),
+    max_degree: int = Query(100, ge=0, description="Maximum node degree (inclusive)"),
+) -> Dict[str, Any]:
+    """Return a degree-filtered hierarchical view of the knowledge graph.
+
+    Each node is annotated with its computed degree and importance tier so the
+    frontend can apply size/colour styling without further computation.
+    """
+    kg = get_knowledge_graph()
+    entities = kg.get_entities(limit=1000)
+    relations = kg.get_relations(limit=2000)
+
+    degree_map = _compute_degree_map(relations)
+
+    # Filter nodes by degree range
+    filtered_entities = [
+        e for e in entities
+        if min_degree <= degree_map.get(e.get("name", ""), 0) <= max_degree
+    ]
+    filtered_names = {e.get("name", "") for e in filtered_entities}
+
+    # Only keep edges whose both endpoints are in the filtered set
+    filtered_relations = [
+        r for r in relations
+        if r.get("from") in filtered_names and r.get("to") in filtered_names
+    ]
+
+    nodes_out = [
+        {
+            "id": e.get("name", ""),
+            "label": e.get("name", ""),
+            "type": e.get("type", _DEFAULT_ENTITY_TYPE),
+            "degree": degree_map.get(e.get("name", ""), 0),
+            "properties": e,
+        }
+        for e in filtered_entities
+    ]
+
+    edges_out = [
+        {
+            "from": r.get("from", ""),
+            "to": r.get("to", ""),
+            "type": r.get("relation", ""),
+            "weight": r.get("weight", _DEFAULT_RELATION_WEIGHT),
+        }
+        for r in filtered_relations
+    ]
+
+    return {
+        "nodes": nodes_out,
+        "edges": edges_out,
+        "degree_map": degree_map,
+        "total_nodes": len(nodes_out),
+        "total_edges": len(edges_out),
+    }
+
+
+@router.get("/graph/node-narrative/{node_name}")
+def get_node_order_narrative(node_name: str) -> Dict[str, Any]:
+    """Return the Order Narrative for a single node.
+
+    Includes its definition, degree, importance tier, main connections, and a
+    short philosophical description of its role in the global order.
+    """
+    kg = get_knowledge_graph()
+    entities = kg.get_entities(limit=1000)
+    entity = next((e for e in entities if e.get("name") == node_name), None)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Node '{node_name}' not found")
+
+    relations = kg.get_relations(limit=2000)
+    degree = sum(
+        1 for r in relations
+        if r.get("from") == node_name or r.get("to") == node_name
+    )
+
+    # Collect up to 5 main connections
+    main_connections: List[Dict[str, Any]] = []
+    for rel in relations:
+        if len(main_connections) >= 5:
+            break
+        if rel.get("from") == node_name:
+            main_connections.append({
+                "target": rel.get("to", ""),
+                "relation": rel.get("relation", ""),
+                "weight": rel.get("weight", _DEFAULT_RELATION_WEIGHT),
+            })
+        elif rel.get("to") == node_name:
+            main_connections.append({
+                "source": rel.get("from", ""),
+                "relation": rel.get("relation", ""),
+                "weight": rel.get("weight", _DEFAULT_RELATION_WEIGHT),
+            })
+
+    tier = _importance_tier(degree)
+    global_role = _global_role_narrative(node_name, tier, degree, main_connections)
+
+    node_type = entity.get("type", _DEFAULT_ENTITY_TYPE)
+    return {
+        "node_id": node_name,
+        "node_name": node_name,
+        "node_type": node_type,
+        "degree": degree,
+        "importance_tier": tier,
+        "definition": entity.get("definition", f"An entity of type {node_type}"),
+        "main_connections": main_connections,
+        "global_role": global_role,
+        "betweenness_centrality": 0.0,  # placeholder for future centrality computation
+    }
