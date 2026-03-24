@@ -32,6 +32,14 @@ if _FRONTEND_DIR not in sys.path:
 
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
 
+# streamlit-agraph (optional – graceful degradation when absent)
+try:
+    from streamlit_agraph import agraph, Config, Edge, Node  # type: ignore[import]
+
+    _AGRAPH_AVAILABLE = True
+except ImportError:
+    _AGRAPH_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -94,6 +102,128 @@ st.sidebar.info(
     "- 知识图谱分析\n"
     "- 预测和预警"
 )
+
+# ===========================================================================
+# Knowledge graph helpers
+# ===========================================================================
+
+# Entity-type → colour mapping (shared across all graph renders)
+_KG_TYPE_COLORS: Dict[str, str] = {
+    "PERSON": "#e74c3c",
+    "ORG": "#3498db",
+    "GPE": "#2ecc71",
+    "LOC": "#f39c12",
+    "DATE": "#9b59b6",
+    "MONEY": "#1abc9c",
+    "PERCENT": "#e67e22",
+    "EVENT": "#e91e63",
+    "ENTITY": "#3498db",
+    "ARTICLE": "#f39c12",
+    "MISC": "#95a5a6",
+}
+_KG_DEFAULT_COLOR = "#95a5a6"
+
+
+def render_graph(data: Dict[str, Any]) -> None:
+    """Render an interactive knowledge graph using streamlit-agraph.
+
+    Converts the standardised backend response format into agraph Node / Edge
+    objects and displays a physics-enabled, zoomable, draggable graph.
+
+    Args:
+        data: Dict with two keys:
+
+            * ``nodes`` – list of dicts ``{id, label, properties}``
+            * ``edges`` – list of dicts ``{from, to, type}``
+
+    The function shows a friendly info banner instead of raising when data is
+    empty or when the optional ``streamlit-agraph`` package is unavailable.
+    """
+    raw_nodes: List[Dict[str, Any]] = data.get("nodes", []) if data else []
+    raw_edges: List[Dict[str, Any]] = data.get("edges", []) if data else []
+
+    if not raw_nodes and not raw_edges:
+        st.info("📭 暂无图谱数据。请先进行数据摄入或执行 Cypher 查询。")
+        return
+
+    if not _AGRAPH_AVAILABLE:
+        st.warning(
+            "⚠️ `streamlit-agraph` 未安装，无法显示交互图谱。"
+            " 请执行 `pip install streamlit-agraph>=0.0.45`"
+        )
+        return
+
+    # ── Pre-compute node degree for size scaling ──────────────────────────
+    degree: Dict[str, int] = {}
+    for edge in raw_edges:
+        src = str(edge.get("from", "") or "")
+        tgt = str(edge.get("to", "") or "")
+        if src:
+            degree[src] = degree.get(src, 0) + 1
+        if tgt:
+            degree[tgt] = degree.get(tgt, 0) + 1
+
+    # ── Build agraph Node objects ─────────────────────────────────────────
+    ag_nodes: List[Node] = []
+    for node in raw_nodes:
+        node_id = str(node.get("id", "") or "")
+        if not node_id:
+            continue
+        label_type = str(node.get("label", "MISC") or "MISC")
+        color = _KG_TYPE_COLORS.get(label_type.upper(), _KG_DEFAULT_COLOR)
+        # Size: base 20 plus up to 20 extra points scaled by degree (capped)
+        node_degree = degree.get(node_id, 0)
+        size = 20 + min(node_degree * 3, 20)
+        props: Dict[str, Any] = node.get("properties") or {}
+        display_name = str(props.get("name", node_id))
+        tooltip_lines = [f"{display_name}", f"类型: {label_type}"]
+        for k, v in list(props.items())[:5]:
+            if k != "name":
+                tooltip_lines.append(f"{k}: {v}")
+        ag_nodes.append(
+            Node(
+                id=node_id,
+                label=display_name,
+                size=size,
+                color=color,
+                title="\n".join(tooltip_lines),
+            )
+        )
+
+    # ── Build agraph Edge objects ─────────────────────────────────────────
+    ag_edges: List[Edge] = []
+    for edge in raw_edges:
+        src = str(edge.get("from", "") or "")
+        tgt = str(edge.get("to", "") or "")
+        edge_type = str(edge.get("type", "") or "")
+        if src and tgt:
+            ag_edges.append(
+                Edge(
+                    source=src,
+                    target=tgt,
+                    label=edge_type,
+                    color="#888888",
+                )
+            )
+
+    if not ag_nodes:
+        st.info("📭 节点数据为空，无法渲染图谱。")
+        return
+
+    config = Config(
+        width="100%",
+        height=550,
+        directed=True,
+        physics=True,
+        hierarchical=False,
+        nodeHighlightBehavior=True,
+        highlightColor="#f1c40f",
+        collapsible=False,
+    )
+
+    with st.container():
+        agraph(nodes=ag_nodes, edges=ag_edges, config=config)
+
 
 # ===========================================================================
 # Page: 📰 实时新闻
@@ -479,8 +609,144 @@ elif page == "🕸️ 知识图谱":
 
     st.divider()
 
-    tab_entities, tab_relations, tab_neighbours, tab_query = st.tabs(
-        ["📋 实体列表", "🔗 关系列表", "🔍 邻居查询", "💬 Cypher 查询"]
+    # ── Main layout: interactive graph (left) | Cypher chat (right) ──────────
+    col_graph, col_chat = st.columns([3, 2], gap="medium")
+
+    with col_graph:
+        st.subheader("🕸️ 图谱可视化")
+
+        # Fetch entities and relations from the backend
+        with st.spinner("📡 加载图谱数据…"):
+            _ent_resp = _api.get_kg_entities(limit=200)
+            _rel_resp = _api.get_kg_relations(limit=300)
+
+        if "error" in _ent_resp or "error" in _rel_resp:
+            st.warning("⚠️ 无法加载图谱数据，请确认后端正在运行。")
+        else:
+            _entities_for_graph: List[Dict[str, Any]] = _ent_resp.get("entities", [])
+            _relations_for_graph: List[Dict[str, Any]] = _rel_resp.get("relations", [])
+
+            # ── Colour legend ─────────────────────────────────────────────
+            _present_types = sorted({
+                str(e.get("type", "MISC")).upper()
+                for e in _entities_for_graph
+            })
+            if _present_types:
+                _legend_cols = st.columns(min(len(_present_types), 6))
+                for _idx, _etype in enumerate(_present_types):
+                    _col = _legend_cols[_idx % len(_legend_cols)]
+                    _col.markdown(
+                        f"<span style='color:{_KG_TYPE_COLORS.get(_etype, _KG_DEFAULT_COLOR)};"
+                        f"font-size:16px'>●</span> **{_etype}**",
+                        unsafe_allow_html=True,
+                    )
+
+            # Convert API response to render_graph format:
+            #   nodes: {id, label, properties}
+            #   edges: {from, to, type}
+            _known_node_ids = {
+                e.get("name", "") for e in _entities_for_graph if e.get("name")
+            }
+            _graph_data: Dict[str, Any] = {
+                "nodes": [
+                    {
+                        "id": e.get("name", ""),
+                        "label": str(e.get("type", "MISC")).upper(),
+                        "properties": e,
+                    }
+                    for e in _entities_for_graph
+                    if e.get("name")
+                ],
+                "edges": [
+                    {
+                        "from": r.get("from", ""),
+                        "to": r.get("to", ""),
+                        "type": r.get("relation", ""),
+                    }
+                    for r in _relations_for_graph
+                    if r.get("from") in _known_node_ids
+                    and r.get("to") in _known_node_ids
+                ],
+            }
+
+            st.caption(
+                f"图谱共 **{len(_graph_data['nodes'])}** 个节点，"
+                f"**{len(_graph_data['edges'])}** 条边"
+            )
+            render_graph(_graph_data)
+
+    # ── Right column: Cypher chat panel ──────────────────────────────────────
+    with col_chat:
+        st.subheader("💬 Cypher 查询")
+        st.caption("仅 Kuzu 后端支持 Cypher 查询（需设置 `GRAPH_BACKEND=kuzu`）。")
+
+        # Session state for chat-style query history
+        if "kg_chat_history" not in st.session_state:
+            st.session_state.kg_chat_history: List[Dict[str, Any]] = []
+
+        _default_cypher = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
+        _cypher_input = st.text_area(
+            "Cypher 查询语句",
+            value=_default_cypher,
+            height=100,
+            key="kg_cypher_input_main",
+            placeholder="MATCH (e:Entity) RETURN e.name, e.type LIMIT 10",
+        )
+
+        _c1, _c2 = st.columns([1, 1])
+        with _c1:
+            _run_query = st.button("▶ 执行查询", type="primary", key="kg_run_query_main")
+        with _c2:
+            if st.button("🗑️ 清除历史", key="kg_clear_history"):
+                st.session_state.kg_chat_history = []
+                st.rerun()
+
+        if _run_query:
+            _q = (_cypher_input or "").strip()
+            if not _q:
+                st.warning("⚠️ 请输入 Cypher 查询语句。")
+            else:
+                with st.spinner("⏳ 执行中…"):
+                    _qr = _api.run_kg_query(_q)
+                _entry: Dict[str, Any] = {"query": _q, "response": _qr}
+                st.session_state.kg_chat_history.insert(0, _entry)
+
+        # Display chat-style history
+        _chat_container = st.container()
+        with _chat_container:
+            for _item in st.session_state.kg_chat_history:
+                st.markdown(
+                    f"<div style='background:#f0f2f6;border-radius:6px;"
+                    f"padding:8px 12px;margin-bottom:4px;font-family:monospace;"
+                    f"font-size:13px'>{_item['query']}</div>",
+                    unsafe_allow_html=True,
+                )
+                _resp = _item["response"]
+                if "error" in _resp and "results" not in _resp:
+                    st.error(f"❌ {_resp['error']}")
+                else:
+                    _results = _resp.get("results", [])
+                    if _results:
+                        st.success(f"✅ {len(_results)} 条结果")
+                        try:
+                            import pandas as pd
+                            st.dataframe(
+                                pd.DataFrame(_results),
+                                use_container_width=True,
+                                height=200,
+                            )
+                        except Exception:
+                            st.caption("（表格渲染失败，以 JSON 格式展示）")
+                            st.json(_results)
+                    else:
+                        st.info("查询成功，但无结果。")
+                st.markdown("---")
+
+    st.divider()
+
+    # ── Detail tabs: entities, relations, neighbours ──────────────────────────
+    tab_entities, tab_relations, tab_neighbours = st.tabs(
+        ["📋 实体列表", "🔗 关系列表", "🔍 邻居查询"]
     )
 
     # ── Entities ─────────────────────────────────────────────────────────────
@@ -516,54 +782,6 @@ elif page == "🕸️ 知识图谱":
                 except ImportError:
                     for r in relations_list:
                         st.write(f"**{r.get('from')}** –[{r.get('relation')}]→ **{r.get('to')}**")
-
-                # Simple network visualization with plotly
-                if relations_list:
-                    try:
-                        import plotly.graph_objects as go
-                        import networkx as nx
-
-                        G = nx.DiGraph()
-                        for r in relations_list[:50]:
-                            from_node = r.get("from", "")
-                            to_node = r.get("to", "")
-                            if not from_node or not to_node:
-                                continue
-                            G.add_edge(from_node, to_node, label=r.get("relation", ""))
-
-                        pos = nx.spring_layout(G, seed=42)
-                        edge_x, edge_y = [], []
-                        for u, v in G.edges():
-                            x0, y0 = pos[u]
-                            x1, y1 = pos[v]
-                            edge_x += [x0, x1, None]
-                            edge_y += [y0, y1, None]
-
-                        node_x = [pos[n][0] for n in G.nodes()]
-                        node_y = [pos[n][1] for n in G.nodes()]
-                        node_labels = list(G.nodes())
-
-                        fig_net = go.Figure(
-                            data=[
-                                go.Scatter(x=edge_x, y=edge_y, mode="lines",
-                                           line={"width": 1, "color": "#888"}, hoverinfo="none"),
-                                go.Scatter(x=node_x, y=node_y, mode="markers+text",
-                                           text=node_labels, textposition="top center",
-                                           marker={"size": 10, "color": "#3498db"},
-                                           hoverinfo="text"),
-                            ],
-                            layout=go.Layout(
-                                title="知识图谱网络图（前50条关系）",
-                                showlegend=False,
-                                hovermode="closest",
-                                xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
-                                yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
-                                height=500,
-                            ),
-                        )
-                        st.plotly_chart(fig_net, use_container_width=True)
-                    except ImportError:
-                        pass
             else:
                 st.info("📭 图谱中暂无关系。请先进行数据摄入。")
 
@@ -584,26 +802,6 @@ elif page == "🕸️ 知识图谱":
                     except ImportError:
                         for n in neighbours:
                             st.write(f"→ **{n.get('name')}** ({n.get('type')}) via [{n.get('relation')}]")
-                else:
-                    st.info(f"未找到「{entity_query}」的邻居节点。")
-
-    # ── Cypher Query ──────────────────────────────────────────────────────────
-    with tab_query:
-        st.caption("仅 Kuzu 后端支持 Cypher 查询（GRAPH_BACKEND=kuzu）")
-        default_query = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
-        cypher_input = st.text_area("Cypher 查询", value=default_query, height=100)
-        if st.button("▶ 执行查询"):
-            with st.spinner("执行中…"):
-                query_resp = _api.run_kg_query(cypher_input)
-                if "error" in query_resp:
-                    st.error(f"❌ {query_resp['error']}")
-                else:
-                    results = query_resp.get("results", [])
-                    if results:
-                        st.success(f"返回 {len(results)} 条结果")
-                        st.json(results)
-                    else:
-                        st.info("查询无结果。")
 
 # ===========================================================================
 # Page: 📊 仪表板
