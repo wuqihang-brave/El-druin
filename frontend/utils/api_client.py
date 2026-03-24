@@ -243,6 +243,51 @@ class APIClient:
             },
         )
 
+    def extract_with_interpretation(
+        self, news_text: str, news_title: str = ""
+    ) -> Dict[str, Any]:
+        """Extract entities/relations from news text and generate a philosophical interpretation.
+
+        Args:
+            news_text: The news article text to analyse.
+            news_title: Optional news title (improves the philosophical interpretation).
+
+        Returns:
+            Dict with ``"news_id"``, ``"entities"``, ``"relations"``,
+            ``"philosophical_interpretation"``, and ``"extraction_timestamp"`` keys.
+        """
+        return self._post(
+            "/extract/extract-with-interpretation",
+            json={"news_text": news_text, "news_title": news_title},
+        )
+
+    def save_human_feedback(
+        self,
+        news_id: str,
+        feedback_list: List[Dict[str, Any]],
+        user_id: str = "wuqihang-brave",
+    ) -> Dict[str, Any]:
+        """Persist human accept/reject feedback for RLHF training data collection.
+
+        Args:
+            news_id: Unique identifier for the news article.
+            feedback_list: List of per-relation feedback dicts, each containing
+                ``relation_id``, ``from_entity``, ``to_entity``, ``relation_type``,
+                ``action`` ("accept" | "reject"), ``confidence``, and optional ``reason``.
+            user_id: User identifier (default ``"wuqihang-brave"``).
+
+        Returns:
+            Dict with ``"status"``, ``"feedback_count"``, and ``"saved_to"`` keys.
+        """
+        return self._post(
+            "/extract/save-human-feedback",
+            json={
+                "news_id": news_id,
+                "feedback_list": feedback_list,
+                "user_id": user_id,
+            },
+        )
+
     # ------------------------------------------------------------------
     # Health / system endpoints
     # ------------------------------------------------------------------

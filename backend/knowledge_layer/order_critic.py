@@ -451,6 +451,97 @@ class OrderCritic:
                 len(entities), len(relations), len(causal_chains)
             )
 
+    def generate_philosophical_interpretation(
+        self,
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        original_news: str,
+        news_title: str = "",
+    ) -> str:
+        """生成新闻提取结果的哲学性秩序解释（2-3句话）。
+
+        聚焦于为什么这些提取的实体和关系"形成了新的秩序"，
+        使用秩序论语言而非技术语言。
+
+        Args:
+            entities: 提取的实体列表（各含 name、type 等字段）。
+            relations: 提取的关系列表（各含 from、relation、to 等字段）。
+            original_news: 原始新闻文本。
+            news_title: 新闻标题（可选）。
+
+        Returns:
+            2-3 句哲学性解释段落（字符串）。
+        """
+        entities_text = ", ".join([
+            e.get("name", "") for e in entities if e.get("name")
+        ])
+        relations_text = "\n".join([
+            f"- {r.get('from', '')} → {r.get('relation', r.get('predicate', ''))} → {r.get('to', r.get('object', ''))}"
+            for r in relations
+        ])
+
+        if not self._api_key:
+            return self._fallback_philosophical_interpretation(entities, relations, news_title)
+
+        _prompt_template = (
+            "你是一个秩序论哲学家，正在分析新闻事件中的结构变化。\n\n"
+            "新闻标题：{news_title}\n\n"
+            "原始新闻内容：\n{original_news}\n\n"
+            "自动提取的关键实体：\n{entities_text}\n\n"
+            "自动提取的关键关系：\n{relations_text}\n\n"
+            "任务：用 2-3 句话解释这个新闻为什么\u201c形成了新的秩序\u201d。\n"
+            "从以下角度思考：\n"
+            "1. 这些实体和关系如何改变了系统的结构？\n"
+            "2. 这是一个暂时的波动还是不可逆的秩序转变？\n"
+            "3. 这对全球文明体系意味着什么？\n\n"
+            "要求：\n"
+            "- 避免使用技术语言（如\u201c知识图谱\u201d、\u201c实体抽取\u201d等）\n"
+            "- 聚焦\u201c秩序\u201d、\u201c结构\u201d、\u201c转变\u201d等概念\n"
+            "- 深度思考，不浮泛描述\n"
+            "- 语言简洁有力\n\n"
+            "输出格式：直接给出 2-3 句解释，无需前缀或标题。"
+        )
+
+        try:
+            from langchain_core.prompts import ChatPromptTemplate
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("human", _prompt_template),
+            ])
+            chain = prompt | self._get_llm()
+            response = chain.invoke({
+                "news_title": news_title or "（无标题）",
+                "original_news": original_news[:2000],
+                "entities_text": entities_text or "（未提取到实体）",
+                "relations_text": relations_text or "（未提取到关系）",
+            })
+            raw = response.content if hasattr(response, "content") else str(response)
+            return raw.strip()
+
+        except Exception as exc:
+            logger.error("哲学解释生成失败: %s", exc)
+            return self._fallback_philosophical_interpretation(entities, relations, news_title)
+
+    @staticmethod
+    def _fallback_philosophical_interpretation(
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        news_title: str = "",
+    ) -> str:
+        """当 LLM 不可用时，返回规则生成的备用哲学解释。"""
+        entity_names = [e.get("name", "") for e in entities[:3] if e.get("name")]
+        entity_text = "、".join(entity_names) if entity_names else "相关实体"
+        rel_count = len(relations)
+        title_hint = f"\u201c{news_title}\u201d所揭示的事件" if news_title else "此次事件"
+
+        return (
+            f"{title_hint}标志着{entity_text}之间关系结构的重新排列——"
+            f"{'一个涉及 ' + str(rel_count) + ' 条关系链的' if rel_count else ''}秩序转变正在形成。"
+            f"这些新的连接方式揭示了系统内部的张力与重组趋势，"
+            f"其长期影响将取决于关键节点能否稳定维系新的结构平衡。"
+            f"El-druin 将持续追踪这一秩序演化的方向。"
+        )
+
     @staticmethod
     def _fallback_philosophical_critique(
         entity_count: int,

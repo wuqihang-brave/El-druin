@@ -18,6 +18,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.extract import router as extract_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.news import router as news_router
@@ -65,6 +66,7 @@ _API_PREFIX = "/api/v1"
 app.include_router(health_router, prefix=_API_PREFIX)
 app.include_router(news_router, prefix=_API_PREFIX)
 app.include_router(knowledge_router, prefix=_API_PREFIX)
+app.include_router(extract_router, prefix=_API_PREFIX)
 
 
 # ---------------------------------------------------------------------------
