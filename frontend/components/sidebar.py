@@ -45,15 +45,31 @@ def render_sidebar_navigation() -> str:
     # ── Header ────────────────────────────────────────────────────────────────
     st.sidebar.markdown(
         """
-        <div style="text-align:center;padding:12px 0 8px 0;">
-            <span style="font-size:2rem;">🧠</span>
-            <h3 style="color:#d4af37;margin:4px 0 2px 0;font-size:1.1rem;">EL'druin</h3>
-            <p style="color:#aaa;font-size:0.78rem;margin:0;">Intelligence Platform</p>
+        <div style="text-align:center;padding:16px 0 10px 0;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40"
+                 style="display:block;margin:0 auto 8px auto;">
+              <circle cx="20" cy="20" r="16" fill="none" stroke="#D4AF37" stroke-width="0.8"
+                      stroke-dasharray="2 3.2"/>
+              <line x1="20" y1="4" x2="20" y2="36" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="12" y1="14" x2="28" y2="14" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="16" y1="16" x2="24" y2="16" stroke="#D4AF37" stroke-width="0.8" stroke-linecap="round"/>
+            </svg>
+            <h3 style="color:#D4AF37;margin:4px 0 2px 0;font-size:1.05rem;
+                       font-weight:300;letter-spacing:3px;font-family:'Inter',sans-serif;">
+                EL-DRUIN
+            </h3>
+            <p style="color:#A8A8A8;font-size:0.72rem;margin:0;font-style:italic;
+                      font-family:'Inter',sans-serif;">
+                Ontological Intelligence &amp; Systematic Order
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    st.sidebar.markdown("---")
+    st.sidebar.markdown(
+        "<hr style='border-color:#2D333B;margin:4px 0 8px 0'/>",
+        unsafe_allow_html=True,
+    )
 
     # ── Initialise session state ───────────────────────────────────────────
     if "current_page" not in st.session_state:
@@ -77,20 +93,22 @@ def render_sidebar_navigation() -> str:
                 styles={
                     "container": {
                         "padding": "0 !important",
-                        "background-color": "#0d1b2a",
+                        "background-color": "#0A0A0A",
                     },
-                    "icon": {"color": "#d4af37", "font-size": "16px"},
+                    "icon": {"color": "#D4AF37", "font-size": "15px"},
                     "nav-link": {
-                        "color": "#e8e8e8",
-                        "font-size": "14px",
+                        "color": "#F0F0F0",
+                        "font-size": "13px",
                         "padding": "10px 16px",
-                        "--hover-color": "rgba(212,175,55,0.12)",
+                        "--hover-color": "rgba(212,175,55,0.10)",
                         "border-radius": "0",
+                        "background-color": "#2D333B",
+                        "border-bottom": "1px solid #1a1e24",
                     },
                     "nav-link-selected": {
-                        "background-color": "rgba(212,175,55,0.18)",
-                        "color": "#d4af37",
-                        "border-left": "4px solid #d4af37",
+                        "background-color": "#D4AF37",
+                        "color": "#0D0D0D",
+                        "border-left": "none",
                         "font-weight": "600",
                     },
                 },
@@ -106,4 +124,19 @@ def render_sidebar_navigation() -> str:
         )
 
     st.session_state.current_page = page
+
+    # ── Footer quote ──────────────────────────────────────────────────────────
+    st.sidebar.markdown(
+        """
+        <div style="position:absolute;bottom:16px;left:0;right:0;
+                    text-align:center;padding:0 12px;">
+            <p style="color:#8B8B8B;font-size:10px;font-style:italic;
+                      margin:0;font-family:'Inter',sans-serif;line-height:1.5;">
+                "I fear no evil, for Thou art with me."
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     return page

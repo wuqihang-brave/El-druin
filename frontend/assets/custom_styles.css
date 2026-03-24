@@ -1,0 +1,295 @@
+/*
+ * EL-DRUIN — Dark Liturgy Theme
+ * Palantir Gotham-style "Elite Intelligence" aesthetic
+ * Sacred Geometry · Christian motifs · Sword of Justice
+ *
+ * Color palette:
+ *   #0D0D0D  Matte Black     — global background
+ *   #D4AF37  Apostolic Gold  — accents, highlights, logos
+ *   #F0F0F0  Altar White     — primary text / headers
+ *   #A8A8A8  Dimmed Silver   — secondary text
+ *   #2D333B  Dark Grey-Blue  — borders, inactive states
+ *   #E0E0E0  Cold White      — fringe node colours
+ *   #0A0A0A  Deep Black      — shadow / depth
+ */
+
+/* ─── CSS variables ──────────────────────────────────────────────────────── */
+:root {
+  --gold:       #D4AF37;
+  --gold-dark:  #B8931F;
+  --black:      #0D0D0D;
+  --black-deep: #0A0A0A;
+  --white:      #F0F0F0;
+  --silver:     #A8A8A8;
+  --border:     #2D333B;
+  --cold-white: #E0E0E0;
+  --card-bg:    rgba(20, 20, 20, 0.6);
+  --font-sans:  'Inter', 'Segoe UI', 'Roboto', sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
+/* ─── Inter font (Google Fonts) ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+/* ─── Global background & base text ─────────────────────────────────────── */
+.stApp, .main, body {
+  background-color: var(--black) !important;
+  color: var(--white) !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* Dot-grid texture overlay */
+.stApp::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, #2D333B 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.18;
+  z-index: 0;
+}
+
+/* ─── Main container ─────────────────────────────────────────────────────── */
+.main .block-container {
+  padding-top: 1.2rem !important;
+  padding-bottom: 1.2rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+  background: transparent !important;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+  background-color: #0A0A0A !important;
+  border-right: 1px solid var(--border) !important;
+}
+section[data-testid="stSidebar"] * {
+  color: var(--white) !important;
+}
+section[data-testid="stSidebar"] .stRadio label {
+  color: var(--white) !important;
+}
+
+/* ─── Headings ───────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--white) !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 300 !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* ─── Cards / containers ─────────────────────────────────────────────────── */
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+  padding: 0.75rem !important;
+  background-color: var(--card-bg) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+/* ─── Metrics ────────────────────────────────────────────────────────────── */
+.stMetric {
+  background-color: var(--card-bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  padding: 12px !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+[data-testid="stMetricValue"] {
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+  font-size: 1.6rem !important;
+}
+[data-testid="stMetricLabel"] {
+  color: var(--silver) !important;
+  font-size: 0.8rem !important;
+}
+
+/* ─── Input fields ───────────────────────────────────────────────────────── */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+.stSelectbox select {
+  background-color: #111111 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  color: var(--white) !important;
+  font-family: var(--font-sans) !important;
+}
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stNumberInput input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2) !important;
+  outline: none !important;
+}
+.stTextInput label,
+.stTextArea label,
+.stNumberInput label,
+.stSelectbox label {
+  color: var(--silver) !important;
+  font-size: 0.82rem !important;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────────── */
+.stButton > button {
+  background-color: var(--gold) !important;
+  color: var(--black) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+  font-family: var(--font-sans) !important;
+  letter-spacing: 0.04em !important;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+.stButton > button:hover {
+  background-color: var(--gold-dark) !important;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.4) !important;
+}
+.stButton > button[kind="secondary"] {
+  background-color: var(--border) !important;
+  color: var(--white) !important;
+}
+.stButton > button[kind="secondary"]:hover {
+  background-color: #3a4149 !important;
+  border: 1px solid var(--gold) !important;
+}
+
+/* ─── Dividers ───────────────────────────────────────────────────────────── */
+hr {
+  border-color: var(--border) !important;
+}
+
+/* ─── Progress bars ──────────────────────────────────────────────────────── */
+.stProgress > div > div > div {
+  background-color: var(--gold) !important;
+}
+.stProgress > div > div {
+  background-color: var(--border) !important;
+}
+
+/* ─── Tabs ───────────────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.stTabs [data-baseweb="tab"] {
+  color: var(--silver) !important;
+  background-color: transparent !important;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.2s ease !important;
+}
+.stTabs [aria-selected="true"] {
+  color: var(--gold) !important;
+  border-bottom: 2px solid var(--gold) !important;
+  background-color: transparent !important;
+}
+
+/* ─── Dataframes / tables ────────────────────────────────────────────────── */
+.stDataFrame {
+  background-color: #111111 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+}
+.stDataFrame th {
+  background-color: #1a1a1a !important;
+  color: var(--gold) !important;
+  font-size: 0.8rem !important;
+  letter-spacing: 0.05em !important;
+}
+.stDataFrame td {
+  color: var(--white) !important;
+  font-size: 0.82rem !important;
+}
+
+/* ─── Captions / help text ───────────────────────────────────────────────── */
+.stCaption, small, caption {
+  color: var(--silver) !important;
+  font-size: 0.78rem !important;
+}
+
+/* ─── Info / warning / error / success boxes ─────────────────────────────── */
+.stAlert {
+  border-radius: 4px !important;
+  border: 1px solid var(--border) !important;
+  background-color: #111111 !important;
+}
+.stAlert [data-testid="stAlertDynamicIcon"] { color: var(--gold) !important; }
+
+/* ─── Selectbox ──────────────────────────────────────────────────────────── */
+[data-baseweb="select"] {
+  background-color: #111111 !important;
+}
+[data-baseweb="select"] > div {
+  background-color: #111111 !important;
+  border-color: var(--border) !important;
+  color: var(--white) !important;
+}
+
+/* ─── Radio buttons ──────────────────────────────────────────────────────── */
+.stRadio label { color: var(--white) !important; }
+
+/* ─── Spinner ────────────────────────────────────────────────────────────── */
+.stSpinner > div { border-top-color: var(--gold) !important; }
+
+/* ─── Fade-in animation for main pane ───────────────────────────────────── */
+@keyframes eldruin-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.main .block-container {
+  animation: eldruin-fadein 0.4s ease-in !important;
+}
+section[data-testid="stSidebar"] {
+  animation: eldruin-fadein 0.4s ease-in !important;
+}
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+  animation: eldruin-fadein 0.4s ease-in !important;
+}
+
+/* ─── Custom utility classes ─────────────────────────────────────────────── */
+/* Gold accent label */
+.gold-label {
+  color: var(--gold);
+  font-weight: 600;
+}
+/* Entity tag chips */
+.entity-tag {
+  display: inline-block;
+  background: #1a1a1a;
+  color: var(--gold);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 10px;
+  margin: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+/* Order score label */
+.score-label {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+/* Status dots */
+.status-ok   { color: #27ae60; font-size: 1.1rem; }
+.status-err  { color: #e74c3c; font-size: 1.1rem; }
+.status-warn { color: #f39c12; font-size: 1.1rem; }
+/* Order analysis card */
+.order-card {
+  background: rgba(26, 26, 26, 0.8);
+  color: var(--white);
+  border-left: 4px solid var(--gold);
+  border-radius: 6px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  margin-bottom: 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.order-card h3 { color: var(--gold) !important; margin: 0 0 8px 0; }
+.order-card p  { margin: 4px 0; font-size: 0.9rem; color: var(--silver); }
