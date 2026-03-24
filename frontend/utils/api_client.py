@@ -187,6 +187,39 @@ class APIClient:
         """Return knowledge graph statistics."""
         return self._get("/knowledge/stats")
 
+    def get_hierarchical_graph(
+        self,
+        min_degree: int = 0,
+        max_degree: int = 100,
+    ) -> Dict[str, Any]:
+        """Return a degree-filtered hierarchical view of the knowledge graph.
+
+        Args:
+            min_degree: Minimum node degree (inclusive).
+            max_degree: Maximum node degree (inclusive).
+
+        Returns:
+            Dict with ``"nodes"``, ``"edges"``, ``"degree_map"``,
+            ``"total_nodes"``, and ``"total_edges"`` keys.
+        """
+        return self._get(
+            "/knowledge/graph/hierarchy",
+            params={"min_degree": min_degree, "max_degree": max_degree},
+        )
+
+    def get_node_narrative(self, node_name: str) -> Dict[str, Any]:
+        """Return the Order Narrative for a single knowledge graph node.
+
+        Args:
+            node_name: The name of the node to look up.
+
+        Returns:
+            Dict with narrative fields including ``"node_name"``,
+            ``"node_type"``, ``"degree"``, ``"importance_tier"``,
+            ``"definition"``, ``"main_connections"``, and ``"global_role"``.
+        """
+        return self._get(f"/knowledge/graph/node-narrative/{node_name}")
+
     def extract_knowledge(self, text: str) -> Dict[str, Any]:
         """Extract entities and relations from raw text without persisting.
 
