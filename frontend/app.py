@@ -104,6 +104,18 @@ st.markdown(
     .status-ok   { color: #27ae60; font-size: 1.1rem; }
     .status-err  { color: #e74c3c; font-size: 1.1rem; }
     .status-warn { color: #f39c12; font-size: 1.1rem; }
+    /* Order card – dark blue background with gold accent border */
+    .order-card {
+        background: #1a365d;
+        color: #f0f4f8;
+        border-left: 4px solid #d4af37;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.1);
+        margin-bottom: 12px;
+    }
+    .order-card h3 { color: #d4af37 !important; margin: 0 0 8px 0; }
+    .order-card p  { margin: 4px 0; font-size: 0.9rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -169,6 +181,15 @@ _KG_DEFAULT_COLOR = "#C8C8C8"
 _KG_MAIN_HEIGHT = 800    # Main knowledge graph canvas height (px)
 _KG_MINI_HEIGHT = 600    # In-article mini-graph canvas height (px)
 _KG_EDGE_COLOR = "#D0D0D0"  # Soft grey edge colour for all graph renders
+
+# Node colour constants – three-layer hierarchy (leaf → bridge → hub)
+_NODE_COLOR_LEAF = "#D0D0D0"      # Neutral Grey  – isolated / leaf nodes
+_NODE_COLOR_BRIDGE = "#0A1F2E"    # Deep Navy     – bridge / connector nodes
+_NODE_COLOR_HUB = "#FFD700"       # Glowing Gold  – central hub nodes
+
+# Theme palette
+_THEME_DARK_BLUE = "#1a365d"
+_THEME_ACCENT_GOLD = "#d4af37"
 
 # Category colour mapping for news cards
 _NEWS_CATEGORY_COLORS: Dict[str, str] = {
@@ -301,27 +322,18 @@ def _node_size_and_color(
     node_degree: int,
     is_center: bool = False,
 ) -> tuple:
-    """Return (size, color) for a node based on its type and degree.
+    """Return (size, color) for a node based on its degree (three-layer hierarchy).
 
-    Node sizing logic:
-      - Center / highly-connected (degree ≥ 8): size 40, slate blue #5B7FA6
-      - Important concepts (degree ≥ 3):         size 25-30, warm earth #E8AB5D
-      - Ordinary concepts:                        size 15-20, intellect blue #4A90E2
-      - Relation nodes (MISC / degree 0):         size 10, neutral grey #C8C8C8
+    Three-layer colour hierarchy:
+      - Central Hubs  (is_center or degree > 5): Glowing Gold #FFD700, size 65
+      - Bridge Nodes  (2 < degree ≤ 5):          Deep Navy #0A1F2E, size 38
+      - Leaf Nodes    (degree ≤ 2):               Neutral Grey #D0D0D0, size 20
     """
-    if is_center or node_degree >= 8:
-        return 40, "#5B7FA6"
-    if node_degree >= 3:
-        size = 25 + min(node_degree - 3, 5)  # 25..30
-        return size, "#E8AB5D"
-    if node_degree >= 1:
-        size = 15 + node_degree * 2  # 17..19
-        return size, "#4A90E2"
-    # leaf / relation node
-    color = _KG_TYPE_COLORS.get(label_type.upper(), _KG_DEFAULT_COLOR)
-    if color == _KG_DEFAULT_COLOR:
-        return 10, "#C8C8C8"
-    return 15, color
+    if is_center or node_degree > 5:
+        return 65, _NODE_COLOR_HUB       # Central hubs – highly interconnected
+    if node_degree > 2:
+        return 38, _NODE_COLOR_BRIDGE    # Bridge nodes – connecting different domains
+    return 20, _NODE_COLOR_LEAF          # Leaf nodes – information sources / endpoints
 
 
 def render_graph(data: Dict[str, Any]) -> None:
@@ -414,28 +426,15 @@ def render_graph(data: Dict[str, Any]) -> None:
 
     try:
         config = Config(
-            width="100%",
+            width=800,
             height=_KG_MAIN_HEIGHT,
             directed=True,
             physics=True,
             hierarchical=False,
             nodeHighlightBehavior=True,
-            highlightColor="#E8AB5D",
+            highlightColor=_NODE_COLOR_HUB,
             collapsible=False,
-            # Tune barnesHut physics via individual kwargs (Config.__init__ kwargs)
-            solver="barnesHut",
-            minVelocity=1,
-            stabilization=True,
-            fit=True,
         )
-        # Apply barnesHut-specific tuning to prevent node overlap
-        config.physics["barnesHut"] = {
-            "gravitationalConstant": -50,
-            "springLength": 200,
-            "springConstant": 0.08,
-            "damping": 0.3,
-            "avoidOverlap": 0.5,
-        }
         with st.container():
             agraph(nodes=ag_nodes, edges=ag_edges, config=config)
     except (TypeError, ValueError) as exc:
@@ -1423,91 +1422,200 @@ elif page == "🕸️ 知识图谱":
 elif page == "📊 仪表板":
     st.title("📊 系统仪表板")
 
-    # ── Try to pull live data; fall back to placeholder values ───────────────
+    # ── Fetch live data ───────────────────────────────────────────────────────
     news_data = _api.get_latest_news(limit=100, hours=24)
     events_data = _api.get_extracted_events(limit=100)
+    kg_stats_resp = _api.get_kg_stats()
 
     articles_live = news_data.get("articles", []) if "error" not in news_data else []
     events_live = events_data.get("events", []) if "error" not in events_data else []
 
-    total_news = len(articles_live) if articles_live else "–"
-    total_events = len(events_live) if events_live else "–"
-    high_events = (
-        sum(1 for e in events_live if e.get("severity") == "high")
-        if events_live
-        else "–"
-    )
-    avg_conf_str = (
-        f"{sum(float(e.get('confidence', 0)) for e in events_live) / len(events_live):.1%}"
-        if events_live
-        else "–"
-    )
+    total_news = len(articles_live)
+    total_events = len(events_live)
+    high_events = sum(1 for e in events_live if e.get("severity") == "high") if events_live else 0
+    confidences = [float(e.get("confidence", 0)) for e in events_live if "confidence" in e]
+    avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
-    # ── Top-line metrics ─────────────────────────────────────────────────────
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("📰 今日新闻", total_news)
-    m2.metric("🎯 提取事件", total_events)
-    m3.metric("🔴 高危事件", high_events)
-    m4.metric("📊 平均置信度", avg_conf_str)
+    _kg_entities = kg_stats_resp.get("entities", 0) if "error" not in kg_stats_resp else 0
+    _kg_relations = kg_stats_resp.get("relations", 0) if "error" not in kg_stats_resp else 0
+    _kg_articles = kg_stats_resp.get("articles", 0) if "error" not in kg_stats_resp else 0
+    _kg_mentions = kg_stats_resp.get("mentions", 0) if "error" not in kg_stats_resp else 0
 
-    # ── Knowledge graph metrics ───────────────────────────────────────────────
-    kg_stats_resp = _api.get_kg_stats()
-    if "error" not in kg_stats_resp:
-        st.subheader("🕸️ 知识图谱")
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("🔵 实体", kg_stats_resp.get("entities", 0))
-        k2.metric("📰 文章", kg_stats_resp.get("articles", 0))
-        k3.metric("🔗 提及", kg_stats_resp.get("mentions", 0))
-        k4.metric("⚡ 关系", kg_stats_resp.get("relations", 0))
+    # ── Compute Order Index ───────────────────────────────────────────────────
+    # Formula: three equally-weighted dimensions, each capped at ~33 pts
+    #   • Relation/entity ratio  (×25, max 50): higher ratio → denser knowledge web
+    #   • Entity count           (×0.5, max 25): more entities → richer concept coverage
+    #   • Average event confidence (×25, max 25): higher confidence → more reliable signal
+    _rel_ent_ratio = _kg_relations / max(_kg_entities, 1)
+    _ratio_contrib = min(_rel_ent_ratio * 25, 50)          # max 50 pts from ratio
+    _entity_contrib = min(_kg_entities * 0.5, 25)          # max 25 pts from entity count
+    _conf_contrib = avg_conf * 25                           # max 25 pts from confidence
+    _order_index = min(100, int(_ratio_contrib + _entity_contrib + _conf_contrib))
+    _has_data = bool(articles_live or events_live or _kg_entities)
+
+    # ── Order Index gauge + system status ────────────────────────────────────
+    try:
+        import plotly.graph_objects as _go
+
+        _gauge_fig = _go.Figure(_go.Indicator(
+            mode="gauge+number",
+            value=_order_index if _has_data else 0,
+            domain={"x": [0, 1], "y": [0, 1]},
+            title={
+                "text": "秩序指数 · 信息逻辑密度",
+                "font": {"size": 18, "color": _THEME_DARK_BLUE},
+            },
+            gauge={
+                "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": _THEME_DARK_BLUE},
+                "bar": {"color": _THEME_ACCENT_GOLD},
+                "bgcolor": "white",
+                "borderwidth": 2,
+                "bordercolor": "#2c5282",
+                "steps": [
+                    {"range": [0, 33], "color": "#fce8e6"},
+                    {"range": [33, 67], "color": "#fff8e1"},
+                    {"range": [67, 100], "color": "#e8f5e9"},
+                ],
+                "threshold": {
+                    "line": {"color": _THEME_DARK_BLUE, "width": 4},
+                    "thickness": 0.75,
+                    "value": _order_index if _has_data else 0,
+                },
+            },
+            number={
+                "suffix": "/100",
+                "font": {"size": 28, "color": _THEME_DARK_BLUE},
+            },
+        ))
+        _gauge_fig.update_layout(
+            height=260,
+            margin={"t": 70, "b": 20, "l": 20, "r": 20},
+            paper_bgcolor="#ffffff",
+        )
+
+        _order_status = (
+            "🔴 低结构化" if _order_index < 33
+            else ("🟡 中等结构化" if _order_index < 67 else "🟢 高结构化")
+        )
+        _conf_display = f"{avg_conf:.1%}" if _has_data else "–"
+        _gauge_col, _status_col = st.columns([2, 1])
+        with _gauge_col:
+            st.plotly_chart(_gauge_fig, use_container_width=True)
+        with _status_col:
+            st.markdown(
+                f"<div class='order-card'>"
+                f"<h3>系统状态</h3>"
+                f"<p style='color:#d4af37;font-size:1.1rem;font-weight:700'>{_order_status}</p>"
+                f"<hr style='border-color:#2c5282;margin:8px 0'>"
+                f"<p>📰 今日新闻: <strong style='color:#d4af37'>{total_news or '–'}</strong></p>"
+                f"<p>🎯 提取事件: <strong style='color:#d4af37'>{total_events or '–'}</strong></p>"
+                f"<p>🔴 高危事件: <strong style='color:#d4af37'>{high_events or '–'}</strong></p>"
+                f"<p>📊 平均置信度: <strong style='color:#d4af37'>{_conf_display}</strong></p>"
+                f"<hr style='border-color:#2c5282;margin:8px 0'>"
+                f"<p>💡 实体节点: <strong style='color:#d4af37'>{_kg_entities}</strong></p>"
+                f"<p>🔗 语义关系: <strong style='color:#d4af37'>{_kg_relations}</strong></p>"
+                f"<p>⚖️ 关系/实体比: <strong style='color:#d4af37'>{_rel_ent_ratio:.2f}</strong></p>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+    except ImportError:
+        _val_str = f"{_order_index}/100" if _has_data else "–"
+        st.metric("秩序指数", _val_str)
 
     st.divider()
 
-    # ── Event type breakdown (requires plotly) ───────────────────────────────
+    # ── Event type breakdown (weighted by impact) ─────────────────────────────
     if events_live:
         try:
-            import plotly.express as px
-            import pandas as pd
+            import plotly.express as _px
+            import pandas as _pd
 
-            df_types = (
-                pd.DataFrame(events_live)
+            # Impact-weight mapping: long-term / global / irreversible = higher weight.
+            # Both Chinese and English keys are included since the backend may return
+            # event types in either language depending on the extraction model used.
+            _EVENT_WEIGHTS: Dict[str, float] = {
+                "地缘政治": 2.5, "政治冲突": 2.5, "军事行动": 2.5, "geopolitics": 2.5,
+                "外交事件": 2.0,
+                "科技突破": 2.0, "技术突破": 2.0, "technology": 2.0,
+                "制度创新": 1.8, "institution": 1.8,
+                "经济波动": 1.2, "贸易摩擦": 1.2, "economic": 1.2,
+                "自然灾害": 1.0, "人道危机": 1.0, "恐怖袭击": 1.0,
+            }
+            _DEFAULT_WEIGHT = 0.8  # fallback for any unrecognised event type
+
+            _df_events = _pd.DataFrame(events_live)
+            _df_types = (
+                _df_events
                 .groupby("event_type", as_index=False)
                 .size()
                 .rename(columns={"size": "count"})
             )
+            # str() cast handles potential NaN / non-string values from the DataFrame
+            _df_types["weight"] = _df_types["event_type"].map(
+                lambda t: _EVENT_WEIGHTS.get(str(t), _DEFAULT_WEIGHT)
+            )
+            _df_types["weighted_score"] = (_df_types["count"] * _df_types["weight"]).round(1)
+            _df_types = _df_types.sort_values("weighted_score", ascending=False)
 
-            st.subheader("事件类型分布")
-            fig = px.bar(
-                df_types,
-                x="event_type",
-                y="count",
-                labels={"event_type": "事件类型", "count": "数量"},
-                color="count",
-                color_continuous_scale="reds",
-            )
-            fig.update_layout(showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            _chart_col, _pie_col = st.columns(2)
 
-            # Severity pie
-            df_sev = (
-                pd.DataFrame(events_live)
-                .groupby("severity", as_index=False)
-                .size()
-                .rename(columns={"size": "count"})
-            )
-            st.subheader("严重级别分布")
-            fig2 = px.pie(
-                df_sev,
-                names="severity",
-                values="count",
-                color="severity",
-                color_discrete_map={"high": "#e74c3c", "medium": "#f39c12", "low": "#2ecc71"},
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+            with _chart_col:
+                st.subheader("📊 事件分布（影响力权重）")
+                st.caption("各类事件按影响力权重排序（长期/全球/难逆性越高权重越大）")
+                _fig_w = _px.bar(
+                    _df_types,
+                    x="event_type",
+                    y="weighted_score",
+                    labels={"event_type": "事件类型", "weighted_score": "影响力加权分"},
+                    color="weighted_score",
+                    color_continuous_scale=[_THEME_DARK_BLUE, _THEME_ACCENT_GOLD],
+                    text="weighted_score",
+                )
+                _fig_w.update_traces(textposition="outside")
+                _fig_w.update_layout(
+                    showlegend=False,
+                    plot_bgcolor="#f8f9fa",
+                    paper_bgcolor="#ffffff",
+                    xaxis_tickangle=-30,
+                    coloraxis_showscale=False,
+                )
+                st.plotly_chart(_fig_w, use_container_width=True)
+
+            with _pie_col:
+                st.subheader("📊 严重级别分布")
+                _df_sev = (
+                    _df_events
+                    .groupby("severity", as_index=False)
+                    .size()
+                    .rename(columns={"size": "count"})
+                )
+                _fig_sev = _px.pie(
+                    _df_sev,
+                    names="severity",
+                    values="count",
+                    color="severity",
+                    color_discrete_map={
+                        "high": "#e74c3c",
+                        "medium": "#f39c12",
+                        "low": "#2ecc71",
+                    },
+                )
+                st.plotly_chart(_fig_sev, use_container_width=True)
 
         except ImportError:
             st.info("安装 plotly 和 pandas 可以查看图表：`pip install plotly pandas`")
     else:
         st.info("🚧 请先聚合新闻和提取事件，仪表板将显示实时统计。")
+
+    # ── Knowledge graph metrics ───────────────────────────────────────────────
+    if "error" not in kg_stats_resp:
+        with st.container(border=True):
+            st.subheader("🕸️ 知识图谱")
+            _k1, _k2, _k3, _k4 = st.columns(4)
+            _k1.metric("🔵 实体", _kg_entities)
+            _k2.metric("📰 文章", _kg_articles)
+            _k3.metric("🔗 提及", _kg_mentions)
+            _k4.metric("⚡ 关系", _kg_relations)
 
 # ===========================================================================
 # Page: ⚙️ 系统状态
