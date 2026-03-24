@@ -32,6 +32,31 @@ logger = logging.getLogger(__name__)
 # 操作模式类型
 ModeType = Literal["strict", "balanced"]
 
+# 哲学批评系统提示词
+_PHILOSOPHICAL_CRITIQUE_SYSTEM_PROMPT = """你是 El-druin 的哲学分析师（Philosophical Analyst）。
+你的任务是从系统性视角分析知识图谱中的实体、关系和因果链，生成深度的哲学层面解释。
+
+请从以下角度分析：
+1. 这些连接如何加固或削弱了文明体系的骨架？
+2. 哪些关系是"不可逆的结构性变化"？
+3. 系统的潜在脆弱点在哪里？
+4. 长期来看，这会如何影响全局秩序？
+
+输出要求：
+- 用中文写一段连贯的哲学性段落（200-400 字）
+- 语言要有深度，体现系统思维
+- 不要列表，只要段落文字
+- 直接返回段落文本，不要 JSON 格式"""
+
+_PHILOSOPHICAL_CRITIQUE_HUMAN_TEMPLATE = (
+    "根据以下信息，生成哲学层面的系统稳定性分析：\n\n"
+    "实体数量: {entity_count}\n"
+    "关系数量: {relation_count}\n"
+    "因果链数量: {chain_count}\n\n"
+    "主要因果链：\n{chains_summary}\n\n"
+    "请生成一段深度分析。"
+)
+
 # 各模式对应的最低秩序评分阈值
 _MODE_THRESHOLDS: Dict[str, float] = {
     "strict": 80.0,
@@ -366,3 +391,89 @@ class OrderCritic:
         """清除内存评估缓存。"""
         self._cache.clear()
         logger.info("评估缓存已清空")
+
+    def generate_philosophical_critique(
+        self,
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        causal_chains: List[Dict[str, Any]],
+    ) -> str:
+        """生成哲学层面的系统稳定性分析段落。
+
+        根据提取的实体、关系和因果链，调用 LLM 生成一段描述系统稳定性的
+        哲学性文字，解释为什么这些连接对文明体系的骨架至关重要。
+
+        Args:
+            entities: 提取的实体列表（各含 name、type 等字段）。
+            relations: 提取的关系列表（各含 from、to、type 等字段）。
+            causal_chains: 因果链条列表（各含 chain、description、confidence 等字段）。
+
+        Returns:
+            哲学性分析段落（字符串）。若 LLM 不可用，则返回规则生成的备用文字。
+        """
+        # 生成因果链摘要（取前 3 条）
+        chains_summary_lines: List[str] = []
+        for i, c in enumerate(causal_chains[:3], 1):
+            chain_str = c.get("chain", "")
+            desc = c.get("description", "")
+            conf = float(c.get("confidence", 0.0))
+            chains_summary_lines.append(
+                f"  {i}. {chain_str} (置信度: {conf:.0%})\n     {desc}"
+            )
+        chains_summary = "\n".join(chains_summary_lines) if chains_summary_lines else "（暂无因果链数据）"
+
+        # Fallback text when no API key or LLM unavailable
+        if not self._api_key:
+            return self._fallback_philosophical_critique(
+                len(entities), len(relations), len(causal_chains)
+            )
+
+        try:
+            from langchain_core.prompts import ChatPromptTemplate
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", _PHILOSOPHICAL_CRITIQUE_SYSTEM_PROMPT),
+                ("human", _PHILOSOPHICAL_CRITIQUE_HUMAN_TEMPLATE),
+            ])
+            chain = prompt | self._get_llm()
+            response = chain.invoke({
+                "entity_count": len(entities),
+                "relation_count": len(relations),
+                "chain_count": len(causal_chains),
+                "chains_summary": chains_summary,
+            })
+            raw = response.content if hasattr(response, "content") else str(response)
+            return raw.strip()
+
+        except Exception as exc:
+            logger.error("哲学批评生成失败: %s", exc)
+            return self._fallback_philosophical_critique(
+                len(entities), len(relations), len(causal_chains)
+            )
+
+    @staticmethod
+    def _fallback_philosophical_critique(
+        entity_count: int,
+        relation_count: int,
+        chain_count: int,
+    ) -> str:
+        """当 LLM 不可用时，返回规则生成的备用哲学分析文字。"""
+        density = relation_count / max(entity_count, 1)
+        if chain_count > 3 and density > 1.5:
+            stability = "高度复杂且相互交织"
+            outlook = "系统正处于结构性重组阶段，短期内波动不可避免，但长期演化方向尚待确认。"
+        elif chain_count > 0:
+            stability = "具有一定结构性"
+            outlook = "系统呈现出初步的秩序化趋势，关键节点的稳定性将决定整体演化走向。"
+        else:
+            stability = "相对简单"
+            outlook = "当前数据揭示的关系较为表面，深层因果机制有待进一步挖掘。"
+
+        return (
+            f"从本体论视角审视，当前知识图谱所呈现的 {entity_count} 个实体节点与 "
+            f"{relation_count} 条语义关系构成了一个{stability}的信息网络。"
+            f"提取到的 {chain_count} 条因果链条揭示了事件背后的驱动机制，"
+            f"这些链条是否具有结构性意义，取决于其时间跨度与影响传播范围。"
+            f"{outlook}"
+            f"El-druin 将持续追踪这些连接的演化，以评估文明体系骨架的稳定性。"
+        )

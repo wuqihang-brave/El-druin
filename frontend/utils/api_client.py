@@ -199,6 +199,50 @@ class APIClient:
         """
         return self._post("/knowledge/extract", json={"text": text})
 
+    def extract_causal_chains(self, text: str, model: str = "llama3-8b-8192") -> Dict[str, Any]:
+        """Extract deep causal chains from news text via the backend.
+
+        Uses an enhanced LLM prompt to discover multi-step causal paths that go
+        beyond simple subject-predicate-object triples.
+
+        Args:
+            text: The news article text to analyse.
+            model: LLM model name to use (default ``"llama3-8b-8192"``).
+
+        Returns:
+            Dict with ``"entities"``, ``"relations"``, ``"causal_chains"``, and
+            ``"overall_order_score"`` keys.
+        """
+        return self._post("/knowledge/extract-causal-chains", json={"text": text, "model": model})
+
+    def get_order_critique(
+        self,
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        causal_chains: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Generate a philosophical critique of system stability.
+
+        Calls the Order Critic agent on the backend to produce a paragraph-length
+        philosophical analysis of the supplied knowledge graph data.
+
+        Args:
+            entities: List of entity dicts.
+            relations: List of relation dicts.
+            causal_chains: List of causal chain dicts.
+
+        Returns:
+            Dict with ``"critique"`` (string) and ``"order_score"`` (int 0-100) keys.
+        """
+        return self._post(
+            "/knowledge/critique",
+            json={
+                "entities": entities,
+                "relations": relations,
+                "causal_chains": causal_chains,
+            },
+        )
+
     # ------------------------------------------------------------------
     # Health / system endpoints
     # ------------------------------------------------------------------
