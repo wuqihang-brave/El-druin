@@ -43,8 +43,8 @@ from utils.api_client import APIClient  # noqa: E402
 # Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="知识图谱 – EL'druin",
-    page_icon="🕸️",
+    page_title="知识图谱 – EL-DRUIN",
+    page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -54,6 +54,16 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 _backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api/v1"
 _api = APIClient(base_url=_backend_url)
+
+# ---------------------------------------------------------------------------
+# Inject Dark Liturgy CSS
+# ---------------------------------------------------------------------------
+_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles.css")
+try:
+    with open(_CSS_PATH, encoding="utf-8") as _css_f:
+        st.markdown(f"<style>{_css_f.read()}</style>", unsafe_allow_html=True)
+except FileNotFoundError:
+    pass  # CSS missing – app still functional
 
 # ---------------------------------------------------------------------------
 # Session state initialisation
@@ -66,20 +76,20 @@ if "kg_query_text" not in st.session_state:
     st.session_state.kg_query_text: str = ""
 
 # ---------------------------------------------------------------------------
-# Entity-type colour map (used in both visualisation tabs)
+# Entity-type colour map (Dark Matter theme — muted tones on dark background)
 # ---------------------------------------------------------------------------
 _TYPE_COLORS: Dict[str, str] = {
-    "PERSON": "#e74c3c",
-    "ORG": "#3498db",
-    "GPE": "#2ecc71",
-    "LOC": "#f39c12",
-    "DATE": "#9b59b6",
-    "MONEY": "#1abc9c",
-    "PERCENT": "#e67e22",
-    "EVENT": "#e91e63",
-    "MISC": "#95a5a6",
+    "PERSON":  "#D4AF37",  # Apostolic Gold
+    "ORG":     "#A8A8A8",  # Dimmed Silver
+    "GPE":     "#E0E0E0",  # Cold White
+    "LOC":     "#B8931F",  # Dark Gold
+    "DATE":    "#8B8B8B",  # Muted Grey
+    "MONEY":   "#C8A85A",  # Warm Gold-Tan
+    "PERCENT": "#D4AF37",  # Apostolic Gold
+    "EVENT":   "#F0F0F0",  # Altar White
+    "MISC":    "#555555",  # Dark Neutral
 }
-_DEFAULT_COLOR = "#95a5a6"
+_DEFAULT_COLOR = "#555555"
 
 
 def _entity_color(entity_type: str) -> str:
@@ -87,15 +97,15 @@ def _entity_color(entity_type: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Hierarchical graph tier constants
+# Hierarchical graph tier constants — Dark Matter theme
 # (thresholds must match backend/_importance_tier in knowledge.py)
 # ---------------------------------------------------------------------------
 _HG_TIERS = [
     # (min_degree, label, color, size)
-    (10, "Critical",  "#FFD700", 80),
-    (5,  "Important", "#0A3D6B", 50),
-    (2,  "Bridge",    "#4A90E2", 35),
-    (0,  "Leaf",      "#D0D0D0", 20),
+    (10, "Critical",  "#D4AF37", 80),   # Apostolic Gold — core hubs
+    (5,  "Important", "#2D333B", 50),   # Dark Grey-Blue — connectors
+    (2,  "Bridge",    "#A8A8A8", 35),   # Dimmed Silver  — bridges
+    (0,  "Leaf",      "#E0E0E0", 20),   # Cold White     — fringe
 ]
 
 
@@ -104,13 +114,28 @@ def _node_visual(degree: int):
     for min_deg, label, color, size in _HG_TIERS:
         if degree >= min_deg:
             return label, color, size
-    return "Leaf", "#D0D0D0", 20
+    return "Leaf", "#E0E0E0", 20
 
 
 # ===========================================================================
 # Page title
 # ===========================================================================
-st.title("🕸️ 知识图谱")
+st.markdown(
+    """
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="32" height="32">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="#D4AF37" stroke-width="0.8"
+                  stroke-dasharray="2 3.2"/>
+          <line x1="20" y1="4" x2="20" y2="36" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="12" y1="14" x2="28" y2="14" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="16" y1="16" x2="24" y2="16" stroke="#D4AF37" stroke-width="0.8" stroke-linecap="round"/>
+        </svg>
+        <h1 style="color:#F0F0F0;margin:0;font-weight:300;letter-spacing:2px;
+                   font-family:'Inter',sans-serif;">知识图谱</h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.caption("从文本中提取实体与关系，可视化知识图谱，并通过 Cypher 查询探索数据。")
 
 st.divider()
@@ -138,7 +163,7 @@ with tab_extract:
 
     col_btn, col_clear = st.columns([1, 5])
     with col_btn:
-        do_extract = st.button("🔄 提取并存储", type="primary", key="btn_extract")
+        do_extract = st.button("⚔️ Manifest Knowledge", type="primary", key="btn_extract")
     with col_clear:
         if st.button("🗑️ 清除结果", key="btn_clear_extract"):
             st.session_state.kg_extract_result = {}
@@ -338,7 +363,7 @@ with tab_viz:
                         source=src,
                         target=tgt,
                         label=data.get("label", ""),
-                        color="#888888",
+                        color="rgba(85,85,85,0.4)",
                     )
                 )
 
@@ -349,7 +374,7 @@ with tab_viz:
                 physics=True,
                 hierarchical=False,
                 nodeHighlightBehavior=True,
-                highlightColor="#f1c40f",
+                highlightColor="#D4AF37",
                 collapsible=False,
             )
 
@@ -376,20 +401,24 @@ with tab_viz:
                 data=[
                     go.Scatter(
                         x=edge_x, y=edge_y, mode="lines",
-                        line={"width": 1, "color": "#aaaaaa"},
+                        line={"width": 0.5, "color": "rgba(85,85,85,0.4)"},
                         hoverinfo="none",
                     ),
                     go.Scatter(
                         x=node_x, y=node_y, mode="markers+text",
                         text=node_text, textposition="top center",
-                        marker={"size": 14, "color": node_colors},
+                        textfont={"color": "#A8A8A8", "size": 10},
+                        marker={"size": 14, "color": node_colors,
+                                "line": {"width": 1, "color": "#2D333B"}},
                         hoverinfo="text",
                     ),
                 ],
                 layout=go.Layout(
-                    title="知识图谱网络图",
+                    title={"text": "知识图谱网络图", "font": {"color": "#F0F0F0"}},
                     showlegend=False,
                     hovermode="closest",
+                    paper_bgcolor="#0D0D0D",
+                    plot_bgcolor="#0D0D0D",
                     xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                     yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                     height=550,
