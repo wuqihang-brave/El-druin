@@ -52,7 +52,7 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Backend client
 # ---------------------------------------------------------------------------
-_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001/api/v1")
+_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api/v1"
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
