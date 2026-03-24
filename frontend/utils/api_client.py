@@ -397,6 +397,35 @@ class APIClient:
         """
         return self._get("/intelligence/audit-log", params={"limit": limit})
 
+    # ------------------------------------------------------------------
+    # Provenance endpoints
+    # ------------------------------------------------------------------
+
+    def get_relationship_provenance(self, relationship_id: str) -> Dict[str, Any]:
+        """Return all source references supporting a specific relationship.
+
+        Args:
+            relationship_id: Unique identifier (or composite key) of the
+                relationship edge.
+
+        Returns:
+            Dict with ``"relationship_id"``, ``"relationship_type"``,
+            ``"from_entity"``, ``"to_entity"``, ``"source_refs"`` keys.
+        """
+        return self._get(f"/provenance/relationship/{relationship_id}")
+
+    def get_entity_provenance(self, entity_id: str) -> Dict[str, Any]:
+        """Return all relationships connected to an entity plus their source refs.
+
+        Args:
+            entity_id: Entity ID or name.
+
+        Returns:
+            Dict with ``"entity_id"``, ``"entity_name"``, ``"outgoing"``,
+            ``"incoming"``, ``"property_history"`` keys.
+        """
+        return self._get(f"/provenance/entity/{entity_id}")
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()
