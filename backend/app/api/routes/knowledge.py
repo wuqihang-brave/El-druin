@@ -63,6 +63,34 @@ class FilterRequest(BaseModel):
     )
 
 
+class CausalChainRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=10,
+        max_length=10000,
+        description="News text to extract causal chains from",
+    )
+    model: str = Field(
+        default="llama3-8b-8192",
+        description="LLM model name to use for extraction",
+    )
+
+
+class CritiqueRequest(BaseModel):
+    entities: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of extracted entities",
+    )
+    relations: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of extracted relations",
+    )
+    causal_chains: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of causal chains extracted from the text",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -282,4 +310,74 @@ def filter_triples(
         }
     except Exception as exc:
         logger.error("Order Critic filter error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/extract-causal-chains")
+def extract_causal_chains(
+    request: CausalChainRequest,
+) -> Dict[str, Any]:
+    """Extract deep causal chains from news text using an enhanced LLM prompt.
+
+    Unlike the basic ``/extract`` endpoint which only captures surface-level
+    subject-predicate-object triples, this endpoint uses a specialised causal-chain
+    extraction prompt to uncover multi-step influence paths hidden in the text.
+
+    Request body::
+
+        {"text": "美国对中国芯片产业实施新制裁…", "model": "llama3-8b-8192"}
+
+    Returns entities, direct relations, causal chains with confidence scores,
+    longevity, impact scope, reversibility, and an overall order score.
+    """
+    try:
+        from knowledge_layer.causal_chain_extractor import extract_causal_chains as _extract
+
+        result = _extract(news_text=request.text, model=request.model)
+        return {"status": "ok", **result}
+    except Exception as exc:
+        logger.error("Causal chain extraction error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/critique")
+def generate_order_critique(
+    request: CritiqueRequest,
+) -> Dict[str, Any]:
+    """Generate a philosophical critique of system stability from knowledge graph data.
+
+    Calls the Order Critic agent to produce a paragraph-length philosophical
+    explanation of why the supplied entities, relations, and causal chains are
+    important for civilisational-level reasoning and system stability.
+
+    Request body::
+
+        {
+            "entities":      [{"name": "...", "type": "..."}],
+            "relations":     [{"from": "...", "to": "...", "type": "..."}],
+            "causal_chains": [{"chain": "A → B → C", "confidence": 0.85, ...}]
+        }
+
+    Returns a ``critique`` string and an ``order_score`` integer (0–100).
+    """
+    try:
+        from knowledge_layer.causal_chain_extractor import calculate_overall_order_score
+        from knowledge_layer.order_critic import OrderCritic
+
+        critic = OrderCritic()
+        critique_text = critic.generate_philosophical_critique(
+            entities=request.entities,
+            relations=request.relations,
+            causal_chains=request.causal_chains,
+        )
+        order_score = calculate_overall_order_score(
+            request.entities, request.relations, request.causal_chains
+        )
+        return {
+            "status": "ok",
+            "critique": critique_text,
+            "order_score": order_score,
+        }
+    except Exception as exc:
+        logger.error("Order critique generation error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
