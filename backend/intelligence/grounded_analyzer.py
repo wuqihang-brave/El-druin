@@ -1,5 +1,5 @@
 """
-EL'druin Intelligence Platform – Ontology-Grounded Analyzer
+EL-druin Intelligence Platform – Ontology-Grounded Analyzer
 ============================================================
 
 Combines KuzuDB ontological path extraction with the Deduction Soul engine
@@ -15,14 +15,11 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
-from intelligence.deduction_engine import DeductionEngine
-
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Ontological context extraction helper
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════
+# Helper: Get Ontological Context from KuzuDB
+# ═══════════════════════════════════════════════════════════════════
 
 def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
     """Query KuzuDB for 1-hop and 2-hop paths from *entity_name*.
@@ -39,12 +36,11 @@ def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
     if kuzu_conn is None:
         return f"[No KuzuDB connection – context unavailable for '{entity_name}']"
 
-    # Sanitize entity name to prevent Cypher injection: strip surrounding
-    # quotes and escape any remaining single quotes.
+    # Sanitize entity name to prevent Cypher injection
     safe_name = entity_name.replace("'", "\\'").replace("\\", "\\\\")
 
     try:
-        # 1-hop paths
+        # 1-hop paths: A --[rel]--> B
         query_1hop = (
             "MATCH (a)-[r]->(b) "
             f"WHERE a.name = '{safe_name}' "
@@ -52,17 +48,19 @@ def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
         )
         result_1hop = kuzu_conn.execute(query_1hop)
         lines: List[str] = []
+        
         while result_1hop.hasNext():
             row = result_1hop.getNext()
             lines.append(f"{row[0]} --[{row[1]}]--> {row[2]}")
 
-        # 2-hop paths
+        # 2-hop paths: A --[rel1]--> B --[rel2]--> C
         query_2hop = (
             "MATCH (a)-[r1]->(b)-[r2]->(c) "
             f"WHERE a.name = '{safe_name}' "
             "RETURN a.name, type(r1), b.name, type(r2), c.name LIMIT 20"
         )
         result_2hop = kuzu_conn.execute(query_2hop)
+        
         while result_2hop.hasNext():
             row = result_2hop.getNext()
             lines.append(
@@ -74,14 +72,14 @@ def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
 
         return "\n".join(lines)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("KuzuDB query failed for '%s': %s", entity_name, exc)
         return f"[KuzuDB query error for '{entity_name}': {exc}]"
 
 
-# ---------------------------------------------------------------------------
-# Main analyzer
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════
+# Main Analyzer: OntologyGroundedAnalyzer with Deduction Soul
+# ═══════════════════════════════════════════════════════════════════
 
 class OntologyGroundedAnalyzer:
     """
@@ -89,6 +87,12 @@ class OntologyGroundedAnalyzer:
 
     Combines KuzuDB path extraction with DeductionEngine to produce
     strictly ontology-grounded scenario analysis.
+    
+    Features:
+    - Extracts 1-hop and 2-hop ontological paths from KuzuDB
+    - Injects DeductionEngine for strict logical reasoning
+    - Forces JSON output with complete causal chains
+    - Never fabricates—only deduces from knowledge graph paths
     """
 
     def __init__(
@@ -109,12 +113,13 @@ class OntologyGroundedAnalyzer:
         self.kuzu = kuzu_conn
         self.analyzer = sacred_sword_analyzer
 
-        # 【注入推演灵魂】
+        # 【注入推演灵魂】Inject Deduction Soul
+        from intelligence.deduction_engine import DeductionEngine
         self.deduction_engine = DeductionEngine(llm_service)
 
-    # ------------------------------------------------------------------
+    # ─────────────────────────────────────────────────────────────────
     # Public API
-    # ------------------------------------------------------------------
+    # ─────────────────────────────────────────────────────────────────
 
     def analyze_with_ontological_grounding(
         self,
@@ -130,6 +135,12 @@ class OntologyGroundedAnalyzer:
         3. Strict JSON output with causal chains
         4. Complete traceability to KG relationships
 
+        Pipeline:
+        1. Extract ontological context for every seed entity (1-hop + 2-hop).
+        2. Activate DeductionEngine with ontological context.
+        3. LLM performs strictly path-based inference.
+        4. Return structured result with deduction JSON.
+
         Args:
             news_fragment: Raw news text (used as event trigger summary).
             seed_entities: Entity names to use as path query seeds.
@@ -139,30 +150,38 @@ class OntologyGroundedAnalyzer:
             Dict with ``status``, ``ontological_grounding``,
             ``deduction_result``, and ``timestamp``.
         """
+        
+        logger.info(
+            "Processing news with ontological grounding: %s...",
+            news_fragment[:100]
+        )
+
         # Step 1: Extract ontological context for each seed entity
         ontological_premises: Dict[str, str] = {}
+        
         for entity in seed_entities:
             try:
                 context = get_ontological_context(self.kuzu, entity)
                 ontological_premises[entity] = context
                 logger.info("Extracted ontological context for: %s", entity)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error("Failed to extract context for %s: %s", entity, exc)
                 ontological_premises[entity] = ""
 
-        # Step 2: 【激活推演灵魂】
+        # Step 2: 【激活推演灵魂】Activate Deduction Soul
         combined_premise = "\n".join(
             ctx for ctx in ontological_premises.values() if ctx
         )
 
         logger.info("Activating Deduction Soul for logical inference...")
+        
         deduction_result = self.deduction_engine.deduce_from_ontological_paths(
             news_summary=news_fragment[:200],
             ontological_context=combined_premise,
             seed_entities=seed_entities,
         )
 
-        # Step 3: Return structured result with full deduction JSON
+        # Step 3: Return structured result with complete deduction JSON
         return {
             "status": "success",
             "ontological_grounding": {
