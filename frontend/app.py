@@ -22,6 +22,7 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import requests
 import streamlit as st
 
 # Allow ``from utils.api_client import api_client`` when the working directory
@@ -31,13 +32,8 @@ if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
-from components.order_critique import display_order_critique  # noqa: E402
 from components.sidebar import render_sidebar_navigation  # noqa: E402
-from components.facts_center import render_facts_center  # noqa: E402
-from components.judgment_panel import render_judgment_panel  # noqa: E402
 from utils.deep_extraction import (  # noqa: E402
-    extract_causal_chains,
-    visualize_confidence,
     calculate_systemic_order_score,
     get_order_status,
     calculate_signal_noise_ratio,
@@ -62,7 +58,7 @@ logger = logging.getLogger(__name__)
 # Page configuration (must be first Streamlit call)
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="EL-DRUIN",
+    page_title="EL-DRUIN • Ontological Intelligence",
     page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -99,6 +95,63 @@ except FileNotFoundError:
         """,
         unsafe_allow_html=True,
     )
+
+# ---------------------------------------------------------------------------
+# Elite Scenario Simulation Dashboard – Additional Styles
+# ---------------------------------------------------------------------------
+st.markdown("""
+<style>
+    .stApp { background-color: #F8FAFB; }
+    .stApp p, .stApp span { color: #2C3E50; }
+    .news-card {
+        background: white; border-radius: 6px; padding: 16px;
+        border-left: 4px solid #0047AB;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 12px;
+        transition: all 0.2s ease;
+    }
+    .news-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-left-color: #003580; }
+    .scenario-alpha {
+        background: #FFFBF0; border-left: 4px solid #D4AF37;
+        padding: 16px; border-radius: 6px; margin-bottom: 16px;
+    }
+    .scenario-alpha-header {
+        color: #B8860B; font-weight: 600; font-size: 14px;
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .scenario-beta {
+        background: #FEF5F5; border-left: 4px solid #DC3545;
+        padding: 16px; border-radius: 6px; margin-bottom: 16px;
+    }
+    .scenario-beta-header {
+        color: #C82333; font-weight: 600; font-size: 14px;
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .causal-chain {
+        background: #F5F5F5; border: 1px solid #E0E0E0; border-radius: 4px;
+        padding: 12px; font-family: 'Courier New', monospace; font-size: 12px;
+        color: #333; line-height: 1.6;
+    }
+    .entity-tag {
+        display: inline-block; background: #E8F0FE; color: #0047AB;
+        padding: 4px 8px; border-radius: 3px; font-size: 11px;
+        margin-right: 6px; margin-bottom: 4px; font-weight: 500;
+    }
+    .metric-card {
+        background: white; border: 1px solid #E8E8E8;
+        border-radius: 4px; padding: 12px; text-align: center;
+    }
+    .metric-value { font-size: 28px; font-weight: 700; color: #0047AB; }
+    .metric-label {
+        font-size: 12px; color: #999; margin-top: 4px;
+        text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .elite-divider {
+        height: 1px;
+        background: linear-gradient(to right, transparent, #DDD, transparent);
+        margin: 24px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Backend URL (env-configurable)
@@ -591,36 +644,17 @@ def render_graph(data: Dict[str, Any]) -> None:
 
 
 # ===========================================================================
-# Page: 🏠 主页  –  Truth Monitor (2-column: Facts | Judgment)
+# Page: 🏠 主页  –  Elite Scenario Simulation Dashboard
 # ===========================================================================
 if page == "🏠 主页":
     # ── Page header ──────────────────────────────────────────────────────────
-    st.markdown(
-        """
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
-            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-              <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-              <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="20" cy="15" r="2" fill="#0047AB"/>
-            </svg>
-            <div>
-              <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
-                         font-family:'Inter',sans-serif;">EL-DRUIN 圣剑分析官</h1>
-              <p style="color:#606060;font-size:0.88rem;margin:0;font-style:italic;
-                        font-family:'Inter',sans-serif;">
-                Ontological Intelligence &amp; Systematic Order
-              </p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<p style='color:#606060;font-size:0.85rem;margin:2px 0 0 0;"
-        "font-family:Inter,sans-serif;'>🔍 Truth Monitor – Ontological Analysis Center</p>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
+    _col_header1, _col_header2 = st.columns([4, 1])
+    with _col_header1:
+        st.markdown("# ⚔️ EL-DRUIN Ontological Intelligence")
+        st.markdown("*Scenario Simulation Dashboard*")
+    with _col_header2:
+        st.markdown(f"**Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
     # ── Session-state defaults ───────────────────────────────────────────────
     if "home_top5_news" not in st.session_state:
@@ -628,117 +662,246 @@ if page == "🏠 主页":
     if "home_judgment" not in st.session_state:
         st.session_state.home_judgment: Dict[str, Any] = {}
 
-    # ── Ingest Intelligence button ────────────────────────────────────────────
-    if st.button("🧠 Ingest Intelligence", type="primary", key="home_ingest"):
-        with st.spinner("正在摄入情报…"):
-            # Fetch latest news articles (up to 5) for the Facts column
-            _news_r = _api.get_latest_news(limit=5, hours=48)
-            _articles = _news_r.get("articles", []) if "error" not in _news_r else []
+    # ── Main content: 40/60 split ────────────────────────────────────────────
+    col_feed, col_judgment = st.columns([4, 6], gap="large")
 
-            # Enrich each article with entity data from the knowledge graph
-            _ent_r = _api.get_kg_entities(limit=80)
-            _entities_list = _ent_r.get("entities", []) if "error" not in _ent_r else []
+    # ─── LEFT COLUMN: Intelligence Feed (40%) ────────────────────────────────
+    with col_feed:
+        st.subheader("📰 Intelligence Feed")
 
-            # Build a simple name → entity lookup for entity tagging
-            _entity_map: Dict[str, Any] = {
-                e.get("name", "").lower(): e
-                for e in _entities_list
-                if e.get("name")
-            }
+        # Seed events – in production these are fetched from the backend
+        _seed_events: List[Dict[str, Any]] = [
+            {
+                "id": "evt_001",
+                "title": "European Commission Announces AI Regulation",
+                "source": "Reuters",
+                "date": "2026-03-25",
+                "summary": (
+                    "The European Commission has unveiled strict new artificial intelligence "
+                    "regulations to govern AI development across the EU..."
+                ),
+                "entities": [
+                    {"name": "European Commission", "type": "ORGANIZATION", "role": "REGULATOR", "virtue": "RIGID"},
+                    {"name": "EU", "type": "COUNTRY", "role": "PIVOT", "virtue": "PRINCIPLED"},
+                    {"name": "AI Regulation", "type": "IDEOLOGY", "role": "CONSTRAINT", "virtue": "IDEOLOGICAL"},
+                ],
+            },
+            {
+                "id": "evt_002",
+                "title": "Tech Giants Challenge New AI Rules",
+                "source": "TechCrunch",
+                "date": "2026-03-24",
+                "summary": (
+                    "Major technology companies express concerns about compliance costs "
+                    "and innovation slowdown..."
+                ),
+                "entities": [
+                    {"name": "Tech Companies", "type": "CORPORATION", "role": "RESISTOR", "virtue": "PRAGMATIC"},
+                    {"name": "AI Regulation", "type": "IDEOLOGY", "role": "CONSTRAINT", "virtue": "IDEOLOGICAL"},
+                ],
+            },
+        ]
 
-            _enriched_news: List[Dict[str, Any]] = []
-            for _art in _articles[:5]:
-                _title = _art.get("title", "")
-                _desc = _art.get("description") or _art.get("summary") or ""
-                _combined = (_title + " " + _desc).lower()
+        for _evt in _seed_events:
+            with st.container():
+                st.markdown(
+                    f'<div class="news-card">'
+                    f'<b>{_evt["title"]}</b><br/>'
+                    f'<span style="font-size:12px;color:#999;">'
+                    f'{_evt["source"]} • {_evt["date"]}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f'_{_evt["summary"]}_')
 
-                # Match entities that appear in the article text
-                _matched_entities = [
-                    {
-                        "name": _ent.get("name", ""),
-                        "layer1": (_ent.get("type") or "ENTITY").upper(),
-                        "layer2": (_ent.get("role") or _ent.get("structural_role") or "PIVOT").upper(),
-                        "layer3": (_ent.get("virtue") or _ent.get("philosophical_nature") or "RESILIENT").upper(),
-                    }
-                    for _name, _ent in _entity_map.items()
-                    if _name and _name in _combined
-                ]
+                st.markdown("**Entities:**")
+                _entity_html = "".join(
+                    f'<span class="entity-tag">{_e["name"]}</span>'
+                    for _e in _evt["entities"]
+                )
+                st.markdown(_entity_html, unsafe_allow_html=True)
 
-                _enriched_news.append({
-                    "title": _title,
-                    "source": _art.get("source") or _art.get("publisher") or "Unknown",
-                    "date": _art.get("published_at") or _art.get("date") or "",
-                    "summary": _desc,
-                    "link": _art.get("url") or _art.get("link") or "#",
-                    "entities": _matched_entities[:3],
-                })
+                _btn_col1, _btn_col2, _btn_col3 = st.columns([1, 1, 2])
+                with _btn_col1:
+                    _predict_btn = st.button(
+                        "🔮 Predict",
+                        key=f"predict_{_evt['id']}",
+                        help="Analyze this event with Ontological Judgment Engine",
+                    )
+                if _predict_btn:
+                    st.session_state[f"selected_event_{_evt['id']}"] = _evt
 
-            st.session_state.home_top5_news = _enriched_news
+                st.markdown("---")
 
-            # Build judgment data from graph statistics + causal analysis
-            _rel_r = _api.get_kg_relations(limit=120)
-            _rels = _rel_r.get("relations", []) if "error" not in _rel_r else []
-            _ENTITY_WEIGHT = 3       # Order score contribution per entity
-            _RELATION_WEIGHT = 2     # Order score contribution per relation
-            _order_score = min(100, len(_entities_list) * _ENTITY_WEIGHT + len(_rels) * _RELATION_WEIGHT)
-            _BASE_CONF = 0.60           # Baseline confidence score
-            _MAX_CONF = 0.98            # Maximum confidence cap
-            _CONF_PER_ENTITY = 0.005    # Confidence boost per entity
-            _confidence = min(_MAX_CONF, _BASE_CONF + len(_entities_list) * _CONF_PER_ENTITY)
-            _MAX_EVIDENCE_DENSITY = 5.0          # Maximum evidence density score
-            _ENTITIES_PER_DENSITY_POINT = 10.0   # Entities required per density point
-            _evidence_density = min(_MAX_EVIDENCE_DENSITY, len(_entities_list) / _ENTITIES_PER_DENSITY_POINT)
-
-            _top_entity = _entities_list[0].get("name", "当前局势") if _entities_list else "当前局势"
-            _alpha_desc = (
-                f"基于 {len(_entities_list)} 个核心实体和 {len(_rels)} 条语义关系，"
-                f"当前趋势显示 {_top_entity} 处于信息网络中心，"
-                "局势演化路径较为清晰，预计延续现有趋势。"
-                if _entities_list else
-                "暂无足够实体数据生成 Alpha 分支分析。请先摄入新闻数据。"
-            )
-            _beta_desc = (
-                f"若 {_top_entity} 的核心假设失效，"
-                "可能触发级联反应导致局势逆转，出现低概率高影响的黑天鹅事件。"
-                if _entities_list else
-                "暂无足够数据生成 Beta 分支分析。"
-            )
-            _data_gap = (
-                "缺乏关键决策者的实时意图数据及内部通信记录。"
-                if _entities_list else "暂无数据"
-            )
-            _counter_arg = (
-                "历史先例表明，即使数据充分，复杂系统往往会产生与预期相反的结果，"
-                "因此当前分析的结构性偏见可能低估了非线性突变的可能性。"
-                if _entities_list else "暂无反论"
-            )
-
-            st.session_state.home_judgment = {
-                "alpha": {
-                    "description": _alpha_desc,
-                    "probability": 0.72,
-                    "key_assumption": "当前趋势继续，核心实体行为模式不变",
-                },
-                "beta": {
-                    "description": _beta_desc,
-                    "probability": 0.28,
-                    "key_assumption": "关键假设失效，触发级联反应",
-                },
-                "confidence_score": _confidence,
-                "evidence_density": _evidence_density,
-                "data_gap": _data_gap,
-                "counter_arg": _counter_arg,
-            }
-        st.rerun()
-
-    # ── 2-Column layout: Facts (60%) | Judgment (40%) ─────────────────────────
-    col_facts, col_judgment = st.columns([6, 4], gap="large")
-
-    with col_facts:
-        render_facts_center(st.session_state.home_top5_news)
-
+    # ─── RIGHT COLUMN: Ontological Judgment Engine (60%) ─────────────────────
     with col_judgment:
-        render_judgment_panel(st.session_state.home_judgment if st.session_state.home_judgment else None)
+        st.subheader("⚖️ Ontological Judgment Engine")
+
+        _selected_event: Optional[Dict[str, Any]] = None
+        for _evt in _seed_events:
+            if st.session_state.get(f"selected_event_{_evt['id']}"):
+                _selected_event = _evt
+                break
+
+        if _selected_event:
+            st.info(
+                f"Analyzing: **{_selected_event['title'][:60]}"
+                f"{'...' if len(_selected_event['title']) > 60 else ''}**"
+            )
+
+            with st.spinner("🧠 Activating Deduction Soul..."):
+                try:
+                    _payload = {
+                        "news_fragment": _selected_event["summary"],
+                        "seed_entities": [_e["name"] for _e in _selected_event["entities"]],
+                        "claim": f"What will be the impact of {_selected_event['title']}?",
+                    }
+                    _backend_deduce_url = (
+                        os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+                        + "/api/v1/analysis/grounded/deduce"
+                    )
+                    _resp = requests.post(_backend_deduce_url, json=_payload, timeout=30)
+
+                    if _resp.status_code == 200:
+                        _result = _resp.json()
+                        _deduction = _result.get("deduction_result", {})
+
+                        # ── Driving Factor ──────────────────────────────────
+                        st.markdown("### 🔍 Driving Factor")
+                        st.markdown(f"> **{_deduction.get('driving_factor', 'Unknown')}**")
+                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+                        # ── Scenario Alpha (High Probability) ───────────────
+                        st.markdown("### 🌤️ Scenario Alpha: Continuation Path")
+                        _alpha = _deduction.get("scenario_alpha", {})
+                        # Backend returns probabilities as decimals (0.0–1.0)
+                        st.markdown(
+                            f'<div class="scenario-alpha">'
+                            f'<div class="scenario-alpha-header">'
+                            f'✓ High Probability: {_alpha.get("probability", 0):.0%}'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown("**Causal Chain:**")
+                        st.markdown(
+                            f'<div class="causal-chain">{_alpha.get("causal_chain", "N/A")}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if _alpha.get("grounding_paths"):
+                            st.markdown("**Grounding Paths:**")
+                            for _path in _alpha.get("grounding_paths", []):
+                                st.caption(f"• {_path}")
+                        if _alpha.get("entities"):
+                            st.markdown("**Entities Involved:**")
+                            _alpha_ent_html = "".join(
+                                f'<span class="entity-tag">{_e}</span>'
+                                for _e in _alpha.get("entities", [])
+                            )
+                            st.markdown(_alpha_ent_html, unsafe_allow_html=True)
+
+                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+                        # ── Scenario Beta (Structural Break) ────────────────
+                        st.markdown("### ⚡ Scenario Beta: Structural Break Path")
+                        _beta = _deduction.get("scenario_beta", {})
+                        st.markdown(
+                            f'<div class="scenario-beta">'
+                            f'<div class="scenario-beta-header">'
+                            f'⚠️ Low Probability: {_beta.get("probability", 0):.0%}'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown("**Causal Chain (Hypothetical):**")
+                        st.markdown(
+                            f'<div class="causal-chain">{_beta.get("causal_chain", "N/A")}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown("**Trigger Condition:**")
+                        st.info(_beta.get("trigger_condition", "Unknown"))
+
+                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+                        # ── Confidence Metrics ───────────────────────────────
+                        st.markdown("### 📊 Confidence Metrics")
+                        _metric_cols = st.columns(3)
+                        with _metric_cols[0]:
+                            st.markdown(
+                                f'<div class="metric-card">'
+                                f'<div class="metric-value">{_deduction.get("confidence", 0):.0%}</div>'
+                                f'<div class="metric-label">Overall Confidence</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with _metric_cols[1]:
+                            st.markdown(
+                                f'<div class="metric-card">'
+                                f'<div class="metric-value">{_alpha.get("probability", 0):.0%}</div>'
+                                f'<div class="metric-label">Alpha Probability</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with _metric_cols[2]:
+                            st.markdown(
+                                f'<div class="metric-card">'
+                                f'<div class="metric-value">{_beta.get("probability", 0):.0%}</div>'
+                                f'<div class="metric-label">Beta Probability</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+                        # ── Verification Gap Warning ─────────────────────────
+                        st.warning(
+                            f"**📍 Data Gap:** {_deduction.get('verification_gap', 'No gaps identified')}\n\n"
+                            "This analysis is grounded in the current knowledge graph. "
+                            "The identified gaps represent data that would strengthen our confidence."
+                        )
+
+                        # ── Ontological Grounding ────────────────────────────
+                        with st.expander("📚 View Ontological Grounding"):
+                            st.json(_result.get("ontological_grounding", {}), expanded=False)
+
+                        if st.button("🔄 Analyze Another Event", key="clear_selection"):
+                            for _k in list(st.session_state.keys()):
+                                if _k.startswith("selected_event_"):
+                                    del st.session_state[_k]
+                            st.rerun()
+                    else:
+                        st.error(f"Backend error: {_resp.status_code}")
+                        st.code(_resp.text, language="json")
+
+                except requests.exceptions.Timeout:
+                    st.error("⏱️ Analysis timed out after 30 seconds. The backend may be overloaded.")
+                except requests.exceptions.ConnectionError:
+                    st.error("⚠️ Cannot connect to backend. Ensure it's running on localhost:8000")
+                    st.info("Start backend with: `uvicorn backend.app.main:app --reload`")
+                except Exception as _exc:
+                    st.error(f"Analysis failed: {str(_exc)}")
+
+        else:
+            st.markdown(
+                """
+                <div style="text-align:center;padding:48px 24px;color:#999;">
+                    <p style="font-size:48px;margin-bottom:16px;">🔮</p>
+                    <p><b>Select an event from the Intelligence Feed</b></p>
+                    <p style="font-size:12px;margin-top:8px;">
+                        Click "Predict" to activate the Ontological Judgment Engine
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+    _col_f1, _col_f2, _col_f3 = st.columns([2, 1, 1])
+    with _col_f1:
+        st.caption("EL-DRUIN Ontological Intelligence Platform")
+    with _col_f2:
+        st.caption("v0.1 (Elite Dashboard)")
+    with _col_f3:
+        st.caption("⚔️✝️")
 
 # ===========================================================================
 # Page: 📰 实时新闻
