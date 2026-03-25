@@ -757,7 +757,7 @@ if page == "🏠 主页":
                         "claim": f"What will be the impact of {_selected_event['title']}?",
                     }
                     _backend_deduce_url = (
-                        os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+                        os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/")
                         + "/api/v1/analysis/grounded/deduce"
                     )
                     _resp = requests.post(_backend_deduce_url, json=_payload, timeout=30)
@@ -874,7 +874,7 @@ if page == "🏠 主页":
                 except requests.exceptions.Timeout:
                     st.error("⏱️ Analysis timed out after 30 seconds. The backend may be overloaded.")
                 except requests.exceptions.ConnectionError:
-                    st.error("⚠️ Cannot connect to backend. Ensure it's running on localhost:8000")
+                    st.error("⚠️ Cannot connect to backend. Ensure it's running on localhost:8001")
                     st.info("Start backend with: `uvicorn backend.app.main:app --reload`")
                 except Exception as _exc:
                     st.error(f"Analysis failed: {str(_exc)}")
