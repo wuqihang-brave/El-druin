@@ -27,11 +27,11 @@ from typing import Dict
 
 #: Canonical color palette for the five primary ontological classes.
 #: Key: lowercase ontology class name (also matched case-insensitively).
-#: Light Blue Rational (Ratio Lucis) palette — cobalt and rational tones.
+#: Precious-metals palette — Gold, Silver, Bronze for primary classes.
 ONTOLOGY_COLORS: Dict[str, str] = {
-    "event":        "#0047AB",  # Cobalt Blue — temporal significance
-    "person":       "#2E86AB",  # Cerulean — agency & consciousness
-    "organization": "#1B6CA8",  # Royal Blue — institutional structures
+    "event":        "#D4AF37",  # Gold — temporal significance
+    "person":       "#A8A8A8",  # Silver — agency & consciousness
+    "organization": "#CD7F32",  # Bronze — institutional structures
     "location":     "#2A9D8F",  # Teal — spatial anchoring
     "concept":      "#606060",  # Mid Grey — abstract ideas
 }

@@ -132,10 +132,10 @@ def render_sidebar_navigation() -> str:
     # ── Footer quote ──────────────────────────────────────────────────────────
     st.sidebar.markdown(
         """
-        <div style="position:absolute;bottom:16px;left:0;right:0;
-                    text-align:center;padding:0 12px;">
-            <p style="color:#8B8B8B;font-size:10px;font-style:italic;
-                      margin:0;font-family:'Inter',sans-serif;line-height:1.5;">
+        <div style="text-align:center;margin-top:40px;padding:20px 12px 12px 12px;
+                    border-top:1px solid #E0E0E0;">
+            <p style="color:#606060;font-size:10px;font-style:italic;
+                      margin:0;font-family:'Inter',sans-serif;line-height:1.4;">
                 "I fear no evil, for Thou art with me."
             </p>
         </div>
