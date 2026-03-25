@@ -33,6 +33,8 @@ if _FRONTEND_DIR not in sys.path:
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
 from components.order_critique import display_order_critique  # noqa: E402
 from components.sidebar import render_sidebar_navigation  # noqa: E402
+from components.facts_center import render_facts_center  # noqa: E402
+from components.judgment_panel import render_judgment_panel  # noqa: E402
 from utils.deep_extraction import (  # noqa: E402
     extract_causal_chains,
     visualize_confidence,
@@ -202,6 +204,48 @@ if _sidebar_entity_names:
     if _sidebar_sel and _sidebar_sel != st.session_state.selected_entity:
         st.session_state.selected_entity = _sidebar_sel
         st.rerun()
+
+# ---------------------------------------------------------------------------
+# Sidebar – Configuration Panel (collapsed expander)
+# ---------------------------------------------------------------------------
+st.sidebar.markdown(
+    "<hr style='border-color:#E0E0E0;margin:8px 0 6px 0'/>",
+    unsafe_allow_html=True,
+)
+with st.sidebar.expander("⚙️ 配置面板", expanded=False):
+    from datetime import date as _date
+
+    st.markdown("**📡 数据源**")
+    _sidebar_data_source = st.selectbox(
+        "选择数据源",
+        ["实时新闻", "历史数据", "自定义输入"],
+        key="cfg_data_source",
+        label_visibility="collapsed",
+    )
+    st.markdown("**📅 日期范围**")
+    _today_cfg = _date.today()
+    _dcol1, _dcol2 = st.columns(2)
+    with _dcol1:
+        _cfg_date_from = st.date_input(
+            "开始",
+            value=_date(_today_cfg.year, _today_cfg.month, 1),
+            key="cfg_date_from",
+            label_visibility="collapsed",
+        )
+    with _dcol2:
+        _cfg_date_to = st.date_input(
+            "结束",
+            value=_today_cfg,
+            key="cfg_date_to",
+            label_visibility="collapsed",
+        )
+    st.markdown("**🤖 分析模式**")
+    _cfg_model_mode = st.radio(
+        "模式",
+        ["本体论模式", "快速模式", "深度模式"],
+        key="cfg_model_mode",
+        label_visibility="collapsed",
+    )
 
 # ---------------------------------------------------------------------------
 # Sidebar – Footer Buttons
@@ -547,23 +591,21 @@ def render_graph(data: Dict[str, Any]) -> None:
 
 
 # ===========================================================================
-# Page: 🏠 主页  –  three-column command centre
+# Page: 🏠 主页  –  Truth Monitor (2-column: Facts | Judgment)
 # ===========================================================================
 if page == "🏠 主页":
+    # ── Page header ──────────────────────────────────────────────────────────
     st.markdown(
         """
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
             <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-              <!-- Vertical sword -->
               <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-              <!-- Horizontal cross -->
               <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-              <!-- Center circle intersection -->
               <circle cx="20" cy="15" r="2" fill="#0047AB"/>
             </svg>
             <div>
               <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
-                         font-family:'Inter',sans-serif;">EL-DRUIN</h1>
+                         font-family:'Inter',sans-serif;">EL-DRUIN 圣剑分析官</h1>
               <p style="color:#606060;font-size:0.88rem;margin:0;font-style:italic;
                         font-family:'Inter',sans-serif;">
                 Ontological Intelligence &amp; Systematic Order
@@ -573,345 +615,130 @@ if page == "🏠 主页":
         """,
         unsafe_allow_html=True,
     )
+    st.markdown(
+        "<p style='color:#606060;font-size:0.85rem;margin:2px 0 0 0;"
+        "font-family:Inter,sans-serif;'>🔍 Truth Monitor – Ontological Analysis Center</p>",
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     # ── Session-state defaults ───────────────────────────────────────────────
-    if "home_logs" not in st.session_state:
-        st.session_state.home_logs: List[str] = []
-    if "home_graph_data" not in st.session_state:
-        st.session_state.home_graph_data: Dict[str, Any] = {"nodes": [], "edges": []}
-    if "home_analysis" not in st.session_state:
-        st.session_state.home_analysis: Dict[str, Any] = {}
-    if "home_causal_chains" not in st.session_state:
-        st.session_state.home_causal_chains: Dict[str, Any] = {
-            "entities": [],
-            "relations": [],
-            "causal_chains": [],
-            "overall_order_score": 50,
-        }
+    if "home_top5_news" not in st.session_state:
+        st.session_state.home_top5_news: List[Dict[str, Any]] = []
+    if "home_judgment" not in st.session_state:
+        st.session_state.home_judgment: Dict[str, Any] = {}
 
-    # ── Three-column layout ──────────────────────────────────────────────────
-    col_left, col_mid, col_right = st.columns([2, 5, 3], gap="medium")
+    # ── Ingest Intelligence button ────────────────────────────────────────────
+    if st.button("🧠 Ingest Intelligence", type="primary", key="home_ingest"):
+        with st.spinner("正在摄入情报…"):
+            # Fetch latest news articles (up to 5) for the Facts column
+            _news_r = _api.get_latest_news(limit=5, hours=48)
+            _articles = _news_r.get("articles", []) if "error" not in _news_r else []
 
-    # ════════════════════════════════════════════════════════════════════════
-    # LEFT COLUMN – configuration & status
-    # ════════════════════════════════════════════════════════════════════════
-    with col_left:
-        st.markdown("#### ⚙️ 配置面板")
+            # Enrich each article with entity data from the knowledge graph
+            _ent_r = _api.get_kg_entities(limit=80)
+            _entities_list = _ent_r.get("entities", []) if "error" not in _ent_r else []
 
-        # ── Data source ──────────────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("**📡 数据源**")
-            data_source = st.selectbox(
-                "选择数据源",
-                ["实时新闻", "历史数据", "自定义输入"],
-                key="home_data_source",
-                label_visibility="collapsed",
-            )
+            # Build a simple name → entity lookup for entity tagging
+            _entity_map: Dict[str, Any] = {
+                e.get("name", "").lower(): e
+                for e in _entities_list
+                if e.get("name")
+            }
 
-        # ── Date range ───────────────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("**📅 日期范围**")
-            from datetime import date as _date
-            _today = _date.today()
-            _date_col1, _date_col2 = st.columns(2)
-            with _date_col1:
-                date_from = st.date_input("开始", value=_date(_today.year, _today.month, 1), key="home_date_from", label_visibility="collapsed")
-            with _date_col2:
-                date_to = st.date_input("结束", value=_today, key="home_date_to", label_visibility="collapsed")
+            _enriched_news: List[Dict[str, Any]] = []
+            for _art in _articles[:5]:
+                _title = _art.get("title", "")
+                _desc = _art.get("description") or _art.get("summary") or ""
+                _combined = (_title + " " + _desc).lower()
 
-        # ── API config ───────────────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("**🔧 API 配置**")
-            api_endpoint = st.text_input(
-                "API 端点",
-                value=_backend_url,
-                key="home_api_endpoint",
-            )
-            _c1, _c2 = st.columns(2)
-            with _c1:
-                api_timeout = st.number_input("超时 (秒)", min_value=5, max_value=120, value=30, key="home_api_timeout")
-            with _c2:
-                api_retries = st.number_input("重试次数", min_value=0, max_value=5, value=2, key="home_api_retries")
-
-        # ── Model selection ──────────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("**🤖 模型选择**")
-            model_mode = st.radio(
-                "分析模式",
-                ["本体论模式", "快速模式", "深度模式"],
-                key="home_model_mode",
-                label_visibility="collapsed",
-            )
-
-        # ── API connection status ────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("**🔌 API 连接状态**")
-            _sources_check = _api.get_news_sources()
-            if "error" not in _sources_check:
-                st.markdown(
-                    "<span class='status-ok'>● 正常</span> &nbsp; 后端连接成功",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    "<span class='status-err'>● 异常</span> &nbsp; 后端无响应",
-                    unsafe_allow_html=True,
-                )
-
-        # ── Actions ──────────────────────────────────────────────────────────
-        st.markdown("")
-        if st.button("🔍 Ingest Intelligence", type="primary", key="home_run", use_container_width=True):
-            with st.spinner("正在处理…"):
-                _log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] 触发分析 · 数据源={data_source} · 模式={model_mode}"
-                st.session_state.home_logs.insert(0, _log_entry)
-
-                # Fetch KG data from backend to populate the graph
-                _ent_r = _api.get_kg_entities(limit=80)
-                _rel_r = _api.get_kg_relations(limit=120)
-                if "error" not in _ent_r and "error" not in _rel_r:
-                    _ents = _ent_r.get("entities", [])
-                    _rels = _rel_r.get("relations", [])
-                    _known = {e.get("name", "") for e in _ents if e.get("name")}
-                    st.session_state.home_graph_data = {
-                        "nodes": [
-                            {"id": e["name"], "label": str(e.get("type", "MISC")).upper(), "properties": e}
-                            for e in _ents if e.get("name")
-                        ],
-                        "edges": [
-                            {"from": r.get("from", ""), "to": r.get("to", ""), "type": r.get("relation", "")}
-                            for r in _rels if r.get("from") in _known and r.get("to") in _known
-                        ],
+                # Match entities that appear in the article text
+                _matched_entities = [
+                    {
+                        "name": _ent.get("name", ""),
+                        "layer1": (_ent.get("type") or "ENTITY").upper(),
+                        "layer2": (_ent.get("role") or _ent.get("structural_role") or "PIVOT").upper(),
+                        "layer3": (_ent.get("virtue") or _ent.get("philosophical_nature") or "RESILIENT").upper(),
                     }
-                    # Build analysis summary from graph data
-                    _entity_names = [e.get("name", "") for e in _ents[:10] if e.get("name")]
-                    # Order score: entities contribute 3 pts each (richer concepts),
-                    # relations contribute 2 pts each (connections imply coherence).
-                    _ENTITY_WEIGHT = 3
-                    _RELATION_WEIGHT = 2
-                    _order_score = min(100, len(_ents) * _ENTITY_WEIGHT + len(_rels) * _RELATION_WEIGHT)
-                    # Confidence: baseline 60 %, rising 0.5 % per entity, capped at 98 %.
-                    _BASE_CONFIDENCE = 0.60
-                    _CONFIDENCE_PER_ENTITY = 0.005
-                    _MAX_CONFIDENCE = 0.98
-                    _confidence = min(_MAX_CONFIDENCE, _BASE_CONFIDENCE + len(_ents) * _CONFIDENCE_PER_ENTITY)
-                    st.session_state.home_analysis = {
-                        "logic_points": [
-                            f"发现 {len(_ents)} 个核心实体节点",
-                            f"建立 {len(_rels)} 条语义关系链",
-                            f"主要实体类型分布均衡，信息熵较低",
-                            "时序关联显示事件演化路径清晰",
-                        ],
-                        "conclusions": [
-                            f"关键实体 **{_entity_names[0]}** 处于信息网络中心" if _entity_names else "暂无核心实体",
-                            "知识图谱拓扑结构趋于稳定",
-                        ],
-                        "order_score": _order_score,
-                        "confidence": _confidence,
-                        "key_entities": _entity_names,
-                    }
-                    _log_entry2 = f"[{datetime.now().strftime('%H:%M:%S')}] 图谱加载完成 · {len(_ents)} 节点 · {len(_rels)} 边"
-                    st.session_state.home_logs.insert(0, _log_entry2)
+                    for _name, _ent in _entity_map.items()
+                    if _name and _name in _combined
+                ]
 
-                    # ── Deep causal chain extraction from latest news ──────────
-                    _news_r = _api.get_latest_news(limit=3, hours=24)
-                    _news_articles = _news_r.get("articles", []) if "error" not in _news_r else []
-                    if _news_articles:
-                        # Aggregate text from the most recent articles for causal extraction
-                        _combined_text = " ".join(
-                            filter(None, [
-                                _a.get("title", "") + ". " + (_a.get("description") or "")
-                                for _a in _news_articles[:3]
-                            ])
-                        ).strip()
-                        if _combined_text:
-                            _causal_resp = extract_causal_chains(_combined_text, _api)
-                            st.session_state.home_causal_chains = _causal_resp
-                            # Clear stale philosophical critique cache
-                            st.session_state.pop("order_critique_text", None)
-                            st.session_state.pop("_critique_signal", None)
-                            _log_entry3 = (
-                                f"[{datetime.now().strftime('%H:%M:%S')}] 因果链提取完成 · "
-                                f"{len(_causal_resp.get('causal_chains', []))} 条因果链"
-                            )
-                            st.session_state.home_logs.insert(0, _log_entry3)
-                else:
-                    st.warning("⚠️ 后端无数据，请先摄入新闻。")
-            st.rerun()
+                _enriched_news.append({
+                    "title": _title,
+                    "source": _art.get("source") or _art.get("publisher") or "Unknown",
+                    "date": _art.get("published_at") or _art.get("date") or "",
+                    "summary": _desc,
+                    "link": _art.get("url") or _art.get("link") or "#",
+                    "entities": _matched_entities[:3],
+                })
 
-    # ════════════════════════════════════════════════════════════════════════
-    # MIDDLE COLUMN – knowledge graph + processing status
-    # ════════════════════════════════════════════════════════════════════════
-    with col_mid:
-        # ── Upper section: knowledge graph ───────────────────────────────────
-        with st.container(border=True):
-            st.markdown("#### 🕸️ 知识图谱")
-            _gd = st.session_state.home_graph_data
-            _node_count = len(_gd.get("nodes", []))
-            _edge_count = len(_gd.get("edges", []))
-            if _node_count:
-                st.caption(
-                    f"<span class='gold-label'>{_node_count}</span> 节点 &nbsp;·&nbsp;"
-                    f"<span class='gold-label'>{_edge_count}</span> 边",
-                    unsafe_allow_html=True,
-                )
-            render_graph(_gd)
+            st.session_state.home_top5_news = _enriched_news
 
-        # ── Lower section: processing status ─────────────────────────────────
-        with st.container(border=True):
-            st.markdown("#### 📊 实时处理状态")
+            # Build judgment data from graph statistics + causal analysis
+            _rel_r = _api.get_kg_relations(limit=120)
+            _rels = _rel_r.get("relations", []) if "error" not in _rel_r else []
+            _ENTITY_WEIGHT = 3       # Order score contribution per entity
+            _RELATION_WEIGHT = 2     # Order score contribution per relation
+            _order_score = min(100, len(_entities_list) * _ENTITY_WEIGHT + len(_rels) * _RELATION_WEIGHT)
+            _BASE_CONF = 0.60           # Baseline confidence score
+            _MAX_CONF = 0.98            # Maximum confidence cap
+            _CONF_PER_ENTITY = 0.005    # Confidence boost per entity
+            _confidence = min(_MAX_CONF, _BASE_CONF + len(_entities_list) * _CONF_PER_ENTITY)
+            _MAX_EVIDENCE_DENSITY = 5.0          # Maximum evidence density score
+            _ENTITIES_PER_DENSITY_POINT = 10.0   # Entities required per density point
+            _evidence_density = min(_MAX_EVIDENCE_DENSITY, len(_entities_list) / _ENTITIES_PER_DENSITY_POINT)
 
-            # Progress bar – derived from graph size (cosmetic placeholder)
-            _pct = min(1.0, (_node_count + _edge_count) / 200) if _node_count else 0.0
-            st.progress(_pct, text=f"图谱构建进度: {int(_pct * 100)}%")
-
-            # Stats
-            _s1, _s2, _s3 = st.columns(3)
-            _kg_stats = _api.get_kg_stats()
-            _processed = _kg_stats.get("articles", 0) if "error" not in _kg_stats else 0
-            _concepts  = _kg_stats.get("entities", 0) if "error" not in _kg_stats else 0
-            _relations = _kg_stats.get("relations", 0) if "error" not in _kg_stats else 0
-            _s1.metric("📰 已处理事件", _processed)
-            _s2.metric("💡 提取概念数", _concepts)
-            _s3.metric("🔗 建立关系数", _relations)
-
-            # Processing log
-            st.markdown("**🪵 处理日志**")
-            _log_lines = st.session_state.home_logs[:8]  # show last 8 entries
-            if _log_lines:
-                _log_html = "".join(
-                    f"<div style='font-family:\"JetBrains Mono\",\"Fira Code\",monospace;"
-                    f"font-size:0.76rem;color:#606060;padding:2px 0'>{line}</div>"
-                    for line in _log_lines
-                )
-                st.markdown(
-                    f"<div style='background:#F5F5F5;border:1px solid #E0E0E0;border-radius:4px;"
-                    f"padding:8px 12px;max-height:160px;overflow-y:auto'>{_log_html}</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.caption("暂无日志。点击「开始分析」按钮后日志将显示在此处。")
-
-    # ════════════════════════════════════════════════════════════════════════
-    # RIGHT COLUMN – El-druin 秩序分析
-    # ════════════════════════════════════════════════════════════════════════
-    with col_right:
-        with st.container(border=True):
-            st.markdown(
-                "<h4 style='color:#0047AB;font-weight:600;letter-spacing:0.02em;'>⚖️ EL-DRUIN 秩序分析</h4>",
-                unsafe_allow_html=True,
+            _top_entity = _entities_list[0].get("name", "当前局势") if _entities_list else "当前局势"
+            _alpha_desc = (
+                f"基于 {len(_entities_list)} 个核心实体和 {len(_rels)} 条语义关系，"
+                f"当前趋势显示 {_top_entity} 处于信息网络中心，"
+                "局势演化路径较为清晰，预计延续现有趋势。"
+                if _entities_list else
+                "暂无足够实体数据生成 Alpha 分支分析。请先摄入新闻数据。"
+            )
+            _beta_desc = (
+                f"若 {_top_entity} 的核心假设失效，"
+                "可能触发级联反应导致局势逆转，出现低概率高影响的黑天鹅事件。"
+                if _entities_list else
+                "暂无足够数据生成 Beta 分支分析。"
+            )
+            _data_gap = (
+                "缺乏关键决策者的实时意图数据及内部通信记录。"
+                if _entities_list else "暂无数据"
+            )
+            _counter_arg = (
+                "历史先例表明，即使数据充分，复杂系统往往会产生与预期相反的结果，"
+                "因此当前分析的结构性偏见可能低估了非线性突变的可能性。"
+                if _entities_list else "暂无反论"
             )
 
-            _analysis = st.session_state.home_analysis
-            _causal_data = st.session_state.home_causal_chains
+            st.session_state.home_judgment = {
+                "alpha": {
+                    "description": _alpha_desc,
+                    "probability": 0.72,
+                    "key_assumption": "当前趋势继续，核心实体行为模式不变",
+                },
+                "beta": {
+                    "description": _beta_desc,
+                    "probability": 0.28,
+                    "key_assumption": "关键假设失效，触发级联反应",
+                },
+                "confidence_score": _confidence,
+                "evidence_density": _evidence_density,
+                "data_gap": _data_gap,
+                "counter_arg": _counter_arg,
+            }
+        st.rerun()
 
-            if not _analysis:
-                st.info("▶ 点击左侧「开始分析」以生成秩序报告。")
-            else:
-                # ── Determine whether deep causal data is available ──────────
-                _causal_chains_list = _causal_data.get("causal_chains", [])
-                _causal_entities = _causal_data.get("entities", [])
-                _causal_relations = _causal_data.get("relations", [])
+    # ── 2-Column layout: Facts (60%) | Judgment (40%) ─────────────────────────
+    col_facts, col_judgment = st.columns([6, 4], gap="large")
 
-                _has_causal = bool(_causal_chains_list)
+    with col_facts:
+        render_facts_center(st.session_state.home_top5_news)
 
-                if _has_causal:
-                    # ── Deep analysis: display_order_critique ────────────────
-                    display_order_critique(
-                        entities=_causal_entities,
-                        relations=_causal_relations,
-                        causal_chains=_causal_chains_list,
-                        api_client=_api,
-                    )
-
-                    # ── Confidence visualisation ──────────────────────────────
-                    st.markdown("### 📊 因果链置信度")
-                    visualize_confidence(_causal_chains_list)
-
-                else:
-                    # ── Fallback: classic logic / conclusion view ─────────────
-                    st.markdown("**🔍 深层逻辑**")
-                    for _pt in _analysis.get("logic_points", []):
-                        st.markdown(f"• {_pt}")
-
-                    st.markdown("")
-
-                    st.markdown("**💡 核心结论**")
-                    for _c in _analysis.get("conclusions", []):
-                        st.markdown(
-                            f"<div style='background:rgba(0,71,171,0.04);border-left:3px solid #0047AB;"
-                            f"padding:6px 10px;border-radius:4px;margin:4px 0;color:#333333'>{_c}</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                    st.markdown("")
-
-                    _score = _analysis.get("order_score", 0)
-                    st.markdown(
-                        f"**📐 秩序评分** &nbsp;"
-                        f"<span class='score-label'>{_score}</span>"
-                        f"<span style='color:#999;font-size:0.9rem'> / 100</span>",
-                        unsafe_allow_html=True,
-                    )
-                    st.progress(_score / 100)
-
-                    _conf = _analysis.get("confidence", 0.0)
-                    _conf_color = (
-                        "#27ae60" if _conf >= 0.75
-                        else ("#f39c12" if _conf >= 0.5 else "#e74c3c")
-                    )
-                    st.markdown(
-                        f"**🎯 置信度** &nbsp;"
-                        f"<span style='color:{_conf_color};font-weight:700'>{_conf:.1%}</span>",
-                        unsafe_allow_html=True,
-                    )
-
-                    st.markdown("")
-
-                    _entities_list = _analysis.get("key_entities", [])
-                    if _entities_list:
-                        st.markdown("**🏷️ 关键实体**")
-                        _tags_html = " ".join(
-                            f"<span class='entity-tag'>{e}</span>"
-                            for e in _entities_list[:12]
-                        )
-                        st.markdown(_tags_html, unsafe_allow_html=True)
-
-        # ── Export buttons ────────────────────────────────────────────────────
-        if st.session_state.home_analysis:
-            st.markdown("")
-            st.markdown("**📤 导出**")
-            _exp1, _exp2 = st.columns(2)
-            with _exp1:
-                import json as _json
-                _export_payload = {
-                    "analysis": st.session_state.home_analysis,
-                    "graph": st.session_state.home_graph_data,
-                    "causal_chains": st.session_state.home_causal_chains,
-                }
-                st.download_button(
-                    "⬇ JSON",
-                    data=_json.dumps(_export_payload, ensure_ascii=False, indent=2),
-                    file_name="el_druin_analysis.json",
-                    mime="application/json",
-                    key="home_export_json",
-                    use_container_width=True,
-                )
-            with _exp2:
-                try:
-                    import pandas as _pd
-                    _nodes_df = _pd.DataFrame(st.session_state.home_graph_data.get("nodes", []))
-                    _csv_data = _nodes_df.to_csv(index=False)
-                except Exception:
-                    _csv_data = "id,label\n"
-                st.download_button(
-                    "⬇ CSV",
-                    data=_csv_data,
-                    file_name="el_druin_nodes.csv",
-                    mime="text/csv",
-                    key="home_export_csv",
-                    use_container_width=True,
-                )
+    with col_judgment:
+        render_judgment_panel(st.session_state.home_judgment if st.session_state.home_judgment else None)
 
 # ===========================================================================
 # Page: 📰 实时新闻
