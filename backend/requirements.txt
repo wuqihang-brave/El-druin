@@ -34,3 +34,6 @@ pandas>=2.1.0
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-dateutil>=2.8.2
+
+# ── Oracle Laboratory ─────────────────────────────────────────────────────────
+langgraph>=0.2.0              # LangGraph state machine (optional – engine has built-in fallback)
