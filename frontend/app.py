@@ -156,7 +156,7 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Backend URL (env-configurable)
 # ---------------------------------------------------------------------------
-_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api/v1"
+_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/")
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
