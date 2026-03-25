@@ -42,6 +42,10 @@ def render_sidebar_navigation() -> str:
     The selected page is also stored in ``st.session_state.current_page``.
     """
 
+    # Capture the previous page BEFORE any widget rendering to ensure an
+    # accurate comparison after the navigation selection is resolved.
+    _prev_page = st.session_state.get("current_page")
+
     # ── Header ────────────────────────────────────────────────────────────────
     st.sidebar.markdown(
         """
@@ -124,6 +128,8 @@ def render_sidebar_navigation() -> str:
         )
 
     st.session_state.current_page = page
+    if page != _prev_page:
+        st.rerun()
 
     # ── Footer quote ──────────────────────────────────────────────────────────
     st.sidebar.markdown(
