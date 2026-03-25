@@ -1,8 +1,10 @@
 """
 Sacred Sword Analyzer API routes.
 
-Endpoint:
-  POST /analysis/sacred-sword  – run the 4-step ontological analysis
+Endpoints:
+  POST /analysis/sacred-sword      – run the 4-step ontological analysis
+  POST /analysis/grounded/deduce   – activate Deduction Soul for strict
+                                     ontology-grounded scenario inference
 """
 
 from __future__ import annotations
@@ -113,4 +115,114 @@ def sacred_sword_analysis(request: AnalysisRequest) -> Dict[str, Any]:
         }
     except Exception as exc:
         logger.exception("Sacred Sword analysis failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Request model – Deduction Soul
+# ---------------------------------------------------------------------------
+
+class OntologyGroundedAnalysisRequest(BaseModel):
+    """Request for ontology-grounded analysis with Deduction Soul."""
+    news_fragment: str
+    seed_entities: List[str]
+    claim: str
+    extract_paths: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Helpers – Deduction Soul
+# ---------------------------------------------------------------------------
+
+def _get_llm_service_for_deduction() -> Any:
+    """Return a configured LLM service, falling back to a stub."""
+    _ensure_intelligence_importable()
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if not getattr(settings, "llm_enabled", False):
+            raise RuntimeError("LLM not enabled")
+        from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
+
+        class _Adapter:
+            def __init__(self, cfg: Any) -> None:
+                self._analyzer = SacredSwordAnalyzer(settings=cfg)
+
+            def call(
+                self,
+                prompt: str,
+                system: str = "",  # noqa: ARG002
+                temperature: float = 0.2,
+                max_tokens: int = 1500,  # noqa: ARG002
+                response_format: str = "json",  # noqa: ARG002
+            ) -> str:
+                result = self._analyzer._llm_call(prompt, temperature=temperature)
+                return result or "{}"
+
+        return _Adapter(settings)
+    except Exception:  # noqa: BLE001
+        class _Stub:
+            def call(self, **_kwargs: Any) -> str:  # noqa: ANN401
+                return "{}"
+        return _Stub()
+
+
+# ---------------------------------------------------------------------------
+# Route – Deduction Soul
+# ---------------------------------------------------------------------------
+
+@router.post("/grounded/deduce")
+def analyze_with_deduction_soul(
+    request: OntologyGroundedAnalysisRequest,
+) -> Dict[str, Any]:
+    """【推演灵魂激活】Analyze news with strict ontological deduction.
+
+    LLM is forced to:
+    1. Base all predictions on explicit ontological paths
+    2. Trace every inference to specific relationships
+    3. Output strict JSON with causal chains
+    4. Never invent—only deduce
+
+    Request body::
+
+        {
+            "news_fragment": "The European Commission announced strict AI regulations...",
+            "seed_entities": ["European Commission", "AI Regulation", "EU"],
+            "claim": "What will be the impact on tech companies?"
+        }
+
+    Response::
+
+        {
+            "status": "success",
+            "ontological_grounding": {...},
+            "deduction_result": {
+                "driving_factor": "...",
+                "scenario_alpha": {...},
+                "scenario_beta": {...},
+                "verification_gap": "...",
+                "confidence": 0.85
+            },
+            "timestamp": "..."
+        }
+    """
+    try:
+        _ensure_intelligence_importable()
+        from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
+
+        llm_service = _get_llm_service_for_deduction()
+        analyzer = OntologyGroundedAnalyzer(
+            llm_service=llm_service,
+            kuzu_conn=None,  # KuzuDB connection is optional; None triggers fallback paths
+        )
+
+        result = analyzer.analyze_with_ontological_grounding(
+            news_fragment=request.news_fragment,
+            seed_entities=request.seed_entities,
+            claim=request.claim,
+        )
+        return result
+
+    except Exception as exc:
+        logger.exception("Deduction Soul analysis failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
