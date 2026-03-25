@@ -105,9 +105,139 @@ _backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/"
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
+# Session State Initialization (must happen before any other logic)
+# ---------------------------------------------------------------------------
+if "initialized" not in st.session_state:
+    st.session_state.initialized = False
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "🏠 主页"
+if "selected_entity" not in st.session_state:
+    st.session_state.selected_entity = ""
+if "graph_data" not in st.session_state:
+    st.session_state.graph_data: Dict[str, Any] = {
+        "entities": [], "relations": [], "status": "not_loaded"
+    }
+if "entity_cache" not in st.session_state:
+    st.session_state.entity_cache: Dict[str, Any] = {}
+if "last_update" not in st.session_state:
+    st.session_state.last_update: Optional[datetime] = None
+if "nav_state" not in st.session_state:
+    st.session_state.nav_state: Dict[str, Any] = {}
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Graph Data Loading (must happen before sidebar renders)
+# ---------------------------------------------------------------------------
+
+@st.cache_resource
+def load_knowledge_graph() -> Dict[str, Any]:
+    """Query KuzuDB for all entities (limit 1000) and relations (limit 2000).
+
+    Returns:
+        Structured dict with keys:
+          * ``entities``  – list of entity dicts
+          * ``relations`` – list of relation dicts
+          * ``status``    – "loaded" | "error"
+    """
+    try:
+        ent_r = _api.get_kg_entities(limit=1000)
+        rel_r = _api.get_kg_relations(limit=2000)
+        if "error" not in ent_r and "error" not in rel_r:
+            return {
+                "entities": ent_r.get("entities", []),
+                "relations": rel_r.get("relations", []),
+                "status": "loaded",
+            }
+        return {"entities": [], "relations": [], "status": "error"}
+    except Exception as exc:
+        logger.error("load_knowledge_graph failed: %s", exc)
+        return {"entities": [], "relations": [], "status": "error", "error": str(exc)}
+
+
+# Load graph data into session_state BEFORE the sidebar renders
+with st.spinner("Loading Knowledge Graph..."):
+    if st.session_state.graph_data.get("status") != "loaded":
+        st.session_state.graph_data = load_knowledge_graph()
+        if st.session_state.last_update is None:
+            st.session_state.last_update = datetime.now()
+        # Build entity cache for fast name lookups
+        st.session_state.entity_cache = {
+            e.get("name", ""): e
+            for e in st.session_state.graph_data.get("entities", [])
+            if e.get("name")
+        }
+        st.session_state.initialized = True
+
+
+# ---------------------------------------------------------------------------
 # Sidebar – navigation
 # ---------------------------------------------------------------------------
 page = render_sidebar_navigation()
+
+# ---------------------------------------------------------------------------
+# Sidebar – Entity Search (safe access via pre-loaded graph_data)
+# ---------------------------------------------------------------------------
+_sidebar_entity_names: List[str] = [
+    e.get("name", "")
+    for e in st.session_state.graph_data.get("entities", [])
+    if e.get("name")
+]
+if _sidebar_entity_names:
+    st.sidebar.markdown(
+        "<hr style='border-color:#2D333B;margin:4px 0 6px 0'/>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown(
+        "<p style='color:#A8A8A8;font-size:0.78rem;margin:0 0 4px 0;"
+        "font-family:\"Inter\",sans-serif;'>🔎 实体搜索</p>",
+        unsafe_allow_html=True,
+    )
+    _sidebar_sel = st.sidebar.selectbox(
+        "搜索实体",
+        [""] + _sidebar_entity_names,
+        index=0,
+        key="sidebar_entity_select",
+        label_visibility="collapsed",
+    )
+    if _sidebar_sel and _sidebar_sel != st.session_state.selected_entity:
+        st.session_state.selected_entity = _sidebar_sel
+        st.rerun()
+
+# ---------------------------------------------------------------------------
+# Sidebar – Footer Buttons
+# ---------------------------------------------------------------------------
+# Only buttons with backend callbacks implemented are enabled.
+_footer_buttons: Dict[str, bool] = {
+    "🔄 Refresh Data": True,    # clears cache and reloads graph
+    "📤 Export Graph": False,   # not yet implemented
+    "📊 Run Analytics": False,  # not yet implemented
+    "⚙️ Settings": False,       # not yet implemented
+}
+st.sidebar.markdown(
+    "<hr style='border-color:#2D333B;margin:8px 0 6px 0'/>",
+    unsafe_allow_html=True,
+)
+for _btn_label, _btn_enabled in _footer_buttons.items():
+    if _btn_enabled:
+        if st.sidebar.button(
+            _btn_label, use_container_width=True, key=f"footer_btn_{_btn_label}"
+        ):
+            # clear() invalidates the @st.cache_resource cache so the next
+            # run fetches fresh data from KuzuDB.
+            load_knowledge_graph.clear()
+            st.session_state.graph_data = {
+                "entities": [], "relations": [], "status": "not_loaded"
+            }
+            st.session_state.entity_cache = {}
+            st.session_state.last_update = None
+            st.rerun()
+    else:
+        st.sidebar.button(
+            _btn_label,
+            use_container_width=True,
+            disabled=True,
+            key=f"footer_btn_{_btn_label}",
+        )
 
 # ===========================================================================
 # Knowledge graph helpers
