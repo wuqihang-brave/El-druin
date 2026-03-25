@@ -41,7 +41,7 @@ class OntologyGroundedAnalysisRequest(BaseModel):
     extract_paths: bool = True
 
 
-# ══════════════���════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # Helper Functions
 # ═══════════════════════════════════════════════════════════════════
 
@@ -127,7 +127,7 @@ def _get_llm_service() -> Any:
 
 # ═══════════════════════════════════════════════════════════════════
 # Endpoint 1: Sacred Sword Analyzer (4-step protocol)
-# ══════════════════════════���════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 
 @router.post("/sacred-sword")
 def sacred_sword_analysis(request: AnalysisRequest) -> Dict[str, Any]:
@@ -263,12 +263,13 @@ def analyze_with_deduction_soul(
     try:
         _ensure_intelligence_importable()
         llm_service = _get_llm_service()
+        kuzu_conn = _get_kuzu_connection()
         
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
         
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,
-            kuzu_conn=None,
+            kuzu_conn=kuzu_conn,
         )
         return analyzer.analyze_with_ontological_grounding(
             news_fragment=request.news_fragment,
@@ -280,7 +281,7 @@ def analyze_with_deduction_soul(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ══════��════════════════════════════════════════════════════════════
 # Endpoint 4: Get Ontological Context
 # ═══════════════════════════════════════════════════════════════════
 
