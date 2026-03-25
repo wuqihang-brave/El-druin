@@ -72,21 +72,26 @@ def _get_analyzer():
 
 
 def _get_kuzu_connection() -> Any:
-    """Return a KuzuDB connection, with graceful fallback."""
+    """Return a KuzuDB connection to the main application database."""
     _ensure_intelligence_importable()
+    # Use the main application database path (kuzu_db_path / ./data/kuzu_db).
+    # Note: kuzu_kg_path (./data/el_druin.kuzu) is the separate knowledge-graph
+    # database and must NOT be used here.
+    db_path = "./data/kuzu_db"
     try:
         import kuzu
         try:
             from app.core.config import get_settings
             settings = get_settings()
-            db_path = getattr(settings, "kuzu_db_path", None) or "./data/el_druin.kuzu"
+            db_path = getattr(settings, "kuzu_db_path", None) or "./data/kuzu_db"
         except Exception:
-            db_path = "./data/el_druin.kuzu"
-        
+            pass
+
+        logger.debug("Opening KuzuDB at path: %s", db_path)
         db = kuzu.Database(db_path)
         return kuzu.Connection(db)
     except Exception as exc:
-        logger.warning("KuzuDB connection unavailable: %s", exc)
+        logger.warning("KuzuDB connection unavailable (path=%s): %s", db_path, exc)
         raise
 
 
