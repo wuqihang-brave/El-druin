@@ -15,7 +15,7 @@ import logging
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.data_ingestion.event_extractor import EventExtractor
 from app.data_ingestion.news_aggregator import NewsAggregator
@@ -83,10 +83,14 @@ def get_latest_news(
     hours: int = Query(24, ge=1, le=720),
 ) -> Dict[str, Any]:
     """Return the most recent articles."""
-    articles = _aggregator().aggregate(limit=limit, hours=hours)
-    if category:
-        articles = [a for a in articles if a.get("category") == category]
-    return {"articles": articles, "total": len(articles)}
+    try:
+        articles = _aggregator().aggregate(limit=limit, hours=hours)
+        if category:
+            articles = [a for a in articles if a.get("category") == category]
+        return {"articles": articles, "total": len(articles)}
+    except Exception as exc:
+        logger.error("Failed to fetch latest news (limit=%s, hours=%s): %s", limit, hours, exc, exc_info=True)
+        raise HTTPException(status_code=503, detail=f"News aggregation unavailable: {exc}") from exc
 
 
 @router.get("/search")
