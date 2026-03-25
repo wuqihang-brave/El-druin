@@ -61,17 +61,19 @@ def _entity_icon(entity_type: str) -> str:
 
 
 def _risk_badge(risk_level: str) -> str:
-    color = _RISK_COLORS.get(risk_level.lower(), "#A8A8A8")
+    color = _RISK_COLORS.get(risk_level.lower(), "#A0A0A0")
     label = risk_level.upper()
+    # Use dark text on lighter backgrounds (low=green, medium=amber)
+    text_color = "#FFFFFF" if risk_level.lower() in ("high", "critical", "unknown") else "#333333"
     return (
-        f'<span style="background:{color}; color:#000; padding:2px 8px; '
+        f'<span style="background:{color}; color:{text_color}; padding:2px 8px; '
         f'border-radius:4px; font-size:0.75rem; font-weight:700;">{label}</span>'
     )
 
 
 def _type_badge(entity_type: str) -> str:
     return (
-        f'<span style="background:#30363D; color:#D4AF37; padding:2px 8px; '
+        f'<span style="background:rgba(0,71,171,0.1); color:#0047AB; padding:2px 8px; '
         f'border-radius:4px; font-size:0.75rem; font-weight:600;">'
         f"{entity_type.upper()}</span>"
     )
@@ -124,7 +126,7 @@ def render_object_view(
     updated_at: str = entity.get("updated_at", entity.get("timestamp", ""))
 
     updated_html = (
-        f'&nbsp;&nbsp;<span style="color:#A8A8A8; font-size:0.8rem;">Updated: {updated_at}</span>'
+        f'&nbsp;&nbsp;<span style="color:#606060; font-size:0.8rem;">Updated: {updated_at}</span>'
         if updated_at
         else ""
     )
@@ -133,10 +135,10 @@ def render_object_view(
     # Section 1: Entity Identity
     # ------------------------------------------------------------------
     st.markdown(
-        f'<div style="padding:12px; background:#1A1A1A; border:1px solid #30363D; '
-        f'border-radius:8px; margin-bottom:12px;">'
+        f'<div style="padding:12px; background:#FFFFFF; border:1px solid #E0E0E0; '
+        f'border-radius:4px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">'
         f'<span style="font-size:2rem;">{icon}</span> '
-        f'<span style="font-size:1.4rem; font-weight:700; color:#F0F0F0;">{entity_name}</span>'
+        f'<span style="font-size:1.4rem; font-weight:700; color:#0047AB;">{entity_name}</span>'
         f"<br/>"
         f"{_type_badge(entity_type)}"
         f"{updated_html}"
@@ -159,7 +161,6 @@ def render_object_view(
         if order_index is not None:
             st.metric("Order Index", f"{float(order_index):.0f} / 100")
         if risk_level and risk_level != "—":
-            color = _RISK_COLORS.get(risk_level.lower(), "#A8A8A8")
             st.markdown(
                 f'Risk Level: {_risk_badge(risk_level)}',
                 unsafe_allow_html=True,
@@ -215,21 +216,21 @@ def render_object_view(
             new_v = entry.get("new_value")
             src = entry.get("source_ref", "")
             conf = entry.get("confidence", 1.0)
-            conf_color = "#D4AF37" if float(conf) >= 0.85 else "#A8A8A8"
+            conf_color = "#0047AB" if float(conf) >= 0.85 else "#A0A0A0"
 
             change_str = _format_change(old_v, new_v)
             source_label = f"From: {src}" if src else ""
             source_html = (
-                f'<br/><span style="color:#666; font-size:0.75rem;">{source_label}</span>'
+                f'<br/><span style="color:#A0A0A0; font-size:0.75rem;">{source_label}</span>'
                 if source_label
                 else ""
             )
 
             st.markdown(
-                f'<div style="padding:8px; background:#111; border-left:2px solid {conf_color}; '
-                f'margin-bottom:6px; border-radius:0 4px 4px 0;">'
-                f'<span style="color:#A8A8A8; font-size:0.75rem;">{ts}</span><br/>'
-                f'<strong style="color:#F0F0F0;">{prop}</strong>'
+                f'<div style="padding:8px; background:#FFFFFF; border-left:2px solid {conf_color}; '
+                f'margin-bottom:6px; border-radius:0 4px 4px 0; border:1px solid #E0E0E0;">'
+                f'<span style="color:#A0A0A0; font-size:0.75rem;">{ts}</span><br/>'
+                f'<strong style="color:#333333;">{prop}</strong>'
                 f'<span style="color:{conf_color};"> {change_str}</span>'
                 f"{source_html}"
                 f"</div>",
@@ -275,7 +276,7 @@ def _render_property_chart(property_history: List[Dict[str, Any]]) -> None:
         return
 
     fig = go.Figure()
-    colors = ["#D4AF37", "#A8A8A8", "#4FC3F7", "#81C784", "#FF8A65"]
+    colors = ["#0047AB", "#2E86AB", "#2A9D8F", "#1B6CA8", "#606060"]
 
     for i, (prop_name, points) in enumerate(prop_series.items()):
         sorted_points = sorted(points, key=lambda p: p["ts"])
@@ -294,12 +295,12 @@ def _render_property_chart(property_history: List[Dict[str, Any]]) -> None:
         )
 
     fig.update_layout(
-        paper_bgcolor="#0D0D0D",
-        plot_bgcolor="#0D0D0D",
-        font={"color": "#F0F0F0", "family": "Inter"},
-        legend={"bgcolor": "#1A1A1A", "bordercolor": "#30363D"},
-        xaxis={"gridcolor": "#30363D", "linecolor": "#30363D"},
-        yaxis={"gridcolor": "#30363D", "linecolor": "#30363D"},
+        paper_bgcolor="#F0F8FF",
+        plot_bgcolor="#F0F8FF",
+        font={"color": "#333333", "family": "Inter"},
+        legend={"bgcolor": "#FFFFFF", "bordercolor": "#E0E0E0"},
+        xaxis={"gridcolor": "#E0E0E0", "linecolor": "#E0E0E0"},
+        yaxis={"gridcolor": "#E0E0E0", "linecolor": "#E0E0E0"},
         margin={"l": 40, "r": 20, "t": 20, "b": 40},
         height=220,
     )

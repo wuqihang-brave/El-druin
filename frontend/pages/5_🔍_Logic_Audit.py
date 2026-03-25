@@ -70,11 +70,11 @@ if "selected_tree" not in st.session_state:
 st.markdown(
     """
     <div style="margin-bottom:24px;">
-        <h1 style="color:#D4AF37;font-family:'Inter',sans-serif;font-weight:300;
-                   letter-spacing:3px;font-size:1.6rem;margin-bottom:4px;">
+        <h1 style="color:#0047AB;font-family:'Inter',sans-serif;font-weight:600;
+                   letter-spacing:1px;font-size:1.6rem;margin-bottom:4px;">
             ⚖️ LOGIC AUDIT TRAIL
         </h1>
-        <p style="color:#A8A8A8;font-size:0.85rem;font-style:italic;margin:0;">
+        <p style="color:#606060;font-size:0.85rem;font-style:italic;margin:0;">
             Bayesian Bridge — Every inference is mathematically tagged.
         </p>
     </div>
@@ -188,15 +188,15 @@ with main_col:
             best = result.get("selected_branch", {})
             if best:
                 st.markdown(
-                    "<h5 style='color:#D4AF37;font-size:0.85rem;margin-top:12px;'>Selected Interpretation</h5>",
+                    "<h5 style='color:#0047AB;font-size:0.85rem;margin-top:12px;'>Selected Interpretation</h5>",
                     unsafe_allow_html=True,
                 )
                 st.markdown(
-                    f"<div style='background:#1a1e24;padding:10px 14px;border-radius:6px;"
-                    f"border-left:3px solid #D4AF37;'>"
-                    f"<span style='color:#F0F0F0;font-size:0.85rem'>"
+                    f"<div style='background:rgba(0,71,171,0.04);padding:10px 14px;border-radius:4px;"
+                    f"border-left:3px solid #0047AB;'>"
+                    f"<span style='color:#333333;font-size:0.85rem'>"
                     f"{best.get('interpretation','—')}</span><br>"
-                    f"<span style='color:#A8A8A8;font-size:0.75rem'>"
+                    f"<span style='color:#606060;font-size:0.75rem'>"
                     f"weight={best.get('weight',0):.3f} | confidence={best.get('confidence',0):.2f}"
                     f"</span></div>",
                     unsafe_allow_html=True,
@@ -206,7 +206,7 @@ with main_col:
             changes = result.get("graph_changes", [])
             if changes:
                 st.markdown(
-                    "<h5 style='color:#D4AF37;font-size:0.85rem;margin-top:12px;'>Graph Changes</h5>",
+                    "<h5 style='color:#0047AB;font-size:0.85rem;margin-top:12px;'>Graph Changes</h5>",
                     unsafe_allow_html=True,
                 )
                 import pandas as pd
@@ -224,8 +224,8 @@ with main_col:
     # ── Tab 2: Browse audit log ──────────────────────────────────────────
     with tab_log:
         st.markdown(
-            "<h4 style='color:#F0F0F0;font-weight:400;font-size:0.95rem;"
-            "letter-spacing:1px;margin-bottom:12px;'>Recent Reasoning Paths</h4>",
+            "<h4 style='color:#0047AB;font-weight:600;font-size:0.95rem;"
+            "letter-spacing:0.5px;margin-bottom:12px;'>Recent Reasoning Paths</h4>",
             unsafe_allow_html=True,
         )
 
@@ -256,7 +256,7 @@ with main_col:
                 status_color = {
                     "approved": "#22c55e",
                     "flagged": "#ef4444",
-                    "pending_review": "#D4AF37",
+                    "pending_review": "#0047AB",
                 }.get(status, "#6b7280")
 
                 with st.expander(

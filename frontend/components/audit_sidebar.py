@@ -23,12 +23,12 @@ import streamlit as st
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _confidence_bar(label: str, value: float, color: str = "#D4AF37") -> None:
+def _confidence_bar(label: str, value: float, color: str = "#0047AB") -> None:
     """Render a labelled progress bar with an Apostolic Gold accent."""
     col_label, col_bar = st.columns([2, 3])
     with col_label:
         st.markdown(
-            f"<span style='color:#A8A8A8;font-size:0.8rem'>{label}</span>",
+            f"<span style='color:#606060;font-size:0.8rem'>{label}</span>",
             unsafe_allow_html=True,
         )
     with col_bar:
@@ -38,7 +38,7 @@ def _confidence_bar(label: str, value: float, color: str = "#D4AF37") -> None:
             <div style="background:#1a1e24;border-radius:4px;height:10px;margin-top:6px;">
               <div style="background:{color};width:{pct}%;height:10px;border-radius:4px;"></div>
             </div>
-            <span style='color:#D4AF37;font-size:0.75rem;'>{value:.2f}</span>
+            <span style='color:#0047AB;font-size:0.75rem;'>{value:.2f}</span>
             """,
             unsafe_allow_html=True,
         )
@@ -47,9 +47,9 @@ def _confidence_bar(label: str, value: float, color: str = "#D4AF37") -> None:
 def _audit_badge(status: str) -> None:
     """Render a coloured badge for the audit status."""
     colours = {
-        "approved": ("#22c55e", "#0D0D0D"),
+        "approved": ("#22c55e", "#FFFFFF"),
         "flagged": ("#ef4444", "#F0F0F0"),
-        "pending_review": ("#D4AF37", "#0D0D0D"),
+        "pending_review": ("#0047AB", "#FFFFFF"),
     }
     bg, fg = colours.get(status, ("#6b7280", "#F0F0F0"))
     label = status.replace("_", " ").upper()
@@ -81,12 +81,12 @@ def render_audit_sidebar(
     ctx = container if container is not None else st.sidebar
 
     ctx.markdown(
-        "<h4 style='color:#D4AF37;font-family:Inter,sans-serif;letter-spacing:2px;"
+        "<h4 style='color:#0047AB;font-family:Inter,sans-serif;letter-spacing:2px;"
         "font-weight:300;margin-bottom:4px;'>⚖️ LOGIC AUDIT TRAIL</h4>",
         unsafe_allow_html=True,
     )
     ctx.markdown(
-        "<hr style='border-color:#2D333B;margin:4px 0 12px 0'/>",
+        "<hr style='border-color:#E0E0E0;margin:4px 0 12px 0'/>",
         unsafe_allow_html=True,
     )
 
@@ -116,14 +116,14 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
     col1, col2 = ctx.columns(2)
     with col1:
         st.markdown(
-            f"<span style='color:#A8A8A8;font-size:0.75rem'>Source type</span><br>"
+            f"<span style='color:#606060;font-size:0.75rem'>Source type</span><br>"
             f"<span style='color:#F0F0F0;font-size:0.82rem'>{source.get('type','—')}</span>",
             unsafe_allow_html=True,
         )
     with col2:
         status = path.get("audit_status", "pending_review")
         st.markdown(
-            "<span style='color:#A8A8A8;font-size:0.75rem'>Status</span><br>",
+            "<span style='color:#606060;font-size:0.75rem'>Status</span><br>",
             unsafe_allow_html=True,
         )
         _audit_badge(status)
@@ -133,7 +133,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
     # Confidence meter
     final_conf = path.get("final_confidence", 0.0)
     ctx.markdown(
-        "<span style='color:#A8A8A8;font-size:0.75rem'>Final confidence</span>",
+        "<span style='color:#606060;font-size:0.75rem'>Final confidence</span>",
         unsafe_allow_html=True,
     )
     _confidence_bar("", final_conf)
@@ -141,7 +141,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
     # Source reliability
     source_rel = source.get("reliability", 0.0)
     ctx.markdown(
-        "<span style='color:#A8A8A8;font-size:0.75rem'>Source reliability</span>",
+        "<span style='color:#606060;font-size:0.75rem'>Source reliability</span>",
         unsafe_allow_html=True,
     )
     _confidence_bar("", source_rel, color="#7c9dc7")
@@ -164,7 +164,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
             for ev in evidence:
                 st.markdown(
                     f"**{ev.get('entity_name','?')}** "
-                    f"<span style='color:#A8A8A8;font-size:0.75rem'>({ev.get('entity_id','?')})</span>",
+                    f"<span style='color:#606060;font-size:0.75rem'>({ev.get('entity_id','?')})</span>",
                     unsafe_allow_html=True,
                 )
                 _confidence_bar("confidence", ev.get("confidence", 0.0))
@@ -182,7 +182,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
             for step in steps:
                 st.markdown(
                     f"**Step {step.get('step_num','?')}** "
-                    f"— <span style='color:#D4AF37;font-size:0.75rem'>"
+                    f"— <span style='color:#0047AB;font-size:0.75rem'>"
                     f"{step.get('reasoning_type','?')}</span>",
                     unsafe_allow_html=True,
                 )
@@ -190,7 +190,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
                 response = step.get("llm_response", "")
                 if response:
                     st.markdown(
-                        f"<span style='color:#A8A8A8;font-size:0.75rem;font-style:italic'>"
+                        f"<span style='color:#606060;font-size:0.75rem;font-style:italic'>"
                         f"{response[:120]}</span>",
                         unsafe_allow_html=True,
                     )
@@ -208,7 +208,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
                 }.get(ch.get("change_type", ""), "⚪")
                 st.markdown(
                     f"{change_icon} **{ch.get('change_type','?')}**<br>"
-                    f"<span style='color:#A8A8A8;font-size:0.75rem'>"
+                    f"<span style='color:#606060;font-size:0.75rem'>"
                     f"{ch.get('entity_id','?')} → {ch.get('target_entity_id','?')} "
                     f"[{ch.get('relationship_type','?')}]</span>",
                     unsafe_allow_html=True,
@@ -223,7 +223,7 @@ def _render_reasoning_path(path: Dict[str, Any], ctx) -> None:
                 st.markdown("---")
 
     ctx.markdown(
-        "<hr style='border-color:#2D333B;margin:12px 0'/>",
+        "<hr style='border-color:#E0E0E0;margin:12px 0'/>",
         unsafe_allow_html=True,
     )
 
@@ -254,7 +254,7 @@ def _render_probability_tree(tree: Dict[str, Any], ctx) -> None:
         conf = branch.get("confidence", 0.0)
         interpretation = branch.get("interpretation", "—")
 
-        border = "2px solid #D4AF37" if is_selected else "1px solid #2D333B"
+        border = "2px solid #0047AB" if is_selected else "1px solid #E0E0E0"
         selected_label = " ✓ Selected" if is_selected else ""
 
         with ctx.expander(
@@ -280,7 +280,7 @@ def _render_probability_tree(tree: Dict[str, Any], ctx) -> None:
             facts: List[Dict[str, Any]] = branch.get("extracted_facts", [])
             if facts:
                 st.markdown(
-                    "<span style='color:#A8A8A8;font-size:0.75rem'>Extracted facts:</span>",
+                    "<span style='color:#606060;font-size:0.75rem'>Extracted facts:</span>",
                     unsafe_allow_html=True,
                 )
                 for fact in facts:

@@ -166,7 +166,7 @@ def render_ontological_significance(
     badge = _badge_html(onto_class)
     meaning_html = (
         f"{badge}<br/>"
-        f'<span style="color:#A8A8A8;font-size:0.82rem;margin-top:4px;display:block;">'
+        f'<span style="color:#606060;font-size:0.82rem;margin-top:4px;display:block;">'
         f"{meaning}"
         f"</span>"
     )
@@ -174,7 +174,7 @@ def render_ontological_significance(
 
     # ── 2. LLM-generated semantic explanation ────────────────────────────
     st.markdown(
-        '<span style="color:#D4AF37;font-size:0.85rem;font-weight:600;">📜 Semantic Explanation</span>',
+        '<span style="color:#0047AB;font-size:0.85rem;font-weight:600;">📜 Semantic Explanation</span>',
         unsafe_allow_html=True,
     )
 
@@ -204,7 +204,7 @@ def render_ontological_significance(
     # ── 3. Connected entity types ─────────────────────────────────────────
     if connected_entities:
         st.markdown(
-            '<span style="color:#D4AF37;font-size:0.85rem;font-weight:600;">🔗 Connected Classes</span>',
+            '<span style="color:#0047AB;font-size:0.85rem;font-weight:600;">🔗 Connected Classes</span>',
             unsafe_allow_html=True,
         )
 
