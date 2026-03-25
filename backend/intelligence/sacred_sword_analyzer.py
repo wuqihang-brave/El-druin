@@ -161,9 +161,11 @@ class SacredSwordAnalyzer:
 
             facts.append(Fact(statement=fragment, source=source, confidence=conf))
 
-        # If LLM is available, refine with LLM extraction
+        # If LLM is available, refine with LLM extraction and enrich with
+        # three-layer entity context (Layer 1 / 2 / 3 ontological labels).
         if self._settings is not None and getattr(self._settings, "llm_enabled", False):
             facts = self._llm_refine_facts(facts, news, graph)
+            facts = self._enrich_facts_with_entity_labels(facts, news)
 
         return facts[:_MAX_FACTS]
 
@@ -311,3 +313,71 @@ class SacredSwordAnalyzer:
         """Optional LLM pass to verify and refine extracted facts (no-op if LLM unavailable)."""
         # Placeholder: future LLM-based refinement can be added here
         return facts
+
+    def _enrich_facts_with_entity_labels(
+        self,
+        facts: List[Fact],
+        news: List[str],
+    ) -> List[Fact]:
+        """Enrich facts with three-layer entity context via EntityExtractionEngine.
+
+        Each qualified fact whose statement matches an extracted entity gets its
+        statement extended with a structured label tag::
+
+            <entity> [LAYER1] functions as ROLE1/ROLE2 with VIRTUE1/VIRTUE2 nature
+
+        Falls back silently if extraction fails or returns no entities.
+        """
+        try:
+            from intelligence.entity_extraction import EntityExtractionEngine
+
+            class _DirectLLMService:
+                """Thin wrapper so EntityExtractionEngine can re-use the analyzer LLM."""
+                def __init__(self, analyzer: "SacredSwordAnalyzer") -> None:
+                    self._analyzer = analyzer
+
+                def call(
+                    self,
+                    prompt: str,
+                    temperature: float = 0.2,
+                    max_tokens: int = 2000,
+                    response_format: str = "json",
+                ) -> str:
+                    result = self._analyzer._llm_call(prompt, temperature=temperature)
+                    return result or "[]"
+
+            extractor = EntityExtractionEngine(_DirectLLMService(self))
+            combined_text = "\n".join(news)
+            entities = extractor.extract(combined_text, "sacred_sword_analysis")
+
+            # Build a name → entity lookup for O(1) access
+            entity_map = {e.name.lower(): e for e in entities}
+
+            enriched: List[Fact] = []
+            for fact in facts:
+                statement_lower = fact.statement.lower()
+                matched = next(
+                    (e for name, e in entity_map.items() if name in statement_lower),
+                    None,
+                )
+                if matched:
+                    roles = "/".join(matched.structural_roles)
+                    virtues = "/".join(matched.philosophical_nature)
+                    label_tag = (
+                        f" [{matched.physical_type}] functions as {roles}"
+                        f" with {virtues} nature"
+                    )
+                    enriched.append(
+                        Fact(
+                            statement=fact.statement.rstrip(" .") + label_tag,
+                            source=fact.source,
+                            confidence=fact.confidence,
+                        )
+                    )
+                else:
+                    enriched.append(fact)
+            return enriched
+
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Entity label enrichment failed: %s", exc)
+            return facts
