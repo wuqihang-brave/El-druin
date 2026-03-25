@@ -1,9 +1,10 @@
 """
-Sacred Sword Analyzer API routes.
+Sacred Sword Analyzer API routes + Ontology-Grounded Analysis Endpoints.
 
 Endpoints:
   POST /analysis/sacred-sword              – run the 4-step ontological analysis
-  POST /analysis/grounded/analyze          – ontology-grounded news analysis
+  POST /analysis/grounded/analyze          – ontology-grounded news analysis  
+  POST /analysis/grounded/deduce           – activate Deduction Soul for strict inference
   GET  /analysis/ontological-context/{entity_name} – 1-hop + 2-hop KG paths
 """
 
@@ -21,31 +22,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
-# ---------------------------------------------------------------------------
-# Request model
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════
+# Request Models (Consolidated)
+# ═══════════════════════════════════════════════════════════════════
 
 class AnalysisRequest(BaseModel):
-    news_fragments: List[str]  # Raw news snippets
-    graph_context: Dict[str, Any]  # Current entities & relations
-    claim: str                 # Claim to analyze
+    """Sacred Sword Analyzer request."""
+    news_fragments: List[str]
+    graph_context: Dict[str, Any]
+    claim: str
 
 
 class OntologyGroundedAnalysisRequest(BaseModel):
-    """Request body for ontology-grounded news analysis."""
-
+    """Request for ontology-grounded analysis (both grounded/analyze and grounded/deduce)."""
     news_fragment: str
     seed_entities: List[str]
     claim: str
     extract_paths: bool = True
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ══════════════���════════════════════════════════════════════════════
+# Helper Functions
+# ═══════════════════════════════════════════════════════════════════
 
 def _ensure_intelligence_importable() -> None:
-    """Add the backend directory to sys.path so intelligence is importable."""
+    """Add the backend directory to sys.path."""
     here = os.path.abspath(__file__)
     backend_dir = os.path.dirname(  # backend/
         os.path.dirname(  # app/
@@ -59,7 +60,7 @@ def _ensure_intelligence_importable() -> None:
 
 
 def _get_analyzer():
-    """Return a SacredSwordAnalyzer instance using the app settings."""
+    """Return a SacredSwordAnalyzer instance."""
     _ensure_intelligence_importable()
     from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
     try:
@@ -70,19 +71,73 @@ def _get_analyzer():
     return SacredSwordAnalyzer(settings=settings)
 
 
-# ---------------------------------------------------------------------------
-# Route
-# ---------------------------------------------------------------------------
+def _get_kuzu_connection() -> Any:
+    """Return a KuzuDB connection, with graceful fallback."""
+    _ensure_intelligence_importable()
+    try:
+        import kuzu
+        try:
+            from app.core.config import get_settings
+            settings = get_settings()
+            db_path = getattr(settings, "kuzu_db_path", None) or "./data/el_druin.kuzu"
+        except Exception:
+            db_path = "./data/el_druin.kuzu"
+        
+        db = kuzu.Database(db_path)
+        return kuzu.Connection(db)
+    except Exception as exc:
+        logger.warning("KuzuDB connection unavailable: %s", exc)
+        raise
+
+
+def _get_llm_service() -> Any:
+    """Return an LLM service adapter."""
+    _ensure_intelligence_importable()
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if not getattr(settings, "llm_enabled", False):
+            raise RuntimeError("LLM not enabled")
+        
+        from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
+        
+        class _LLMAdapter:
+            def __init__(self, cfg: Any) -> None:
+                self._analyzer = SacredSwordAnalyzer(settings=cfg)
+            
+            def call(
+                self,
+                prompt: str,
+                system: str = "",
+                temperature: float = 0.2,
+                max_tokens: int = 1500,
+                response_format: str = "json",
+                **kwargs: Any
+            ) -> str:
+                result = self._analyzer._llm_call(prompt, temperature=temperature)
+                return result or "{}"
+        
+        return _LLMAdapter(settings)
+    except Exception:
+        class _StubLLM:
+            def call(self, **kwargs: Any) -> str:
+                return "{}"
+        return _StubLLM()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Endpoint 1: Sacred Sword Analyzer (4-step protocol)
+# ══════════════════════════���════════════════════════════════════════
 
 @router.post("/sacred-sword")
 def sacred_sword_analysis(request: AnalysisRequest) -> Dict[str, Any]:
     """Execute Sacred Sword Analyzer protocol.
-
+    
     Input:
     - news_fragments: List of raw news text
     - graph_context:  Current knowledge graph state
     - claim:          Statement to analyze
-
+    
     Output:
     - Full SacredSwordAnalysis with 4 steps
     """
@@ -127,78 +182,25 @@ def sacred_sword_analysis(request: AnalysisRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# ---------------------------------------------------------------------------
-# Kuzu connection helper
-# ---------------------------------------------------------------------------
-
-def _get_kuzu_connection() -> Any:
-    """Return a KuzuDB connection, falling back gracefully when unavailable."""
-    _ensure_intelligence_importable()
-    try:
-        import kuzu  # type: ignore
-
-        # Use the configured DB path when available; otherwise a default path.
-        try:
-            from app.core.config import get_settings
-            settings = get_settings()
-            db_path = getattr(settings, "kuzu_db_path", None) or "./data/el_druin.kuzu"
-        except Exception:  # noqa: BLE001
-            db_path = "./data/el_druin.kuzu"
-
-        db = kuzu.Database(db_path)
-        return kuzu.Connection(db)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("KuzuDB connection unavailable: %s", exc)
-        raise
-
-
-def _get_llm_service() -> Any:
-    """Return an LLM service adapter, falling back to a stub when unavailable."""
-    _ensure_intelligence_importable()
-    try:
-        from app.core.config import get_settings
-        settings = get_settings()
-        if not getattr(settings, "llm_enabled", False):
-            raise RuntimeError("LLM not enabled")
-        return _LLMServiceAdapter(settings)
-    except Exception:  # noqa: BLE001
-        return _StubLLMService()
-
-
-class _LLMServiceAdapter:
-    def __init__(self, settings: Any) -> None:
-        self._settings = settings
-
-    def call(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1000, **_: Any) -> str:
-        from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
-        analyzer = SacredSwordAnalyzer(settings=self._settings)
-        return analyzer._llm_call(prompt, temperature=temperature) or ""
-
-
-class _StubLLMService:
-    def call(self, prompt: str, **_: Any) -> str:  # noqa: ANN401
-        return "[LLM not configured – ontological context extracted successfully]"
-
-
-# ---------------------------------------------------------------------------
-# Ontology-grounded routes
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════
+# Endpoint 2: Grounded Analysis (Ontology-aware LLM reasoning)
+# ═══════════════════════════════════════════════════════════════════
 
 @router.post("/grounded/analyze")
 def analyze_with_ontological_grounding(
     request: OntologyGroundedAnalysisRequest,
 ) -> Dict[str, Any]:
     """Analyze news grounded in knowledge graph ontology.
-
-    Ensures LLM reasoning is based on actual knowledge graph structure
-    (1-hop + 2-hop relationship paths) rather than raw text alone.
-
+    
+    Ensures LLM reasoning is based on actual KG structure 
+    (1-hop + 2-hop relationship paths).
+    
     Input:
     - news_fragment:  Raw news text
-    - seed_entities:  List of entity names to ground the analysis on
+    - seed_entities:  List of entity names to ground
     - claim:          Statement to evaluate
-    - extract_paths:  Whether to extract KG paths (default: true)
-
+    - extract_paths:  Whether to extract KG paths
+    
     Output:
     - Ontological grounding metadata + LLM grounded analysis
     """
@@ -206,9 +208,9 @@ def analyze_with_ontological_grounding(
         _ensure_intelligence_importable()
         kuzu_conn = _get_kuzu_connection()
         llm_service = _get_llm_service()
-
+        
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
-
+        
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,
             kuzu_conn=kuzu_conn,
@@ -223,19 +225,78 @@ def analyze_with_ontological_grounding(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# ═══════════════════════════════════════════════════════════════════
+# Endpoint 3: Deduction Soul (Strict logical inference)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/grounded/deduce")
+def analyze_with_deduction_soul(
+    request: OntologyGroundedAnalysisRequest,
+) -> Dict[str, Any]:
+    """【推演灵魂激活】Analyze news with strict ontological deduction.
+    
+    LLM is forced to:
+    1. Base all predictions on explicit ontological paths
+    2. Trace every inference to specific relationships
+    3. Output strict JSON with causal chains
+    4. Never invent—only deduce
+    
+    Request body:
+    {
+        "news_fragment": "The European Commission announced strict AI regulations...",
+        "seed_entities": ["European Commission", "AI Regulation", "EU"],
+        "claim": "What will be the impact?"
+    }
+    
+    Response:
+    {
+        "status": "success",
+        "deduction_result": {
+            "driving_factor": "...",
+            "scenario_alpha": {...},
+            "scenario_beta": {...},
+            "verification_gap": "...",
+            "confidence": 0.85
+        }
+    }
+    """
+    try:
+        _ensure_intelligence_importable()
+        llm_service = _get_llm_service()
+        
+        from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
+        
+        analyzer = OntologyGroundedAnalyzer(
+            llm_service=llm_service,
+            kuzu_conn=None,
+        )
+        return analyzer.analyze_with_ontological_grounding(
+            news_fragment=request.news_fragment,
+            seed_entities=request.seed_entities,
+            claim=request.claim,
+        )
+    except Exception as exc:
+        logger.exception("Deduction Soul analysis failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Endpoint 4: Get Ontological Context
+# ═══════════════════════════════════════════════════════════════════
+
 @router.get("/ontological-context/{entity_name}")
 def get_entity_ontological_context(entity_name: str) -> Dict[str, Any]:
     """Get ontological context (1-hop + 2-hop KG paths) for an entity.
-
-    Returns the relationship paths from the knowledge graph that ground
+    
+    Returns relationship paths from the knowledge graph that ground
     downstream LLM reasoning about this entity.
     """
     try:
         _ensure_intelligence_importable()
         kuzu_conn = _get_kuzu_connection()
-
+        
         from ontology.kuzu_context_extractor import get_ontological_context
-
+        
         context = get_ontological_context(kuzu_conn, entity_name)
         return {
             "status": "success",

@@ -1,71 +1,125 @@
 """
-Ontology-Grounded Analysis
+EL-druin Intelligence Platform – Ontology-Grounded Analyzer
+============================================================
 
-LLM 推理必须以本体路径为前提，而非原始文本。
+Combines KuzuDB ontological path extraction with the Deduction Soul engine
+to produce strictly path-grounded scenario analysis.
+
+The DeductionEngine is injected into OntologyGroundedAnalyzer so that every
+LLM inference traces back to an explicit knowledge-graph relationship.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
+# ═══════════════════════════════════════════════════════════════════
+# Helper: Get Ontological Context from KuzuDB
+# ═══════════════════════════════════════════════════════════════════
 
-@dataclass
-class GroundedAnalysisPrompt:
-    """LLM prompt that includes ontological context as an absolute premise."""
+def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
+    """Query KuzuDB for 1-hop and 2-hop paths from *entity_name*.
 
-    ontological_premise: str
-    news_fragment: str
-    analysis_claim: str
+    Returns a multi-line string where every line describes one relationship
+    path, e.g.::
 
-    def to_llm_prompt(self) -> str:
-        """Convert to LLM prompt with ontological grounding."""
-        return (
-            "你是一个本体推理专家。\n\n"
-            "【绝对前提：已验证的本体路径】\n"
-            f"{self.ontological_premise}\n\n"
-            "【新信息】\n"
-            f"{self.news_fragment}\n\n"
-            "【分析任务】\n"
-            "基于上述本体前提，分析以下命题的合理性：\n"
-            f"{self.analysis_claim}\n\n"
-            "要求：\n"
-            "1. 首先说明新信息如何与已知本体路径相符（或冲突）\n"
-            "2. 如果冲突，指出矛盾点\n"
-            "3. 基于本体路径给出 0.0-1.0 的可信度评分\n"
-            "4. 说明需要什么额外信息来验证新信息\n"
+        EntityA --[RELATION]--> EntityB
+        EntityA --[REL1]--> EntityB --[REL2]--> EntityC
+
+    Falls back gracefully when KuzuDB is unavailable or the entity has no
+    relationships.
+    """
+    if kuzu_conn is None:
+        return f"[No KuzuDB connection – context unavailable for '{entity_name}']"
+
+    # Sanitize entity name to prevent Cypher injection
+    safe_name = entity_name.replace("'", "\\'").replace("\\", "\\\\")
+
+    try:
+        # 1-hop paths: A --[rel]--> B
+        query_1hop = (
+            "MATCH (a)-[r]->(b) "
+            f"WHERE a.name = '{safe_name}' "
+            "RETURN a.name, type(r), b.name LIMIT 20"
         )
+        result_1hop = kuzu_conn.execute(query_1hop)
+        lines: List[str] = []
+        
+        while result_1hop.hasNext():
+            row = result_1hop.getNext()
+            lines.append(f"{row[0]} --[{row[1]}]--> {row[2]}")
 
+        # 2-hop paths: A --[rel1]--> B --[rel2]--> C
+        query_2hop = (
+            "MATCH (a)-[r1]->(b)-[r2]->(c) "
+            f"WHERE a.name = '{safe_name}' "
+            "RETURN a.name, type(r1), b.name, type(r2), c.name LIMIT 20"
+        )
+        result_2hop = kuzu_conn.execute(query_2hop)
+        
+        while result_2hop.hasNext():
+            row = result_2hop.getNext()
+            lines.append(
+                f"{row[0]} --[{row[1]}]--> {row[2]} --[{row[3]}]--> {row[4]}"
+            )
+
+        if not lines:
+            return f"[No ontological paths found for '{entity_name}']"
+
+        return "\n".join(lines)
+
+    except Exception as exc:
+        logger.warning("KuzuDB query failed for '%s': %s", entity_name, exc)
+        return f"[KuzuDB query error for '{entity_name}': {exc}]"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Main Analyzer: OntologyGroundedAnalyzer with Deduction Soul
+# ═══════════════════════════════════════════════════════════════════
 
 class OntologyGroundedAnalyzer:
-    """Analyzer that always grounds LLM reasoning in the knowledge graph."""
+    """
+    分析器的本体感知版本：现在配备推演灵魂
+
+    Combines KuzuDB path extraction with DeductionEngine to produce
+    strictly ontology-grounded scenario analysis.
+    
+    Features:
+    - Extracts 1-hop and 2-hop ontological paths from KuzuDB
+    - Injects DeductionEngine for strict logical reasoning
+    - Forces JSON output with complete causal chains
+    - Never fabricates—only deduces from knowledge graph paths
+    """
 
     def __init__(
         self,
         llm_service: Any,
-        kuzu_conn: Any,
-        sacred_sword_analyzer: Optional[Any] = None,
+        kuzu_conn: Any = None,
+        sacred_sword_analyzer: Any = None,
     ) -> None:
-        """Initialise with ontology-aware components.
+        """Initialize with Deduction Soul.
 
         Args:
-            llm_service:           Any object with a ``call(prompt, **kwargs)`` method.
-            kuzu_conn:             Open ``kuzu.Connection`` instance.
-            sacred_sword_analyzer: Optional existing analyzer for extra context.
+            llm_service:           LLM service with a ``call()`` method.
+            kuzu_conn:             Optional KuzuDB connection for path queries.
+            sacred_sword_analyzer: Optional SacredSwordAnalyzer (reserved for
+                                   future cross-engine enrichment).
         """
         self.llm = llm_service
         self.kuzu = kuzu_conn
         self.analyzer = sacred_sword_analyzer
 
-        # Import here to keep the dependency on kuzu_context_extractor localised
-        # so the module can be imported even in environments without KuzuDB.
-        from ontology.kuzu_context_extractor import KuzuContextExtractor
+        # 【注入推演灵魂】Inject Deduction Soul
+        from intelligence.deduction_engine import DeductionEngine
+        self.deduction_engine = DeductionEngine(llm_service)
 
-        self.context_extractor = KuzuContextExtractor(kuzu_conn)
+    # ─────────────────────────────────────────────────────────────────
+    # Public API
+    # ─────────────────────────────────────────────────────────────────
 
     def analyze_with_ontological_grounding(
         self,
@@ -73,60 +127,72 @@ class OntologyGroundedAnalyzer:
         seed_entities: List[str],
         claim: str,
     ) -> Dict[str, Any]:
-        """Analyze news grounded in ontology.
+        """【MAIN METHOD】Analyze with Deduction Soul.
+
+        The Deduction Soul ensures:
+        1. All predictions based on ontological paths
+        2. No fabrication or vague speculation
+        3. Strict JSON output with causal chains
+        4. Complete traceability to KG relationships
 
         Pipeline:
         1. Extract ontological context for every seed entity (1-hop + 2-hop).
-        2. Build a grounded LLM prompt that contains the ontological premise.
-        3. Call the LLM and return the grounded result.
+        2. Activate DeductionEngine with ontological context.
+        3. LLM performs strictly path-based inference.
+        4. Return structured result with deduction JSON.
 
         Args:
-            news_fragment:  Raw news text to analyse.
-            seed_entities:  List of entity names to ground the analysis on.
-            claim:          The claim / hypothesis to evaluate.
+            news_fragment: Raw news text (used as event trigger summary).
+            seed_entities: Entity names to use as path query seeds.
+            claim:         The analytical question / claim under examination.
 
         Returns:
-            Dictionary with status, ontological grounding metadata, LLM response,
-            and a timestamp.
+            Dict with ``status``, ``ontological_grounding``,
+            ``deduction_result``, and ``timestamp``.
         """
-        # Step 1: extract ontological context per entity
+        
+        logger.info(
+            "Processing news with ontological grounding: %s...",
+            news_fragment[:100]
+        )
+
+        # Step 1: Extract ontological context for each seed entity
         ontological_premises: Dict[str, str] = {}
+        
         for entity in seed_entities:
             try:
-                from ontology.kuzu_context_extractor import get_ontological_context
-
                 context = get_ontological_context(self.kuzu, entity)
                 ontological_premises[entity] = context
                 logger.info("Extracted ontological context for: %s", entity)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error("Failed to extract context for %s: %s", entity, exc)
                 ontological_premises[entity] = ""
 
-        # Step 2: build grounded prompt
-        combined_premise = "\n".join(ontological_premises.values())
-        grounded_prompt = GroundedAnalysisPrompt(
-            ontological_premise=combined_premise,
-            news_fragment=news_fragment,
-            analysis_claim=claim,
+        # Step 2: 【激活推演灵魂】Activate Deduction Soul
+        combined_premise = "\n".join(
+            ctx for ctx in ontological_premises.values() if ctx
         )
 
-        # Step 3: call LLM
-        llm_response = self.llm.call(
-            grounded_prompt.to_llm_prompt(),
-            temperature=0.3,
-            max_tokens=1000,
+        logger.info("Activating Deduction Soul for logical inference...")
+        
+        deduction_result = self.deduction_engine.deduce_from_ontological_paths(
+            news_summary=news_fragment[:200],
+            ontological_context=combined_premise,
+            seed_entities=seed_entities,
         )
 
-        # Step 4: return grounded result
+        # Step 3: Return structured result with complete deduction JSON
         return {
             "status": "success",
             "ontological_grounding": {
                 "seed_entities": seed_entities,
                 "premises": ontological_premises,
                 "total_paths_extracted": sum(
-                    len(p.splitlines()) for p in ontological_premises.values()
+                    len(p.split("\n"))
+                    for p in ontological_premises.values()
+                    if p
                 ),
             },
-            "llm_grounded_analysis": llm_response,
+            "deduction_result": deduction_result.to_strict_json(),
             "timestamp": datetime.now().isoformat(),
         }

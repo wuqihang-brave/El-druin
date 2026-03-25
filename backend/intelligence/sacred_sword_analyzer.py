@@ -265,6 +265,15 @@ class SacredSwordAnalyzer:
     # LLM helpers
     # ------------------------------------------------------------------
 
+    def llm_call(self, prompt: str, temperature: float = 0.3) -> Optional[str]:
+        """Public entry point for single-prompt LLM calls.
+
+        Returns the raw LLM response string, or *None* when no LLM is
+        configured or the call fails.  Re-uses the same provider logic as
+        the internal analysis steps.
+        """
+        return self._llm_call(prompt, temperature=temperature)
+
     def _llm_call(self, prompt: str, temperature: float = 0.3) -> Optional[str]:
         """Call the configured LLM provider; return None on failure."""
         if self._settings is None or not getattr(self._settings, "llm_enabled", False):
