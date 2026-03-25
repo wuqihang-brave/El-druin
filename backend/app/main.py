@@ -63,6 +63,25 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
+# Startup event – initialise KuzuDB before any request is served
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    """Ensure KuzuDB directories and schemas exist before handling requests."""
+    try:
+        from app.core.db import initialize_database
+
+        initialize_database()
+        logger.info("✅ Database initialised successfully")
+    except Exception as exc:
+        logger.error("❌ Database initialisation failed: %s", exc)
+        # Do not re-raise: let the app start so the /health endpoint remains
+        # reachable and operators can diagnose the problem without a full
+        # service outage.
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 _API_PREFIX = "/api/v1"
