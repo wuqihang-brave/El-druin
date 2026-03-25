@@ -295,7 +295,7 @@ class TestDeductionEngineDeduceFromPaths:
             seed_entities=["A"],
         )
         kwargs = engine_with_valid_llm.llm.last_call_kwargs
-        assert kwargs.get("temperature", 1.0) <= 0.3
+        assert kwargs.get("temperature") == 0.2
 
     def test_json_decode_error_returns_fallback(
         self, engine_with_bad_llm: DeductionEngine

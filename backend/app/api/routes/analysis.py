@@ -156,7 +156,7 @@ def _get_llm_service_for_deduction() -> Any:
                 max_tokens: int = 1500,  # noqa: ARG002
                 response_format: str = "json",  # noqa: ARG002
             ) -> str:
-                result = self._analyzer._llm_call(prompt, temperature=temperature)
+                result = self._analyzer.llm_call(prompt, temperature=temperature)
                 return result or "{}"
 
         return _Adapter(settings)

@@ -61,7 +61,7 @@ class _LLMServiceAdapter:
     ) -> str:
         from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
         analyzer = SacredSwordAnalyzer(settings=self._settings)
-        result = analyzer._llm_call(prompt, temperature=temperature)
+        result = analyzer.llm_call(prompt, temperature=temperature)
         return result or "[]"
 
 

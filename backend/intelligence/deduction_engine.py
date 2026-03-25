@@ -280,9 +280,14 @@ class DeductionEngine:
         )
 
     def _fallback_deduction(
-        self, news_summary: str, ontological_context: str  # noqa: ARG002
+        self, news_summary: str, ontological_context: str
     ) -> DeductionResult:
-        """Fallback deduction if JSON parsing fails."""
+        """Fallback deduction if JSON parsing fails.
+
+        *news_summary* and *ontological_context* are accepted for a consistent
+        call signature but are not used in the fallback path.
+        """
+        del news_summary, ontological_context  # not used in fallback
         self.logger.warning("Falling back to structured deduction...")
 
         alpha_chain = CausalChain(

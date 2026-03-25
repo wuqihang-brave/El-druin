@@ -39,11 +39,15 @@ def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
     if kuzu_conn is None:
         return f"[No KuzuDB connection – context unavailable for '{entity_name}']"
 
+    # Sanitize entity name to prevent Cypher injection: strip surrounding
+    # quotes and escape any remaining single quotes.
+    safe_name = entity_name.replace("'", "\\'").replace("\\", "\\\\")
+
     try:
         # 1-hop paths
         query_1hop = (
             "MATCH (a)-[r]->(b) "
-            f"WHERE a.name = '{entity_name}' "
+            f"WHERE a.name = '{safe_name}' "
             "RETURN a.name, type(r), b.name LIMIT 20"
         )
         result_1hop = kuzu_conn.execute(query_1hop)
@@ -55,7 +59,7 @@ def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
         # 2-hop paths
         query_2hop = (
             "MATCH (a)-[r1]->(b)-[r2]->(c) "
-            f"WHERE a.name = '{entity_name}' "
+            f"WHERE a.name = '{safe_name}' "
             "RETURN a.name, type(r1), b.name, type(r2), c.name LIMIT 20"
         )
         result_2hop = kuzu_conn.execute(query_2hop)
