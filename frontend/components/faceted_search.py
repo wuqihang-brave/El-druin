@@ -33,7 +33,7 @@ _RISK_COLORS: Dict[str, str] = {
     "medium": "#FFC107",
     "high": "#FF5722",
     "critical": "#F44336",
-    "all": "#D4AF37",
+    "all": "#0047AB",
 }
 
 
@@ -83,9 +83,9 @@ def _matches_time_filter(entity: Dict[str, Any], time_filter: str) -> bool:
 def _confidence_bar(score: float) -> str:
     """Return an inline HTML mini progress bar for a confidence score."""
     pct = int(score * 100)
-    color = "#D4AF37" if score >= 0.85 else "#A8A8A8" if score >= 0.65 else "#E0E0E0"
+    color = "#0047AB" if score >= 0.85 else "#2E86AB" if score >= 0.65 else "#A0A0A0"
     return (
-        f'<div style="background:#30363D; border-radius:2px; height:4px; width:80px;">'
+        f'<div style="background:#E0E0E0; border-radius:2px; height:4px; width:80px;">'
         f'<div style="background:{color}; width:{pct}%; height:4px; border-radius:2px;"></div>'
         f"</div>"
     )
@@ -146,7 +146,7 @@ def render_faceted_search(
     risk_cols = st.columns(len(_RISK_LEVELS))
     selected_risk: str = st.session_state.get(f"{key_prefix}_risk", "All")
     for i, level in enumerate(_RISK_LEVELS):
-        color = _RISK_COLORS.get(level.lower(), "#D4AF37")
+        color = _RISK_COLORS.get(level.lower(), "#0047AB")
         if risk_cols[i].button(
             level,
             key=f"{key_prefix}_risk_{level}",
@@ -209,8 +209,8 @@ def render_faceted_search(
         updated = ent.get("updated_at", ent.get("timestamp", ""))
 
         is_selected = ent_name == current_selection
-        bg_color = "#1E2A1E" if is_selected else "#1A1A1A"
-        border_color = "#D4AF37" if is_selected else "#30363D"
+        bg_color = "rgba(0,71,171,0.08)" if is_selected else "#FFFFFF"
+        border_color = "#0047AB" if is_selected else "#E0E0E0"
 
         col_btn, col_meta = st.columns([3, 1])
         with col_btn:

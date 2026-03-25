@@ -22,10 +22,10 @@ import streamlit as st
 def _confidence_color(confidence: float) -> str:
     """Return a CSS color string that reflects the confidence level."""
     if confidence >= 0.85:
-        return "#D4AF37"   # Gold – high confidence
+        return "#0047AB"   # Cobalt Blue – high confidence
     if confidence >= 0.65:
-        return "#A8A8A8"   # Silver – medium confidence
-    return "#E0E0E0"       # Cold white – low confidence
+        return "#2E86AB"   # Cerulean – medium confidence
+    return "#A0A0A0"       # Light grey – low confidence
 
 
 def render_proof_panel(
@@ -75,7 +75,7 @@ def render_proof_panel(
             if snippet:
                 st.markdown(
                     f'<div style="border-left: 3px solid {color}; padding: 8px 12px; '
-                    f'margin: 8px 0; background: #1A1A1A; border-radius: 0 4px 4px 0;">'
+                    f'margin: 8px 0; background: rgba(0,71,171,0.04); border-radius: 0 4px 4px 0;">'
                     f'<em style="color: {color}; font-size: 0.85rem;">{snippet}</em>'
                     f"</div>",
                     unsafe_allow_html=True,

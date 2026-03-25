@@ -95,20 +95,20 @@ if "og_search_text" not in st.session_state:
     st.session_state.og_search_text: str = ""
 
 # ---------------------------------------------------------------------------
-# Entity-type colour map (Dark Matter theme — muted tones on dark background)
+# Entity-type colour map (Clear Day theme — cobalt and rational tones)
 # ---------------------------------------------------------------------------
 _TYPE_COLORS: Dict[str, str] = {
-    "PERSON":  "#D4AF37",  # Apostolic Gold
-    "ORG":     "#A8A8A8",  # Dimmed Silver
-    "GPE":     "#E0E0E0",  # Cold White
-    "LOC":     "#B8931F",  # Dark Gold
-    "DATE":    "#8B8B8B",  # Muted Grey
-    "MONEY":   "#C8A85A",  # Warm Gold-Tan
-    "PERCENT": "#D4AF37",  # Apostolic Gold
-    "EVENT":   "#F0F0F0",  # Altar White
-    "MISC":    "#555555",  # Dark Neutral
+    "PERSON":  "#0047AB",  # Cobalt Blue
+    "ORG":     "#2E86AB",  # Cerulean Blue
+    "GPE":     "#2A9D8F",  # Teal
+    "LOC":     "#1B6CA8",  # Royal Blue
+    "DATE":    "#606060",  # Mid Grey
+    "MONEY":   "#2E86AB",  # Cerulean
+    "PERCENT": "#0047AB",  # Cobalt Blue
+    "EVENT":   "#0047AB",  # Cobalt Blue
+    "MISC":    "#A0A0A0",  # Light Grey
 }
-_DEFAULT_COLOR = "#555555"
+_DEFAULT_COLOR = "#A0A0A0"
 
 
 def _entity_color(entity_type: str) -> str:
@@ -116,15 +116,15 @@ def _entity_color(entity_type: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Hierarchical graph tier constants — Dark Matter theme
+# Hierarchical graph tier constants — Clear Day theme
 # (thresholds must match backend/_importance_tier in knowledge.py)
 # ---------------------------------------------------------------------------
 _HG_TIERS = [
     # (min_degree, label, color, size)
-    (10, "Critical",  "#D4AF37", 80),   # Apostolic Gold — core hubs
-    (5,  "Important", "#2D333B", 50),   # Dark Grey-Blue — connectors
-    (2,  "Bridge",    "#A8A8A8", 35),   # Dimmed Silver  — bridges
-    (0,  "Leaf",      "#E0E0E0", 20),   # Cold White     — fringe
+    (10, "Critical",  "#0047AB", 80),   # Cobalt Blue  — core hubs
+    (5,  "Important", "#2E86AB", 50),   # Cerulean Blue — connectors
+    (2,  "Bridge",    "#A0C4E8", 35),   # Soft Blue    — bridges
+    (0,  "Leaf",      "#E0E0E0", 20),   # Light Grey   — fringe
 ]
 
 
@@ -142,14 +142,12 @@ def _node_visual(degree: int):
 st.markdown(
     """
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="32" height="32">
-          <circle cx="20" cy="20" r="16" fill="none" stroke="#D4AF37" stroke-width="0.8"
-                  stroke-dasharray="2 3.2"/>
-          <line x1="20" y1="4" x2="20" y2="36" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-          <line x1="12" y1="14" x2="28" y2="14" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-          <line x1="16" y1="16" x2="24" y2="16" stroke="#D4AF37" stroke-width="0.8" stroke-linecap="round"/>
+        <svg width="32" height="32" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+          <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="20" cy="15" r="2" fill="#0047AB"/>
         </svg>
-        <h1 style="color:#F0F0F0;margin:0;font-weight:300;letter-spacing:2px;
+        <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
                    font-family:'Inter',sans-serif;">知识图谱</h1>
     </div>
     """,
@@ -382,7 +380,7 @@ with tab_viz:
                         source=src,
                         target=tgt,
                         label=data.get("label", ""),
-                        color="rgba(85,85,85,0.4)",
+                        color="rgba(160,160,160,0.6)",
                     )
                 )
 
@@ -393,7 +391,7 @@ with tab_viz:
                 physics=True,
                 hierarchical=False,
                 nodeHighlightBehavior=True,
-                highlightColor="#D4AF37",
+                highlightColor="#003580",
                 collapsible=False,
             )
 
@@ -420,24 +418,24 @@ with tab_viz:
                 data=[
                     go.Scatter(
                         x=edge_x, y=edge_y, mode="lines",
-                        line={"width": 0.5, "color": "rgba(85,85,85,0.4)"},
+                        line={"width": 0.5, "color": "rgba(160,160,160,0.6)"},
                         hoverinfo="none",
                     ),
                     go.Scatter(
                         x=node_x, y=node_y, mode="markers+text",
                         text=node_text, textposition="top center",
-                        textfont={"color": "#A8A8A8", "size": 10},
+                        textfont={"color": "#606060", "size": 10},
                         marker={"size": 14, "color": node_colors,
-                                "line": {"width": 1, "color": "#2D333B"}},
+                                "line": {"width": 1, "color": "#E0E0E0"}},
                         hoverinfo="text",
                     ),
                 ],
                 layout=go.Layout(
-                    title={"text": "知识图谱网络图", "font": {"color": "#F0F0F0"}},
+                    title={"text": "知识图谱网络图", "font": {"color": "#0047AB"}},
                     showlegend=False,
                     hovermode="closest",
-                    paper_bgcolor="#0D0D0D",
-                    plot_bgcolor="#0D0D0D",
+                    paper_bgcolor="#F0F8FF",
+                    plot_bgcolor="#F0F8FF",
                     xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                     yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                     height=550,
@@ -566,7 +564,7 @@ with tab_onto:
     # ------------------------------------------------------------------
     with og_mid:
         st.markdown(
-            f"<span style='color:#A8A8A8;font-size:0.82rem;'>"
+            f"<span style='color:#606060;font-size:0.82rem;'>"
             f"Showing **{len(og_entities_filtered)}** nodes, "
             f"**{len(og_relations_filtered)}** edges</span>",
             unsafe_allow_html=True,
@@ -622,7 +620,7 @@ with tab_onto:
 
             # Entity header
             st.markdown(
-                f'<h4 style="color:#F0F0F0;margin-bottom:4px;">{name}</h4>',
+                f'<h4 style="color:#0047AB;margin-bottom:4px;">{name}</h4>',
                 unsafe_allow_html=True,
             )
             st.markdown(
@@ -641,7 +639,7 @@ with tab_onto:
             desc = og_selected.get("description", "")
             if desc:
                 st.markdown(
-                    f'<span style="color:#A8A8A8;font-size:0.82rem;">{desc}</span>',
+                    f'<span style="color:#606060;font-size:0.82rem;">{desc}</span>',
                     unsafe_allow_html=True,
                 )
 
@@ -684,10 +682,10 @@ with tab_onto:
 
         else:
             st.markdown(
-                '<div style="padding:24px;background:#1A1A1A;border:1px solid #30363D;'
-                'border-radius:8px;text-align:center;">'
+                '<div style="padding:24px;background:#FFFFFF;border:1px solid #E0E0E0;'
+                'border-radius:4px;text-align:center;">'
                 '<span style="font-size:2rem;">🌈</span><br/>'
-                '<span style="color:#A8A8A8;">Click a node in the graph to view its '
+                '<span style="color:#606060;">Click a node in the graph to view its '
                 'ontological profile and philosophical significance.</span>'
                 "</div>",
                 unsafe_allow_html=True,

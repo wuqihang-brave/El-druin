@@ -49,8 +49,8 @@ _BASE_SIZE = 15         # base node size (px)
 _SIZE_PER_DEGREE = 3    # additional px per connection
 _MAX_SIZE = 60          # cap to avoid huge nodes
 _SELECTED_BONUS = 15    # extra size for the selected node
-_EDGE_COLOR = "#555555"
-_EDGE_ALPHA = 0.45
+_EDGE_COLOR = "#A0A0A0"  # Light grey — Clear Day theme
+_EDGE_ALPHA = 0.6
 
 
 def _node_size(degree: int, selected: bool) -> int:
@@ -77,23 +77,23 @@ def _build_node(
         label=name,
         size=size,
         title=f"{name}\nClass: {canonical}",
-        font={"color": "#F0F0F0", "size": 11},
+        font={"color": "#333333", "size": 11},
     )
 
     if selected:
-        # Gold glow via SVG filter trick supported by vis.js
+        # Cobalt blue selection highlight
         node_kwargs["color"] = {
             "background": color,
-            "border": "#FFD700",
-            "highlight": {"background": "#FFD700", "border": "#FFFFFF"},
+            "border": "#003580",
+            "highlight": {"background": "#003580", "border": "#0047AB"},
         }
         node_kwargs["borderWidth"] = 3
         node_kwargs["shadow"] = True
     else:
         node_kwargs["color"] = {
             "background": color,
-            "border": color,
-            "highlight": {"background": "#FFD700", "border": "#FFD700"},
+            "border": "#0047AB",
+            "highlight": {"background": "#0047AB", "border": "#003580"},
         }
         node_kwargs["borderWidth"] = 1
 
@@ -189,11 +189,11 @@ def render_graph_with_colors(
             physics=True,
             hierarchical=False,
             nodeHighlightBehavior=True,
-            highlightColor="#FFD700",
+            highlightColor="#003580",
             collapsible=False,
             node={"labelProperty": "label"},
-            link={"renderLabel": False, "highlightColor": "#D4AF37"},
-            backgroundColor="#0D0D0D",
+            link={"renderLabel": False, "highlightColor": "#0047AB"},
+            backgroundColor="#F0F8FF",
         )
 
         return agraph(nodes=ag_nodes, edges=ag_edges, config=config)
@@ -240,7 +240,7 @@ def render_graph_with_colors(
             for n in node_names
         ]
         node_borders = [
-            "#FFD700" if n == selected_name else "#2D333B"
+            "#003580" if n == selected_name else "#E0E0E0"
             for n in node_names
         ]
 
@@ -248,13 +248,13 @@ def render_graph_with_colors(
             data=[
                 go.Scatter(
                     x=edge_x, y=edge_y, mode="lines",
-                    line={"width": 0.5, "color": f"rgba(85,85,85,{_EDGE_ALPHA})"},
+                    line={"width": 0.5, "color": f"rgba(160,160,160,{_EDGE_ALPHA})"},
                     hoverinfo="none",
                 ),
                 go.Scatter(
                     x=node_x, y=node_y, mode="markers+text",
                     text=node_names, textposition="top center",
-                    textfont={"color": "#A8A8A8", "size": 9},
+                    textfont={"color": "#606060", "size": 9},
                     marker={
                         "size": node_sizes,
                         "color": node_colors,
@@ -267,8 +267,8 @@ def render_graph_with_colors(
             layout=go.Layout(
                 showlegend=False,
                 hovermode="closest",
-                paper_bgcolor="#0D0D0D",
-                plot_bgcolor="#0D0D0D",
+                paper_bgcolor="#F0F8FF",
+                plot_bgcolor="#F0F8FF",
                 xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                 yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
                 height=height,
@@ -297,6 +297,6 @@ def render_color_legend(ontology_classes: List[str]) -> None:
         color = get_node_color(cls)
         cols[i % len(cols)].markdown(
             f"<span style='color:{color};font-size:18px'>●</span> "
-            f"<span style='color:#A8A8A8;font-size:0.85rem;'>{cls}</span>",
+            f"<span style='color:#606060;font-size:0.85rem;'>{cls}</span>",
             unsafe_allow_html=True,
         )
