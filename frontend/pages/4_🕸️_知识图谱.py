@@ -5,7 +5,9 @@
 功能:
   Tab 1 - 📝 文本提取: 输入文本 → 提取实体/关系 → 显示 Metrics 和表格
   Tab 2 - 🕸️ 图谱可视化: NetworkX 构建图 + streamlit-agraph 交互展示
-  Tab 3 - 💬 Cypher 查询: 输入 Cypher → 执行 → 显示 DataFrame 结果
+  Tab 3 - 🌈 Ontology Graph: 3-column layout with ontology class filters
+  Tab 4 - 🎚️ 层级图谱: Degree-filtered hierarchical graph
+  Tab 5 - 💬 Cypher 查询: 输入 Cypher → 执行 → 显示 DataFrame 结果
 
 使用 st.session_state 缓存提取结果，避免重复调用后端。
 """
@@ -14,7 +16,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import networkx as nx
 import pandas as pd
@@ -38,6 +40,14 @@ if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
 from utils.api_client import APIClient  # noqa: E402
+from utils.ontology_colors import (  # noqa: E402
+    ALL_ONTOLOGY_CLASSES,
+    get_node_color,
+    get_ontology_meaning,
+    get_canonical_class,
+)
+from utils.graph_styling import render_graph_with_colors, render_color_legend  # noqa: E402
+from components.ontological_panel import render_ontological_significance  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -74,6 +84,15 @@ if "kg_query_result" not in st.session_state:
     st.session_state.kg_query_result: List[Any] = []
 if "kg_query_text" not in st.session_state:
     st.session_state.kg_query_text: str = ""
+# Ontology Graph tab state
+if "og_selected_entity" not in st.session_state:
+    st.session_state.og_selected_entity: Optional[Dict[str, Any]] = None
+if "og_ontology_filter" not in st.session_state:
+    st.session_state.og_ontology_filter: List[str] = list(ALL_ONTOLOGY_CLASSES)
+if "og_confidence_min" not in st.session_state:
+    st.session_state.og_confidence_min: float = 0.0
+if "og_search_text" not in st.session_state:
+    st.session_state.og_search_text: str = ""
 
 # ---------------------------------------------------------------------------
 # Entity-type colour map (Dark Matter theme — muted tones on dark background)
@@ -143,8 +162,8 @@ st.divider()
 # ===========================================================================
 # Tabs
 # ===========================================================================
-tab_extract, tab_viz, tab_hierarchy, tab_query = st.tabs(
-    ["📝 文本提取", "🕸️ 图谱可视化", "🎚️ 层级图谱", "💬 Cypher 查询"]
+tab_extract, tab_viz, tab_onto, tab_hierarchy, tab_query = st.tabs(
+    ["📝 文本提取", "🕸️ 图谱可视化", "🌈 Ontology Graph", "🎚️ 层级图谱", "💬 Cypher 查询"]
 )
 
 # ===========================================================================
@@ -432,7 +451,250 @@ with tab_viz:
             st.info("📭 图谱中暂无数据。请先通过「更新图谱」进行数据摄入。")
 
 # ===========================================================================
-# Tab 3 – 层级图谱 (Hierarchical Graph)
+# Tab 3 – 🌈 Ontology Graph (3-column layout with color-coded nodes)
+# ===========================================================================
+with tab_onto:
+    st.subheader("🌈 Ontology Graph")
+    st.caption(
+        "Knowledge graph nodes colored by ontological class. "
+        "Select a node to view its philosophical significance."
+    )
+
+    # ── Load data from backend ─────────────────────────────────────────────
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_og_entities() -> List[Dict[str, Any]]:
+        resp = _api.get_kg_entities(limit=500)
+        return resp.get("entities", []) if isinstance(resp, dict) else []
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_og_relations() -> List[Dict[str, Any]]:
+        resp = _api.get_kg_relations(limit=1000)
+        return resp.get("relations", []) if isinstance(resp, dict) else []
+
+    og_entities_all = _load_og_entities()
+    og_relations_all = _load_og_relations()
+
+    # ── 3-column layout ────────────────────────────────────────────────────
+    og_left, og_mid, og_right = st.columns([1, 3, 2])
+
+    # ------------------------------------------------------------------
+    # LEFT: Search + Ontology Class Filter + Confidence Slider
+    # ------------------------------------------------------------------
+    with og_left:
+        st.markdown("#### 🔍 Search & Filter")
+
+        og_search = st.text_input(
+            "Entity search",
+            value=st.session_state.og_search_text,
+            placeholder="Type to search…",
+            key="og_search_input",
+        )
+        st.session_state.og_search_text = og_search
+
+        st.markdown("**Filter by ontology class**")
+        og_filter_classes = st.multiselect(
+            "Ontology classes",
+            options=ALL_ONTOLOGY_CLASSES,
+            default=st.session_state.og_ontology_filter,
+            key="og_filter_multiselect",
+            label_visibility="collapsed",
+        )
+        st.session_state.og_ontology_filter = og_filter_classes
+
+        og_conf_min = st.slider(
+            "Min confidence",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.og_confidence_min,
+            step=0.05,
+            format="%.2f",
+            key="og_conf_slider",
+        )
+        st.session_state.og_confidence_min = og_conf_min
+
+        st.divider()
+
+        # Color legend
+        st.markdown("**Ontology Colors**")
+        for cls in ALL_ONTOLOGY_CLASSES:
+            color = get_node_color(cls)
+            st.markdown(
+                f"<span style='color:{color};font-size:16px'>●</span> "
+                f"<span style='color:#E0E0E0;font-size:0.82rem;'>{cls}</span>",
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+        st.caption(f"Loaded {len(og_entities_all)} entities, {len(og_relations_all)} relations")
+
+    # ------------------------------------------------------------------
+    # Apply filters to entity/relation lists
+    # ------------------------------------------------------------------
+    _selected_classes_lower = {c.lower() for c in og_filter_classes}
+
+    def _passes_class_filter(ent: Dict[str, Any]) -> bool:
+        onto = get_canonical_class(
+            ent.get("ontology_class") or ent.get("type", "misc")
+        ).lower()
+        return onto in _selected_classes_lower
+
+    def _passes_confidence_filter(ent: Dict[str, Any]) -> bool:
+        return float(ent.get("confidence", 1.0)) >= og_conf_min
+
+    def _passes_search_filter(ent: Dict[str, Any]) -> bool:
+        if not og_search:
+            return True
+        return og_search.lower() in ent.get("name", "").lower()
+
+    og_entities_filtered = [
+        e for e in og_entities_all
+        if _passes_class_filter(e) and _passes_confidence_filter(e) and _passes_search_filter(e)
+    ]
+
+    # Keep only relations where both endpoints are in the filtered set
+    _filtered_names = {e.get("name", "") for e in og_entities_filtered}
+    og_relations_filtered = [
+        r for r in og_relations_all
+        if (
+            r.get("from", r.get("from_entity", r.get("subject", ""))) in _filtered_names
+            and r.get("to", r.get("to_entity", r.get("object", ""))) in _filtered_names
+        )
+    ]
+
+    # ------------------------------------------------------------------
+    # MIDDLE: Knowledge Graph with color-coded nodes
+    # ------------------------------------------------------------------
+    with og_mid:
+        st.markdown(
+            f"<span style='color:#A8A8A8;font-size:0.82rem;'>"
+            f"Showing **{len(og_entities_filtered)}** nodes, "
+            f"**{len(og_relations_filtered)}** edges</span>",
+            unsafe_allow_html=True,
+        )
+
+        og_selected_name = (
+            st.session_state.og_selected_entity.get("name", "")
+            if st.session_state.og_selected_entity
+            else ""
+        )
+
+        clicked_og_node = render_graph_with_colors(
+            graph_data={
+                "entities": og_entities_filtered,
+                "relations": og_relations_filtered,
+            },
+            selected_name=og_selected_name,
+            height=600,
+        )
+
+        if clicked_og_node:
+            # Find the entity dict for the clicked node
+            for ent in og_entities_all:
+                if ent.get("name") == clicked_og_node:
+                    if st.session_state.og_selected_entity != ent:
+                        st.session_state.og_selected_entity = ent
+                        # Clear cached explanation when new entity selected
+                        cache_key = f"onto_expl_{ent.get('name', '')}_{0}"
+                        if cache_key in st.session_state:
+                            del st.session_state[cache_key]
+                        st.rerun()
+                    break
+
+    # ------------------------------------------------------------------
+    # RIGHT: Entity Info Panel + Ontological Significance
+    # ------------------------------------------------------------------
+    with og_right:
+        og_selected = st.session_state.og_selected_entity
+
+        if og_selected:
+            name = og_selected.get("name", "Unknown")
+            onto_class = og_selected.get("ontology_class") or og_selected.get("type", "misc")
+            color = get_node_color(onto_class)
+            canonical = get_canonical_class(onto_class)
+            confidence = float(og_selected.get("confidence", 0.0))
+
+            # Degree
+            degree = sum(
+                1 for r in og_relations_all
+                if r.get("from", r.get("from_entity", "")) == name
+                or r.get("to", r.get("to_entity", "")) == name
+            )
+
+            # Entity header
+            st.markdown(
+                f'<h4 style="color:#F0F0F0;margin-bottom:4px;">{name}</h4>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<span style="background:{color}33;border:1px solid {color};'
+                f'color:{color};padding:2px 10px;border-radius:10px;'
+                f'font-size:0.8rem;font-weight:700;">{canonical}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("")
+
+            # Metrics
+            mc1, mc2 = st.columns(2)
+            mc1.metric("Confidence", f"{confidence:.0%}")
+            mc2.metric("Degree", degree)
+
+            desc = og_selected.get("description", "")
+            if desc:
+                st.markdown(
+                    f'<span style="color:#A8A8A8;font-size:0.82rem;">{desc}</span>',
+                    unsafe_allow_html=True,
+                )
+
+            st.divider()
+
+            # Connected entities for the panel
+            og_connected: List[Dict[str, Any]] = []
+            for r in og_relations_all:
+                src = r.get("from", r.get("from_entity", ""))
+                tgt = r.get("to", r.get("to_entity", ""))
+                rel_type = r.get("relation", r.get("relationship_type", ""))
+                if src == name:
+                    tgt_ent = next(
+                        (e for e in og_entities_all if e.get("name") == tgt), {}
+                    )
+                    og_connected.append({
+                        "name": tgt,
+                        "type": tgt_ent.get("ontology_class") or tgt_ent.get("type", "misc"),
+                        "relationship": rel_type,
+                        "direction": "outgoing",
+                    })
+                elif tgt == name:
+                    src_ent = next(
+                        (e for e in og_entities_all if e.get("name") == src), {}
+                    )
+                    og_connected.append({
+                        "name": src,
+                        "type": src_ent.get("ontology_class") or src_ent.get("type", "misc"),
+                        "relationship": rel_type,
+                        "direction": "incoming",
+                    })
+
+            # Ontological Significance panel
+            render_ontological_significance(
+                entity=og_selected,
+                connected_entities=og_connected,
+                api_client=_api,
+                degree=degree,
+            )
+
+        else:
+            st.markdown(
+                '<div style="padding:24px;background:#1A1A1A;border:1px solid #30363D;'
+                'border-radius:8px;text-align:center;">'
+                '<span style="font-size:2rem;">🌈</span><br/>'
+                '<span style="color:#A8A8A8;">Click a node in the graph to view its '
+                'ontological profile and philosophical significance.</span>'
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+# ===========================================================================
+# Tab 4 – 层级图谱 (Hierarchical Graph)
 # ===========================================================================
 with tab_hierarchy:
     st.subheader("🎚️ Hierarchical Knowledge Graph")
