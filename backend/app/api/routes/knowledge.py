@@ -645,6 +645,38 @@ def get_hierarchical_graph(
     }
 
 
+class OntologicalExplanationRequest(BaseModel):
+    entity: Dict[str, Any] = Field(..., description="Entity dict with name/type/description")
+    connected_entities: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of connected entities with name/type/relationship keys",
+    )
+
+
+@router.post("/ontological-explanation")
+def get_ontological_explanation(request: OntologicalExplanationRequest) -> Dict[str, Any]:
+    """Generate a philosophical explanation of an entity's ontological role.
+
+    Uses the configured LLM (OpenAI / Groq) when available; returns a static
+    explanation otherwise.  Results are cached in-process.
+    """
+    try:
+        from intelligence.semantic_explainer import generate_ontological_explanation
+        explanation = generate_ontological_explanation(
+            entity=request.entity,
+            connected_entities=request.connected_entities,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ontological explanation failed: %s", exc)
+        name = request.entity.get("name", "This entity")
+        explanation = (
+            f"{name} occupies a meaningful position in the knowledge graph, "
+            "its significance woven through the relationships that connect it to "
+            "other entities in the system of structured knowledge."
+        )
+    return {"explanation": explanation}
+
+
 @router.get("/graph/node-narrative/{node_name}")
 def get_node_order_narrative(node_name: str) -> Dict[str, Any]:
     """Return the Order Narrative for a single node.

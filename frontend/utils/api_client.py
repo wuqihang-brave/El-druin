@@ -426,6 +426,29 @@ class APIClient:
         """
         return self._get(f"/provenance/entity/{entity_id}")
 
+    def get_ontological_explanation(
+        self,
+        entity: Dict[str, Any],
+        connected_entities: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Generate a philosophical explanation for an entity's ontological role.
+
+        Args:
+            entity: Entity dict with ``"name"``, ``"type"``, ``"description"`` keys.
+            connected_entities: Optional list of connected entity dicts with
+                ``"name"``, ``"type"``, ``"relationship"`` keys.
+
+        Returns:
+            Dict with ``"explanation"`` string key.
+        """
+        return self._post(
+            "/knowledge/ontological-explanation",
+            json={
+                "entity": entity,
+                "connected_entities": connected_entities or [],
+            },
+        )
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()
