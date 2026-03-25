@@ -50,19 +50,17 @@ def render_sidebar_navigation() -> str:
     st.sidebar.markdown(
         """
         <div style="text-align:center;padding:16px 0 10px 0;">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40"
+            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"
                  style="display:block;margin:0 auto 8px auto;">
-              <circle cx="20" cy="20" r="16" fill="none" stroke="#D4AF37" stroke-width="0.8"
-                      stroke-dasharray="2 3.2"/>
-              <line x1="20" y1="4" x2="20" y2="36" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-              <line x1="12" y1="14" x2="28" y2="14" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-              <line x1="16" y1="16" x2="24" y2="16" stroke="#D4AF37" stroke-width="0.8" stroke-linecap="round"/>
+              <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+              <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="20" cy="15" r="2" fill="#0047AB"/>
             </svg>
-            <h3 style="color:#D4AF37;margin:4px 0 2px 0;font-size:1.05rem;
-                       font-weight:300;letter-spacing:3px;font-family:'Inter',sans-serif;">
+            <h3 style="color:#0047AB;margin:4px 0 2px 0;font-size:1.05rem;
+                       font-weight:600;letter-spacing:1px;font-family:'Inter',sans-serif;">
                 EL-DRUIN
             </h3>
-            <p style="color:#A8A8A8;font-size:0.72rem;margin:0;font-style:italic;
+            <p style="color:#606060;font-size:0.72rem;margin:0;font-style:italic;
                       font-family:'Inter',sans-serif;">
                 Ontological Intelligence &amp; Systematic Order
             </p>
@@ -71,7 +69,7 @@ def render_sidebar_navigation() -> str:
         unsafe_allow_html=True,
     )
     st.sidebar.markdown(
-        "<hr style='border-color:#2D333B;margin:4px 0 8px 0'/>",
+        "<hr style='border-color:#E0E0E0;margin:4px 0 8px 0'/>",
         unsafe_allow_html=True,
     )
 
@@ -97,21 +95,21 @@ def render_sidebar_navigation() -> str:
                 styles={
                     "container": {
                         "padding": "0 !important",
-                        "background-color": "#0A0A0A",
+                        "background-color": "#F5F5F5",
                     },
-                    "icon": {"color": "#D4AF37", "font-size": "15px"},
+                    "icon": {"color": "#0047AB", "font-size": "15px"},
                     "nav-link": {
-                        "color": "#F0F0F0",
+                        "color": "#333333",
                         "font-size": "13px",
                         "padding": "10px 16px",
-                        "--hover-color": "rgba(212,175,55,0.10)",
+                        "--hover-color": "rgba(0,71,171,0.08)",
                         "border-radius": "0",
-                        "background-color": "#2D333B",
-                        "border-bottom": "1px solid #1a1e24",
+                        "background-color": "#F5F5F5",
+                        "border-bottom": "1px solid #E0E0E0",
                     },
                     "nav-link-selected": {
-                        "background-color": "#D4AF37",
-                        "color": "#0D0D0D",
+                        "background-color": "#0047AB",
+                        "color": "#FFFFFF",
                         "border-left": "none",
                         "font-weight": "600",
                     },

@@ -67,32 +67,32 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Custom CSS – Dark Liturgy / Elite Intelligence theme
+# Custom CSS – Light Blue Rational / Ratio Lucis theme
 # ---------------------------------------------------------------------------
-_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles.css")
+_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles_light.css")
 try:
     with open(_CSS_PATH, encoding="utf-8") as _css_file:
         _css_content = _css_file.read()
     st.markdown(f"<style>{_css_content}</style>", unsafe_allow_html=True)
 except FileNotFoundError:
-    logger.warning("custom_styles.css not found at %s; using inline fallback.", _CSS_PATH)
+    logger.warning("custom_styles_light.css not found at %s; using inline fallback.", _CSS_PATH)
     st.markdown(
         """
         <style>
         :root {
-          --color-gold: #D4AF37; --color-black: #0D1117;
-          --color-white: #F0F0F0; --color-elevated: #161B22;
-          --color-border: #30363D; --color-silver: #A8A8A8;
+          --color-bg-primary: #F0F8FF; --color-bg-secondary: #FFFFFF;
+          --color-text-primary: #333333; --color-text-secondary: #606060;
+          --color-accent: #0047AB; --color-accent-dark: #003580;
+          --color-border: #E0E0E0; --color-sidebar-bg: #F5F5F5;
         }
-        .stApp, .main, body { background-color: var(--color-black) !important; color: var(--color-white) !important; }
-        [data-testid="stAppViewContainer"] { background-color: var(--color-black) !important; }
-        section[data-testid="stSidebar"] { background-color: var(--color-black) !important; border-right: 1px solid var(--color-border) !important; }
-        section[data-testid="stSidebar"] * { color: var(--color-white) !important; }
-        h1, h2, h3, h4, h5, h6 { color: var(--color-white) !important; }
-        .stMarkdown, .stMarkdown p { color: var(--color-white) !important; }
-        a { color: var(--color-gold) !important; }
-        a:hover { color: #FFE066 !important; }
-        a:visited { color: #C9A227 !important; }
+        .stApp, .main, body { background-color: var(--color-bg-primary) !important; color: var(--color-text-primary) !important; }
+        [data-testid="stAppViewContainer"] { background-color: var(--color-bg-primary) !important; }
+        section[data-testid="stSidebar"] { background-color: var(--color-sidebar-bg) !important; border-right: 1px solid var(--color-border) !important; }
+        section[data-testid="stSidebar"] * { color: var(--color-accent) !important; }
+        h1, h2, h3, h4, h5, h6 { color: var(--color-accent) !important; }
+        .stMarkdown, .stMarkdown p { color: var(--color-text-primary) !important; }
+        a { color: var(--color-accent) !important; }
+        a:hover { color: var(--color-accent-dark) !important; text-decoration: underline !important; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -184,11 +184,11 @@ _sidebar_entity_names: List[str] = [
 ]
 if _sidebar_entity_names:
     st.sidebar.markdown(
-        "<hr style='border-color:#2D333B;margin:4px 0 6px 0'/>",
+        "<hr style='border-color:#E0E0E0;margin:4px 0 6px 0'/>",
         unsafe_allow_html=True,
     )
     st.sidebar.markdown(
-        "<p style='color:#A8A8A8;font-size:0.78rem;margin:0 0 4px 0;"
+        "<p style='color:#0047AB;font-size:0.78rem;margin:0 0 4px 0;"
         "font-family:\"Inter\",sans-serif;'>🔎 实体搜索</p>",
         unsafe_allow_html=True,
     )
@@ -214,7 +214,7 @@ _footer_buttons: Dict[str, bool] = {
     "⚙️ Settings": False,       # not yet implemented
 }
 st.sidebar.markdown(
-    "<hr style='border-color:#2D333B;margin:8px 0 6px 0'/>",
+    "<hr style='border-color:#E0E0E0;margin:8px 0 6px 0'/>",
     unsafe_allow_html=True,
 )
 for _btn_label, _btn_enabled in _footer_buttons.items():
@@ -263,17 +263,17 @@ _KG_DEFAULT_COLOR = "#C8C8C8"
 # Graph rendering constants
 _KG_MAIN_HEIGHT = 800    # Main knowledge graph canvas height (px)
 _KG_MINI_HEIGHT = 600    # In-article mini-graph canvas height (px)
-_KG_EDGE_COLOR = "#555555"  # Ultra-thin semi-transparent edge colour (Dark Matter)
+_KG_EDGE_COLOR = "#A0A0A0"  # Ultra-thin light grey edge colour (Clear Day theme)
 
 # Node colour constants – three-layer hierarchy (leaf → bridge → hub)
-# Dark Matter theme: gold hubs, muted bridge, cold-white fringe
-_NODE_COLOR_LEAF   = "#E0E0E0"  # Cold White   – isolated / leaf nodes
-_NODE_COLOR_BRIDGE = "#2D333B"  # Dark Grey-Blue – bridge / connector nodes
-_NODE_COLOR_HUB    = "#D4AF37"  # Apostolic Gold – central hub nodes
+# Clear Day theme: cobalt blue hubs, soft grey bridge, light fringe
+_NODE_COLOR_LEAF   = "#E0E0E0"  # Light Grey   – isolated / leaf nodes
+_NODE_COLOR_BRIDGE = "#A0C4E8"  # Soft Blue    – bridge / connector nodes
+_NODE_COLOR_HUB    = "#0047AB"  # Cobalt Blue  – central hub nodes
 
 # Theme palette
-_THEME_DARK_BLUE   = "#0D0D0D"
-_THEME_ACCENT_GOLD = "#D4AF37"
+_THEME_BG_BLUE     = "#F0F8FF"
+_THEME_ACCENT_BLUE = "#0047AB"
 
 # Order-Chaos gradient (used by dashboard charts)
 # Runs from deep order-blue (most ordered) → deep chaos-red (most chaotic)
@@ -381,21 +381,19 @@ def render_news_card(article: Dict[str, Any], order_score: float, category: str)
     st.markdown(
         f"""
         <div style="
-            border: 1px solid #2D333B;
-            border-radius: 6px;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
             padding: 14px 16px 14px 20px;
-            background-color: rgba(20, 20, 20, 0.6);
+            background-color: #FFFFFF;
             margin-bottom: 14px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
             border-left: 4px solid {color};
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
         ">
             <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                <strong style="font-size:1.02rem; color:#F0F0F0; font-family:'Inter',sans-serif;">{title}</strong>
+                <strong style="font-size:1.02rem; color:#333333; font-family:'Inter',sans-serif;">{title}</strong>
                 <span style="
                     background:{color};
-                    color:#0D0D0D;
+                    color:#FFFFFF;
                     border-radius:12px;
                     padding:2px 10px;
                     font-size:0.75rem;
@@ -404,13 +402,13 @@ def render_news_card(article: Dict[str, Any], order_score: float, category: str)
                     margin-left:8px;
                 ">{cat_label}</span>
             </div>
-            <p style="color:#A8A8A8; font-size:0.87rem; margin:6px 0 4px 0; font-family:'Inter',sans-serif;">{summary}</p>
+            <p style="color:#606060; font-size:0.87rem; margin:6px 0 4px 0; font-family:'Inter',sans-serif;">{summary}</p>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                <span style="font-size:0.78rem; color:#8B8B8B; font-family:'Inter',sans-serif;">
+                <span style="font-size:0.78rem; color:#A0A0A0; font-family:'Inter',sans-serif;">
                     {("📌 " + source) if source else ""}{"&nbsp;&nbsp;" if source and pub else ""}
                     {("⏰ " + pub) if pub else ""}
                 </span>
-                {"<a href='" + url + "' target='_blank' style='font-size:0.82rem;color:#D4AF37;'>View Full →</a>" if url else ""}
+                {"<a href='" + url + "' target='_blank' style='font-size:0.82rem;color:#0047AB;'>View Full →</a>" if url else ""}
             </div>
         </div>
         """,
@@ -555,17 +553,18 @@ if page == "🏠 主页":
     st.markdown(
         """
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="36" height="36">
-              <circle cx="20" cy="20" r="16" fill="none" stroke="#D4AF37" stroke-width="0.8"
-                      stroke-dasharray="2 3.2"/>
-              <line x1="20" y1="4" x2="20" y2="36" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-              <line x1="12" y1="14" x2="28" y2="14" stroke="#D4AF37" stroke-width="1.6" stroke-linecap="round"/>
-              <line x1="16" y1="16" x2="24" y2="16" stroke="#D4AF37" stroke-width="0.8" stroke-linecap="round"/>
+            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+              <!-- Vertical sword -->
+              <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+              <!-- Horizontal cross -->
+              <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
+              <!-- Center circle intersection -->
+              <circle cx="20" cy="15" r="2" fill="#0047AB"/>
             </svg>
             <div>
-              <h1 style="color:#F0F0F0;margin:0;font-weight:300;letter-spacing:3px;
+              <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
                          font-family:'Inter',sans-serif;">EL-DRUIN</h1>
-              <p style="color:#D4AF37;font-size:0.88rem;margin:0;font-style:italic;
+              <p style="color:#606060;font-size:0.88rem;margin:0;font-style:italic;
                         font-family:'Inter',sans-serif;">
                 Ontological Intelligence &amp; Systematic Order
               </p>
@@ -662,7 +661,7 @@ if page == "🏠 主页":
 
         # ── Actions ──────────────────────────────────────────────────────────
         st.markdown("")
-        if st.button("🚀 开始分析", type="primary", key="home_run", use_container_width=True):
+        if st.button("🔍 Ingest Intelligence", type="primary", key="home_run", use_container_width=True):
             with st.spinner("正在处理…"):
                 _log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] 触发分析 · 数据源={data_source} · 模式={model_mode}"
                 st.session_state.home_logs.insert(0, _log_entry)
@@ -782,11 +781,11 @@ if page == "🏠 主页":
             if _log_lines:
                 _log_html = "".join(
                     f"<div style='font-family:\"JetBrains Mono\",\"Fira Code\",monospace;"
-                    f"font-size:0.76rem;color:#A8A8A8;padding:2px 0'>{line}</div>"
+                    f"font-size:0.76rem;color:#606060;padding:2px 0'>{line}</div>"
                     for line in _log_lines
                 )
                 st.markdown(
-                    f"<div style='background:#111111;border:1px solid #2D333B;border-radius:4px;"
+                    f"<div style='background:#F5F5F5;border:1px solid #E0E0E0;border-radius:4px;"
                     f"padding:8px 12px;max-height:160px;overflow-y:auto'>{_log_html}</div>",
                     unsafe_allow_html=True,
                 )
@@ -799,7 +798,7 @@ if page == "🏠 主页":
     with col_right:
         with st.container(border=True):
             st.markdown(
-                "<h4 style='color:#D4AF37;font-weight:300;letter-spacing:0.08em;'>⚖️ EL-DRUIN 秩序分析</h4>",
+                "<h4 style='color:#0047AB;font-weight:600;letter-spacing:0.02em;'>⚖️ EL-DRUIN 秩序分析</h4>",
                 unsafe_allow_html=True,
             )
 
@@ -840,8 +839,8 @@ if page == "🏠 主页":
                     st.markdown("**💡 核心结论**")
                     for _c in _analysis.get("conclusions", []):
                         st.markdown(
-                            f"<div style='background:rgba(20,20,20,0.8);border-left:3px solid #D4AF37;"
-                            f"padding:6px 10px;border-radius:4px;margin:4px 0;color:#F0F0F0'>{_c}</div>",
+                            f"<div style='background:rgba(0,71,171,0.04);border-left:3px solid #0047AB;"
+                            f"padding:6px 10px;border-radius:4px;margin:4px 0;color:#333333'>{_c}</div>",
                             unsafe_allow_html=True,
                         )
 
@@ -1645,9 +1644,9 @@ elif page == "🕸️ 知识图谱":
         with _chat_container:
             for _item in st.session_state.kg_chat_history:
                 st.markdown(
-                    f"<div style='background:#111111;border:1px solid #2D333B;border-radius:4px;"
+                    f"<div style='background:#F5F5F5;border:1px solid #E0E0E0;border-radius:4px;"
                     f"padding:8px 12px;margin-bottom:4px;font-family:\"JetBrains Mono\",monospace;"
-                    f"font-size:13px;color:#A8A8A8'>{_item['query']}</div>",
+                    f"font-size:13px;color:#606060'>{_item['query']}</div>",
                     unsafe_allow_html=True,
                 )
                 _resp = _item["response"]
@@ -1819,16 +1818,16 @@ elif page == "📊 仪表板":
             st.markdown(
                 f"<div class='order-card'>"
                 f"<h3>系统状态</h3>"
-                f"<p style='color:#d4af37;font-size:1.1rem;font-weight:700'>{_order_status}</p>"
-                f"<hr style='border-color:#2D333B;margin:8px 0'>"
-                f"<p>📰 今日新闻: <strong style='color:#d4af37'>{total_news or '–'}</strong></p>"
-                f"<p>🎯 提取事件: <strong style='color:#d4af37'>{total_events or '–'}</strong></p>"
-                f"<p>🔴 高危事件: <strong style='color:#d4af37'>{high_events or '–'}</strong></p>"
-                f"<p>📊 平均置信度: <strong style='color:#d4af37'>{_conf_display}</strong></p>"
-                f"<hr style='border-color:#2D333B;margin:8px 0'>"
-                f"<p>💡 实体节点: <strong style='color:#d4af37'>{_kg_entities}</strong></p>"
-                f"<p>🔗 语义关系: <strong style='color:#d4af37'>{_kg_relations}</strong></p>"
-                f"<p>⚖️ 关系/实体比: <strong style='color:#d4af37'>{_rel_ent_ratio:.2f}</strong></p>"
+                f"<p style='color:#0047AB;font-size:1.1rem;font-weight:700'>{_order_status}</p>"
+                f"<hr style='border-color:#E0E0E0;margin:8px 0'>"
+                f"<p>📰 今日新闻: <strong style='color:#0047AB'>{total_news or '–'}</strong></p>"
+                f"<p>🎯 提取事件: <strong style='color:#0047AB'>{total_events or '–'}</strong></p>"
+                f"<p>🔴 高危事件: <strong style='color:#0047AB'>{high_events or '–'}</strong></p>"
+                f"<p>📊 平均置信度: <strong style='color:#0047AB'>{_conf_display}</strong></p>"
+                f"<hr style='border-color:#E0E0E0;margin:8px 0'>"
+                f"<p>💡 实体节点: <strong style='color:#0047AB'>{_kg_entities}</strong></p>"
+                f"<p>🔗 语义关系: <strong style='color:#0047AB'>{_kg_relations}</strong></p>"
+                f"<p>⚖️ 关系/实体比: <strong style='color:#0047AB'>{_rel_ent_ratio:.2f}</strong></p>"
                 f"</div>",
                 unsafe_allow_html=True,
             )

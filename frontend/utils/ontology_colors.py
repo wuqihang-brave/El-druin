@@ -13,7 +13,7 @@ Usage::
 
     from utils.ontology_colors import get_node_color, get_ontology_meaning
 
-    color = get_node_color("Event")      # → "#D4AF37"
+    color = get_node_color("Event")      # → "#0047AB"
     meaning = get_ontology_meaning("Person")  # → "Agency & consciousness..."
 """
 
@@ -27,16 +27,17 @@ from typing import Dict
 
 #: Canonical color palette for the five primary ontological classes.
 #: Key: lowercase ontology class name (also matched case-insensitively).
+#: Light Blue Rational (Ratio Lucis) palette — cobalt and rational tones.
 ONTOLOGY_COLORS: Dict[str, str] = {
-    "event":        "#D4AF37",  # Gold — temporal significance
-    "person":       "#A8A8A8",  # Silver — agency & consciousness
-    "organization": "#C9A227",  # Bronze — institutional structures
-    "location":     "#7ED321",  # Emerald — spatial anchoring
-    "concept":      "#E8AB5D",  # Amber — abstract ideas
+    "event":        "#0047AB",  # Cobalt Blue — temporal significance
+    "person":       "#2E86AB",  # Cerulean — agency & consciousness
+    "organization": "#1B6CA8",  # Royal Blue — institutional structures
+    "location":     "#2A9D8F",  # Teal — spatial anchoring
+    "concept":      "#606060",  # Mid Grey — abstract ideas
 }
 
 #: Fallback color for unknown / unmapped ontological classes.
-_DEFAULT_COLOR = "#555555"
+_DEFAULT_COLOR = "#A0A0A0"
 
 # ---------------------------------------------------------------------------
 # Ontology class → philosophical meaning
@@ -110,7 +111,7 @@ def get_node_color(ontology_class: str) -> str:
             ``"ORG"`` (case-insensitive; NLP-style aliases are resolved).
 
     Returns:
-        Hex color string such as ``"#D4AF37"``.
+        Hex color string such as ``"#0047AB"``.
     """
     canonical = _canonicalize(ontology_class)
     return ONTOLOGY_COLORS.get(canonical, _DEFAULT_COLOR)

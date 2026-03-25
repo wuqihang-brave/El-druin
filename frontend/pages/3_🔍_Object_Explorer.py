@@ -86,11 +86,11 @@ if "oe_show_proof" not in st.session_state:
 # Page title
 # ---------------------------------------------------------------------------
 st.markdown(
-    '<h2 style="color:#D4AF37; font-weight:300; letter-spacing:3px;">🔍 OBJECT EXPLORER</h2>',
+    '<h2 style="color:#0047AB; font-weight:600; letter-spacing:1px;">🔍 OBJECT EXPLORER</h2>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<p style="color:#A8A8A8; font-size:0.9rem; margin-top:-12px;">'
+    '<p style="color:#606060; font-size:0.9rem; margin-top:-12px;">'
     "Ontology-centric entity search, graph navigation, and object profiling."
     "</p>",
     unsafe_allow_html=True,
@@ -176,13 +176,13 @@ with mid_col:
             size = max(10, min(40, 10 + degree * 3))
 
             if name == selected_name:
-                color = "#D4AF37"
+                color = "#003580"
                 border_width = 3
             elif degree >= 5:
-                color = "#D4AF37"
+                color = "#0047AB"
                 border_width = 2
             elif degree >= 2:
-                color = "#A8A8A8"
+                color = "#A0C4E8"
                 border_width = 1
             else:
                 color = "#E0E0E0"
@@ -194,7 +194,7 @@ with mid_col:
                     label=name,
                     size=size,
                     color=color,
-                    font={"color": "#F0F0F0", "size": 10},
+                    font={"color": "#333333", "size": 10},
                     borderWidth=border_width,
                 )
             )
@@ -211,7 +211,7 @@ with mid_col:
                         source=src,
                         target=tgt,
                         label=rel.get("relation", rel.get("relationship_type", "")),
-                        color=f"rgba(212,175,55,{0.4 + conf * 0.6:.2f})",
+                        color=f"rgba(160,160,160,{0.4 + conf * 0.4:.2f})",
                         width=width,
                     )
                 )
@@ -223,11 +223,11 @@ with mid_col:
             physics=True,
             hierarchical=False,
             nodeHighlightBehavior=True,
-            highlightColor="#D4AF37",
+            highlightColor="#003580",
             collapsible=False,
             node={"labelProperty": "label"},
-            link={"renderLabel": False, "highlightColor": "#D4AF37"},
-            backgroundColor="#0D0D0D",
+            link={"renderLabel": False, "highlightColor": "#0047AB"},
+            backgroundColor="#F0F8FF",
         )
 
         clicked_node = agraph(nodes=agraph_nodes, edges=agraph_edges, config=config)
@@ -263,8 +263,8 @@ with mid_col:
         node_y = [pos[n][1] for n in G.nodes()]
         node_text = list(G.nodes())
         node_colors = [
-            "#D4AF37" if n == selected_name or degree_map.get(n, 0) >= 5
-            else "#A8A8A8" if degree_map.get(n, 0) >= 2
+            "#003580" if n == selected_name or degree_map.get(n, 0) >= 5
+            else "#A0C4E8" if degree_map.get(n, 0) >= 2
             else "#E0E0E0"
             for n in G.nodes()
         ]
@@ -272,17 +272,17 @@ with mid_col:
         fig = go.Figure(
             data=[
                 go.Scatter(x=edge_x, y=edge_y, mode="lines",
-                           line={"color": "rgba(212,175,55,0.4)", "width": 1},
+                           line={"color": "rgba(160,160,160,0.6)", "width": 0.8},
                            hoverinfo="none"),
                 go.Scatter(x=node_x, y=node_y, mode="markers+text",
                            marker={"size": 12, "color": node_colors},
                            text=node_text, textposition="top center",
-                           textfont={"color": "#F0F0F0", "size": 9},
+                           textfont={"color": "#606060", "size": 9},
                            hoverinfo="text"),
             ]
         )
         fig.update_layout(
-            paper_bgcolor="#0D0D0D", plot_bgcolor="#0D0D0D",
+            paper_bgcolor="#F0F8FF", plot_bgcolor="#F0F8FF",
             showlegend=False, height=520,
             xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
             yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
@@ -372,10 +372,10 @@ with right_col:
 
     else:
         st.markdown(
-            '<div style="padding:24px; background:#1A1A1A; border:1px solid #30363D; '
-            'border-radius:8px; text-align:center;">'
-            '<span style="font-size:2rem;">🔷</span><br/>'
-            '<span style="color:#A8A8A8;">Select an entity from the left panel or '
+            '<div style="padding:24px; background:#FFFFFF; border:1px solid #E0E0E0; '
+            'border-radius:4px; text-align:center;">'
+            '<span style="font-size:2rem;">◇</span><br/>'
+            '<span style="color:#606060;">Select an entity from the left panel or '
             'click a node in the graph to view its profile.</span>'
             "</div>",
             unsafe_allow_html=True,
