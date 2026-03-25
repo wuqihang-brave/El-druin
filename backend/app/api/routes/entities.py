@@ -78,7 +78,7 @@ def _get_graph_service() -> Any:
 
 
 class _StubGraphService:
-    def add_node(self, node: Dict) -> None:  # noqa: ANN001
+    def add_node(self, node: Dict[str, Any]) -> None:
         logger.debug("Graph stub: add_node %s", node.get("id"))
 
 

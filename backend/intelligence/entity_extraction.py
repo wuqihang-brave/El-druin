@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from models.entity import OntologicalEntity
@@ -214,7 +214,7 @@ class EntityExtractionEngine:
                 virtue_descriptions={v: self.layer3_virtues[v] for v in virtues},
                 confidence_score=confidence,
                 source_text=source_text[:200],
-                extracted_at=datetime.now(),
+                extracted_at=datetime.now(timezone.utc),
                 request_id=request_id,
             )
 

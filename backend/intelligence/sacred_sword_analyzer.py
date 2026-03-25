@@ -367,9 +367,13 @@ class SacredSwordAnalyzer:
                         f" [{matched.physical_type}] functions as {roles}"
                         f" with {virtues} nature"
                     )
+                    # Strip a single trailing period only (avoid removing dots from abbreviations)
+                    base = fact.statement
+                    if base.endswith("."):
+                        base = base[:-1]
                     enriched.append(
                         Fact(
-                            statement=fact.statement.rstrip(" .") + label_tag,
+                            statement=base + label_tag,
                             source=fact.source,
                             confidence=fact.confidence,
                         )
