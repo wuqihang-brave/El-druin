@@ -132,14 +132,16 @@ class SeedOntologySeeder:
             try:
                 escaped_name = name.replace("'", "\\'")
                 escaped_desc = desc.replace("'", "\\'") if desc else ""
-                escaped_virtue = virtue.replace("'", "\\'") if virtue else "NULL"
-                escaped_role = role.replace("'", "\\'") if role else "NULL"
+                escaped_virtue: Optional[str] = virtue.replace("'", "\\'") if virtue else None
+                escaped_role: Optional[str] = role.replace("'", "\\'") if role else None
 
+                virtue_val = f"'{escaped_virtue}'" if escaped_virtue is not None else "null"
+                role_val = f"'{escaped_role}'" if escaped_role is not None else "null"
                 query = (
-                    f"MERGE (e:Entity {{name: '{{escaped_name}}'}}) "
-                    f"ON CREATE SET e.type = '{{etype}}', e.description = '{{escaped_desc}}', "
-                    f"e.virtue = {{escaped_virtue if escaped_virtue != 'NULL' else 'NULL'}}, "
-                    f"e.role = {{escaped_role if escaped_role != 'NULL' else 'NULL'}} "
+                    f"MERGE (e:Entity {{name: '{escaped_name}'}}) "
+                    f"ON CREATE SET e.type = '{etype}', e.description = '{escaped_desc}', "
+                    f"e.virtue = {virtue_val}, "
+                    f"e.role = {role_val} "
                     f"RETURN e.name"
                 )
                 result = self._conn.execute(query)
@@ -215,10 +217,10 @@ class SeedOntologySeeder:
                 escaped_rel = rel_type.replace("'", "\\'")
 
                 query = (
-                    f"MATCH (s:Entity {{name: '{{escaped_source}}'}}), "
-                    f"(t:Entity {{name: '{{escaped_target}}'}}) "
-                    f"MERGE (s)-[r:RELATED {{relation_type: '{{escaped_rel}}'}}]->(t) "
-                    f"ON CREATE SET r.strength = {{strength}} "
+                    f"MATCH (s:Entity {{name: '{escaped_source}'}}), "
+                    f"(t:Entity {{name: '{escaped_target}'}}) "
+                    f"MERGE (s)-[r:RELATED {{relation_type: '{escaped_rel}'}}]->(t) "
+                    f"ON CREATE SET r.strength = {strength} "
                     f"RETURN r.relation_type"
                 )
                 result = self._conn.execute(query)
@@ -276,9 +278,9 @@ def main() -> None:
     print("=" * 70)
     print("🎯 SEED ONTOLOGY COMPLETE")
     print("=" * 70)
-    print(f"📊 Entities created: {{ent_count}}")
-    print(f"🔗 Relationships created: {{rel_count}}")
-    print(f"⏰ Timestamp: {{datetime.now().isoformat()}}")
+    print(f"📊 Entities created: {ent_count}")
+    print(f"🔗 Relationships created: {rel_count}")
+    print(f"⏰ Timestamp: {datetime.now().isoformat()}")
     print("=" * 70)
 
 
