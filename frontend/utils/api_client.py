@@ -454,6 +454,47 @@ class APIClient:
             },
         )
 
+    def grounded_deduce(self, news: Dict[str, Any]) -> Dict[str, Any]:
+        """Call the graph-grounded deduction endpoint for a news item.
+
+        Sends the news summary and extracted entities to
+        ``POST /analysis/grounded/deduce`` and returns the full deduction
+        result including ``graph_evidence`` from KuzuDB.
+
+        Args:
+            news: News item dict.  Recognised keys:
+
+                * ``"summary"`` / ``"description"`` – news body text
+                * ``"title"``                       – news headline
+                * ``"entities"``                    – list of entity name strings
+                  (if pre-extracted; falls back to empty list)
+
+        Returns:
+            Full response dict from the backend, containing
+            ``"status"``, ``"deduction_result"`` (with ``driving_factor``,
+            ``scenario_alpha``, ``scenario_beta``, ``verification_gap``,
+            ``confidence``, ``graph_evidence``), and ``"ontological_grounding"``.
+        """
+        news_text = news.get("summary") or news.get("description") or ""
+        title = news.get("title", "this event")
+        raw_entities = news.get("entities", [])
+        # Accept either a list of strings or a list of entity dicts.
+        # The `and len(raw_entities) > 0` guard makes the non-empty check explicit
+        # and avoids any ambiguity around the isinstance access.
+        if raw_entities and len(raw_entities) > 0 and isinstance(raw_entities[0], dict):
+            seed_entities = [e.get("name", "") for e in raw_entities if e.get("name")]
+        else:
+            seed_entities = [str(e) for e in raw_entities if e]
+
+        return self._post(
+            "/analysis/grounded/deduce",
+            json={
+                "news_fragment": news_text,
+                "seed_entities": seed_entities,
+                "claim": f"What will be the impact of {title}?",
+            },
+        )
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()

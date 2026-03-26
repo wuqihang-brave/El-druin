@@ -159,6 +159,10 @@ class TestDeduceEndpointResponseShape:
         dr = self.data["deduction_result"]
         assert "confidence" in dr
 
+    def test_deduction_result_graph_evidence(self) -> None:
+        dr = self.data["deduction_result"]
+        assert "graph_evidence" in dr
+
     def test_deduction_result_is_valid_json(self) -> None:
         # Round-trip: ensure the whole response is JSON-serialisable
         assert json.loads(json.dumps(self.data))

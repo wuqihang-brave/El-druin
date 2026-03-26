@@ -63,6 +63,7 @@ class DeductionResult:
     scenario_beta: Scenario
     verification_gap: str
     deduction_confidence: float
+    graph_evidence: str = ""  # KuzuDB graph context used as grounding evidence
 
     def to_strict_json(self) -> Dict[str, Any]:
         """Output as strict JSON (no free text)"""
@@ -87,6 +88,7 @@ class DeductionResult:
             },
             "verification_gap": self.verification_gap,
             "confidence": self.deduction_confidence,
+            "graph_evidence": self.graph_evidence,
         }
 
 
