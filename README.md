@@ -124,10 +124,38 @@ El-druin/
 
 ## 🌐 初始化知识图谱本体 / Seed Ontology Data
 
-首次启动后，运行以下命令初始化 KuzuDB 本体数据（地缘政治、科技/AI、经济三大领域的26个实体与29条关系）：
+首次启动后，**推荐运行一次**以下命令初始化 KuzuDB 本体数据，获得更丰富的推演上下文：
 
 ```bash
 python -m backend.knowledge_layer.seed_ontology
+```
+
+该脚本将自动写入三大领域的完整本体数据（幂等操作，可安全重复运行）：
+
+| 领域 | 实体数 | 关系数 | 覆盖范围 |
+| :--- | :--- | :--- | :--- |
+| 🌍 地缘政治 (Geopolitics) | 60+ | 130+ | 国家、领导人、军事联盟、代理冲突、制裁 |
+| 🤖 科技/AI (Tech / AI)   | 55+ | 100+ | AI公司、模型、算力基础设施、出口管制 |
+| 💰 经济 (Economy)         | 35+ | 70+  | 贸易、能源、供应链、金融市场 |
+
+**必含高频新闻关系示例：**
+- `US --strategic_rival--> Iran` (strength 0.90)
+- `Israel --military_strike--> Hezbollah` (strength 0.90)
+- `Iran --controls--> Strait_of_Hormuz` (strength 0.90)
+- `AI_Model --causes--> Job_Displacement` (strength 0.85)
+- `Data_Center --consumes--> Energy` (strength 0.90)
+- `WTO --regulates--> Trade` (strength 0.90)
+- `Oil --flows_through--> Strait_of_Hormuz` (strength 0.90)
+
+运行后系统会打印统计摘要，例如：
+```
+======================================================================
+🎯 SEED ONTOLOGY COMPLETE
+======================================================================
+📊 Inserted 167 nodes
+🔗 Inserted 304 relationships
+⏰ Timestamp: 2026-03-26T16:24:35
+======================================================================
 ```
 
 ---
