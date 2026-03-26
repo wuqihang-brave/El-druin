@@ -122,6 +122,16 @@ El-druin/
 
 ---
 
+## 🌐 初始化知识图谱本体 / Seed Ontology Data
+
+首次启动后，运行以下命令初始化 KuzuDB 本体数据（地缘政治、科技/AI、经济三大领域的26个实体与29条关系）：
+
+```bash
+python -m backend.knowledge_layer.seed_ontology
+```
+
+---
+
 ## 🤝 参与贡献 / Contributing
 
 1. Fork 本仓库
