@@ -828,6 +828,8 @@ if page == "🏠 主页":
                         unsafe_allow_html=True,
                     )
                     st.code(_alpha_chain, language=None)
+                    st.caption("因果链：" + _alpha.get("causal_chain", "N/A"))
+                    st.caption("描述：" + _alpha.get("description", "N/A"))
                     st.metric("概率", f"{_alpha_prob:.0%}", help="Alpha 路径发生概率")
 
                 with _col_beta:
@@ -842,6 +844,8 @@ if page == "🏠 主页":
                         unsafe_allow_html=True,
                     )
                     st.code(_beta_chain, language=None)
+                    st.caption("因果链：" + _beta.get("causal_chain", "N/A"))
+                    st.caption("描述：" + _beta.get("description", "N/A"))
                     st.metric("概率", f"{_beta_prob:.0%}", help="Beta 路径发生概率")
 
                 st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
