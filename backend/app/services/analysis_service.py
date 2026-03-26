@@ -19,6 +19,22 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
+# Known high-signal terms that the general capitalised-word regex often
+# misses (acronyms, lower-case variants, multi-word phrases).
+_KNOWN_KEYWORDS: List[str] = [
+    # Geopolitical actors & regions
+    "Israel", "Israeli", "Iran", "Iranian", "IRGC",
+    "Gaza", "Palestinian", "Hamas", "Hezbollah",
+    "Lebanon", "Lebanese", "Syria", "Syrian",
+    "Russia", "Russian", "Ukraine", "Ukrainian",
+    "China", "Chinese", "USA", "EU", "NATO",
+    # Tech / economy
+    "AI", "OpenAI", "Google", "Microsoft", "Apple",
+    "startup", "chip", "semiconductor", "GPU", "data center",
+    "Fed", "ECB", "inflation", "tariff", "trade", "currency",
+    "OPEC", "sanctioned", "sanctions",
+]
+
 
 def _ensure_backend_on_path() -> None:
     """Add backend root to sys.path so internal packages are importable."""
@@ -32,27 +48,41 @@ def _ensure_backend_on_path() -> None:
 async def extract_entities_from_text(text: str) -> List[str]:
     """Extract named entities from news text using lightweight heuristics.
 
-    Falls back to a simple capitalised-word pattern when spaCy/NER is
-    unavailable so that the pipeline never hard-fails.
+    Combines a curated keyword list covering geopolitical, technology and
+    economic domains with a general capitalised-phrase pattern so that the
+    pipeline never hard-fails even without spaCy/NER.
 
     Args:
         text: Raw news text to extract entities from.
 
     Returns:
-        List of up to 6 unique entity name strings.
+        List of up to 8 unique entity name strings (keyword hits first).
     """
-    # Run the synchronous regex extraction in the default executor so the
-    # function can be awaited without blocking the event loop.
+    # Known high-signal terms that the general capitalised-word regex often
+    # misses (acronyms, lower-case variants, multi-word phrases).
+
     def _extract(t: str) -> List[str]:
-        pattern = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\b")
         entities: List[str] = []
         seen: set = set()
-        for match in pattern.finditer(t):
+
+        # 1) Keyword scan (case-insensitive, whole-word)
+        for kw in _KNOWN_KEYWORDS:
+            pattern = re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE)
+            if pattern.search(t):
+                canonical = kw  # keep the canonical form
+                if canonical not in seen:
+                    entities.append(canonical)
+                    seen.add(canonical)
+
+        # 2) General capitalised-phrase fallback
+        cap_pattern = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\b")
+        for match in cap_pattern.finditer(t):
             token = match.group(1).strip()
             if token not in seen and len(token) > 2:
                 entities.append(token)
                 seen.add(token)
-        return entities[:6]
+
+        return entities[:8]
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _extract, text)
@@ -72,7 +102,7 @@ def get_graph_context(kuzu_conn: Any, entities: List[str]) -> str:
         Formatted context string, or empty string when graph is unavailable.
     """
     if kuzu_conn is None or not entities:
-        return ""
+        return "【知识图谱暂无数据】将基于新闻内容和通用领域知识进行推演"
 
     _ensure_backend_on_path()
 
@@ -111,6 +141,12 @@ async def perform_deduction(news_content: str, kuzu_conn: Any) -> Dict[str, Any]
     if not graph_context.strip():
         graph_context = "注意：当前知识图谱库中暂无直接关联路径，请基于通用本体逻辑进行推演。"
         logger.info("GraphContext empty; using fallback instruction")
+
+    logger.info(
+        "Final graph_context length: %d chars | starts with: %s",
+        len(graph_context),
+        graph_context[:80],
+    )
 
     # Step 3 – Build LLM service
     try:
