@@ -145,9 +145,8 @@ class DeductionEngine:
             Strict DeductionResult with causal chains tracing back to paths.
         """
         prompt = self._build_deduction_prompt(
-            news_summary=news_summary,
+            news_text=news_summary,
             ontological_context=ontological_context,
-            seed_entities=seed_entities,
         )
 
         self.logger.info("Activating Deduction Soul...")
@@ -178,51 +177,50 @@ class DeductionEngine:
 
     def _build_deduction_prompt(
         self,
-        news_summary: str,
+        news_text: str,
         ontological_context: str,
-        seed_entities: List[str],
     ) -> str:
         """Build strict prompt that forces logical deduction."""
-        entities_str = ", ".join(seed_entities)
-
         return f"""\
-【分析任务】
-请基于以下本体关系路径，对当前事件进行严格的逻辑推演。
+You are EL'druin, an ontological intelligence system. You are given:
+1. A current news event
+2. Ontological context from KuzuDB (1-hop and 2-hop relationship paths with strengths)
 
-【当前触发事件】
-{news_summary}
+Task:
+- Identify the CORE DRIVING FACTORS (max 3, very specific, not generic)
+- Generate exactly TWO future scenarios:
+   • Scenario Alpha = Status-quo continuation path (most probable)
+   • Scenario Beta = Structural break / disruption path (less probable)
+- For each scenario give: name, probability (0.0-1.0), causal_chain (3-5 step logical sequence), one-sentence description
+- Return ONLY valid JSON, no markdown, no explanation.
 
-【涉及的关键实体】
-{entities_str}
-
-【本体关系路径】
-{ontological_context}
-
-【要求输出的 JSON 结构】
+JSON schema:
 {{
-  "driving_factor": "指出本体关系路径中，最能决定局势走向的核心矛盾或纽带（必须是上述路径中明确存在的）",
+  "driving_factor": "string",
   "scenario_alpha": {{
-    "name": "现状延续路径",
-    "causal_chain": "事实 A -> 触发关系 B -> 导致结果 C （其中 A、B、C 都必须来自本体路径）",
-    "entities": ["实体1", "实体2"],
-    "grounding_paths": ["本体路径1", "本体路径2"],
-    "probability": 0.8
+    "name": "string",
+    "probability": float,
+    "causal_chain": "string",
+    "description": "string"
   }},
   "scenario_beta": {{
-    "name": "结构性断裂路径",
-    "causal_chain": "假设前提节点 X 崩溃 -> 导致关系 Y 逆转 -> 最终状态 Z",
-    "trigger_condition": "触发此路径所需的最小黑天鹅事件（必须说明与已知路径的偏离）",
-    "probability": 0.2
+    "name": "string",
+    "probability": float,
+    "causal_chain": "string",
+    "description": "string"
   }},
-  "verification_gap": "指出当前推演中，本体路径中缺失的、需要进一步监测的关键实体数据或关系",
-  "confidence": 0.85
+  "confidence": float,
+  "graph_evidence": "string",
+  "verification_gap": "string"
 }}
 
-【严格要求】
-1. 不允许使用模糊表述如"可能会"、"有可能"。必须说"由于 X，所以 Y"。
-2. scenario_alpha 和 scenario_beta 的因果链必须完整可追溯。
-3. 如果某个预测无法从本体路径推演，必须在 verification_gap 中说明缺失的数据。
-4. 输出必须是有效的 JSON 格式。
+News event:
+{news_text}
+
+Ontological context:
+{ontological_context}
+
+Now output the JSON:
 """
 
     def _validate_and_structure_deduction(
