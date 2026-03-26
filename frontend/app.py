@@ -161,7 +161,7 @@ if not _backend_url_raw:
     raise RuntimeError(
         "BACKEND_URL environment variable is not set. "
         "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com"
+        "Expected format: https://your-backend-domain.com/api/v1"
     )
 _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
@@ -765,7 +765,7 @@ if page == "🏠 主页":
                     }
                     _backend_deduce_url = (
                         _backend_url
-                        + "/api/v1/analysis/grounded/deduce"
+                        + "/analysis/grounded/deduce"
                     )
                     _resp = requests.post(_backend_deduce_url, json=_payload, timeout=30)
 
