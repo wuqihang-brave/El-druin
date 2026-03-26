@@ -219,19 +219,49 @@ def graph_stats() -> Dict[str, Any]:
 @router.post("/extract")
 def extract_from_text(
     request: ExtractRequest,
+    ontology_constrained: bool = Query(
+        default=True,
+        description=(
+            "When True (default), use the OntologyConstrainedExtractor which "
+            "enforces Schema.org node types and PROV-O edge types and returns "
+            "a validation report.  Set to False for the legacy unconstrained "
+            "extractor."
+        ),
+    ),
 ) -> Dict[str, Any]:
     """Extract entities and relations from arbitrary text and persist to the knowledge graph.
+
+    By default this endpoint uses :class:`~app.knowledge.entity_extractor.OntologyConstrainedExtractor`
+    which:
+
+    * Forces the LLM to use only Schema.org node types and PROV-O edge types.
+    * Validates every extracted entity and relation against the canonical ontology.
+    * Remaps legacy type labels (e.g. ``GPE`` → ``Place``, ``sanctions`` → ``antagonistic_to``).
+    * Returns a ``validation_report`` with per-entity / per-edge compliance details.
+
+    Set ``?ontology_constrained=false`` to use the legacy unconstrained extractor.
 
     Request body::
 
         {"text": "Federal Reserve raises rates amid inflation fears."}
 
-    Returns extracted triples along with summary counts.
+    Returns extracted triples along with summary counts and (when constrained)
+    an ontological validation report.
     """
-    from app.knowledge.entity_extractor import EntityRelationExtractor
+    from app.knowledge.entity_extractor import (
+        EntityRelationExtractor,
+        OntologyConstrainedExtractor,
+    )
 
     try:
-        result = EntityRelationExtractor().extract(request.text)
+        validation_report: Optional[Dict[str, Any]] = None
+
+        if ontology_constrained:
+            result = OntologyConstrainedExtractor().extract(request.text)
+            validation_report = result.get("validation_report")
+        else:
+            result = EntityRelationExtractor().extract(request.text)
+
         # Normalize entity fields: always include name, type, description, confidence
         def _safe_confidence(val: Any, default: float = 0.7) -> float:
             try:
@@ -279,10 +309,12 @@ def extract_from_text(
 
         return {
             "status": "ok",
+            "ontology_constrained": ontology_constrained,
             "entities": entities,
             "relations": relations,
             "nodes_count": len(entities),
             "edges_count": len(relations),
+            **({"validation_report": validation_report} if validation_report is not None else {}),
         }
     except Exception as exc:
         logger.error("Knowledge extraction error: %s", exc, exc_info=True)
