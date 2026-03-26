@@ -181,6 +181,8 @@ class OntologyGroundedAnalyzer:
                 ontological_context=combined_premise,
                 seed_entities=seed_entities,
             )
+            # Attach raw GraphContext so callers can expose it as graph_evidence
+            deduction_result.graph_evidence = combined_premise
         except Exception as exc:  # noqa: BLE001 – any engine failure must not propagate as a 500
             logger.error("DeductionEngine raised an unexpected error: %s", exc)
             from intelligence.deduction_engine import (

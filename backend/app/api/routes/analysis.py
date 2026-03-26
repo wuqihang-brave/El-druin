@@ -311,6 +311,7 @@ def analyze_with_deduction_soul(
         deduction_result.setdefault("scenario_beta", {})
         deduction_result.setdefault("verification_gap", "")
         deduction_result.setdefault("confidence", 0.0)
+        deduction_result.setdefault("graph_evidence", "")
 
         logger.debug(
             "Deduction complete. driving_factor=%r  confidence=%s",

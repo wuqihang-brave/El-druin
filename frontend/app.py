@@ -664,236 +664,216 @@ if page == "🏠 主页":
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
     # ── Session-state defaults ───────────────────────────────────────────────
-    if "home_top5_news" not in st.session_state:
-        st.session_state.home_top5_news: List[Dict[str, Any]] = []
-    if "home_judgment" not in st.session_state:
-        st.session_state.home_judgment: Dict[str, Any] = {}
+    if "selected_news" not in st.session_state:
+        st.session_state.selected_news: Optional[Dict[str, Any]] = None
 
     # ── Main content: 40/60 split ────────────────────────────────────────────
-    col_feed, col_judgment = st.columns([4, 6], gap="large")
+    col_feed, col_deduction = st.columns([4, 6], gap="large")
 
-    # ─── LEFT COLUMN: Intelligence Feed (40%) ────────────────────────────────
+    # ─── LEFT COLUMN: 关键情报流 (40%) ───────────────────────────────────────
     with col_feed:
-        st.subheader("📰 Intelligence Feed")
+        st.subheader("🔑 关键情报流")
 
-        # Seed events – in production these are fetched from the backend
-        _seed_events: List[Dict[str, Any]] = [
+        # Fetch latest news from backend; fall back to hardcoded seeds
+        _feed_news: List[Dict[str, Any]] = []
+        try:
+            _news_resp = _api.get_latest_news(limit=3, hours=72)
+            _feed_news = _news_resp.get("articles", [])
+        except Exception:
+            pass
+
+        # Hardcoded fallback – always show exactly 3 items
+        _fallback_news: List[Dict[str, Any]] = [
             {
-                "id": "evt_001",
                 "title": "European Commission Announces AI Regulation",
                 "source": "Reuters",
-                "date": "2026-03-25",
-                "summary": (
+                "published": "2026-03-25",
+                "description": (
                     "The European Commission has unveiled strict new artificial intelligence "
-                    "regulations to govern AI development across the EU..."
+                    "regulations to govern AI development across the EU."
                 ),
                 "entities": [
-                    {"name": "European Commission", "type": "ORGANIZATION", "role": "REGULATOR", "virtue": "RIGID"},
-                    {"name": "EU", "type": "COUNTRY", "role": "PIVOT", "virtue": "PRINCIPLED"},
-                    {"name": "AI Regulation", "type": "IDEOLOGY", "role": "CONSTRAINT", "virtue": "IDEOLOGICAL"},
+                    {"name": "European Commission", "type": "ORGANIZATION"},
+                    {"name": "EU", "type": "COUNTRY"},
+                    {"name": "AI Regulation", "type": "CONCEPT"},
                 ],
             },
             {
-                "id": "evt_002",
                 "title": "Tech Giants Challenge New AI Rules",
                 "source": "TechCrunch",
-                "date": "2026-03-24",
-                "summary": (
+                "published": "2026-03-24",
+                "description": (
                     "Major technology companies express concerns about compliance costs "
-                    "and innovation slowdown..."
+                    "and innovation slowdown under proposed AI rules."
                 ),
                 "entities": [
-                    {"name": "Tech Companies", "type": "CORPORATION", "role": "RESISTOR", "virtue": "PRAGMATIC"},
-                    {"name": "AI Regulation", "type": "IDEOLOGY", "role": "CONSTRAINT", "virtue": "IDEOLOGICAL"},
+                    {"name": "Tech Companies", "type": "CORPORATION"},
+                    {"name": "AI Regulation", "type": "CONCEPT"},
+                ],
+            },
+            {
+                "title": "Federal Reserve Signals Rate Hike",
+                "source": "Bloomberg",
+                "published": "2026-03-23",
+                "description": (
+                    "The US Federal Reserve signaled a possible interest rate increase "
+                    "citing persistent inflation, triggering tech-stock sell-offs."
+                ),
+                "entities": [
+                    {"name": "Federal Reserve", "type": "ORGANIZATION"},
+                    {"name": "Tech Stocks", "type": "CONCEPT"},
                 ],
             },
         ]
 
-        for _evt in _seed_events:
-            with st.container():
-                st.markdown(
-                    f'<div class="news-card">'
-                    f'<b>{_evt["title"]}</b><br/>'
-                    f'<span style="font-size:12px;color:#999;">'
-                    f'{_evt["source"]} • {_evt["date"]}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f'_{_evt["summary"]}_')
+        if not _feed_news:
+            _feed_news = _fallback_news
 
-                st.markdown("**Entities:**")
-                _entity_html = "".join(
-                    f'<span class="entity-tag">{_e["name"]}</span>'
-                    for _e in _evt["entities"]
-                )
-                st.markdown(_entity_html, unsafe_allow_html=True)
+        for _idx, _article in enumerate(_feed_news[:3]):
+            _title = _article.get("title") or "（无标题）"
+            _source = _article.get("source", "")
+            _pub = str(_article.get("published") or _article.get("date", ""))[:10]
+            _summary = (_article.get("description") or _article.get("summary", ""))[:180]
 
-                _btn_col1, _btn_col2, _btn_col3 = st.columns([1, 1, 2])
-                with _btn_col1:
-                    _predict_btn = st.button(
-                        "🔮 Predict",
-                        key=f"predict_{_evt['id']}",
-                        help="Analyze this event with Ontological Judgment Engine",
-                    )
-                if _predict_btn:
-                    st.session_state[f"selected_event_{_evt['id']}"] = _evt
-
-                st.markdown("---")
-
-    # ─── RIGHT COLUMN: Ontological Judgment Engine (60%) ─────────────────────
-    with col_judgment:
-        st.subheader("⚖️ Ontological Judgment Engine")
-
-        _selected_event: Optional[Dict[str, Any]] = None
-        for _evt in _seed_events:
-            if st.session_state.get(f"selected_event_{_evt['id']}"):
-                _selected_event = _evt
-                break
-
-        if _selected_event:
-            st.info(
-                f"Analyzing: **{_selected_event['title'][:60]}"
-                f"{'...' if len(_selected_event['title']) > 60 else ''}**"
+            st.markdown(
+                f'<div class="news-card">'
+                f'<b>{_title}</b><br/>'
+                f'<span style="font-size:12px;color:#999;">'
+                f'{_source}{" • " if _source and _pub else ""}{_pub}'
+                f'</span>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
+            if _summary:
+                st.caption(_summary)
 
-            with st.spinner("🧠 Activating Deduction Soul..."):
+            if st.button(
+                "🔬 执行本体推演",
+                key=f"deduce_btn_{_idx}",
+                use_container_width=True,
+            ):
+                st.session_state.selected_news = _article
+                st.rerun()
+
+            st.markdown("---")
+
+    # ─── RIGHT COLUMN: 深度推演看板 (60%) ─────────────────────────────────────
+    with col_deduction:
+        st.subheader("🧠 深度推演看板")
+
+        _selected = st.session_state.get("selected_news")
+
+        if _selected:
+            _sel_title = _selected.get("title", "（无标题）")
+            st.markdown(f"**分析目标：** {_sel_title}")
+            st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+            _deduction_result: Optional[Dict[str, Any]] = None
+            _deduction_error: Optional[str] = None
+
+            with st.status("🔍 正在检索 KuzuDB...", expanded=True) as _status:
                 try:
-                    _payload = {
-                        "news_fragment": _selected_event["summary"],
-                        "seed_entities": [_e["name"] for _e in _selected_event["entities"]],
-                        "claim": f"What will be the impact of {_selected_event['title']}?",
-                    }
-                    _backend_deduce_url = (
-                        _backend_url
-                        + "/analysis/grounded/deduce"
-                    )
-                    _resp = requests.post(_backend_deduce_url, json=_payload, timeout=30)
-
-                    if _resp.status_code == 200:
-                        _result = _resp.json()
-                        _deduction = _result.get("deduction_result", {})
-
-                        # ── Driving Factor ──────────────────────────────────
-                        st.markdown("### 🔍 Driving Factor")
-                        st.markdown(f"> **{_deduction.get('driving_factor', 'Unknown')}**")
-                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-
-                        # ── Scenario Alpha (High Probability) ───────────────
-                        st.markdown("### 🌤️ Scenario Alpha: Continuation Path")
-                        _alpha = _deduction.get("scenario_alpha", {})
-                        # Backend returns probabilities as decimals (0.0–1.0)
-                        st.markdown(
-                            f'<div class="scenario-alpha">'
-                            f'<div class="scenario-alpha-header">'
-                            f'✓ High Probability: {_alpha.get("probability", 0):.0%}'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown("**Causal Chain:**")
-                        st.markdown(
-                            f'<div class="causal-chain">{_alpha.get("causal_chain", "N/A")}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        if _alpha.get("grounding_paths"):
-                            st.markdown("**Grounding Paths:**")
-                            for _path in _alpha.get("grounding_paths", []):
-                                st.caption(f"• {_path}")
-                        if _alpha.get("entities"):
-                            st.markdown("**Entities Involved:**")
-                            _alpha_ent_html = "".join(
-                                f'<span class="entity-tag">{_e}</span>'
-                                for _e in _alpha.get("entities", [])
-                            )
-                            st.markdown(_alpha_ent_html, unsafe_allow_html=True)
-
-                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-
-                        # ── Scenario Beta (Structural Break) ────────────────
-                        st.markdown("### ⚡ Scenario Beta: Structural Break Path")
-                        _beta = _deduction.get("scenario_beta", {})
-                        st.markdown(
-                            f'<div class="scenario-beta">'
-                            f'<div class="scenario-beta-header">'
-                            f'⚠️ Low Probability: {_beta.get("probability", 0):.0%}'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown("**Causal Chain (Hypothetical):**")
-                        st.markdown(
-                            f'<div class="causal-chain">{_beta.get("causal_chain", "N/A")}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown("**Trigger Condition:**")
-                        st.info(_beta.get("trigger_condition", "Unknown"))
-
-                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-
-                        # ── Confidence Metrics ───────────────────────────────
-                        st.markdown("### 📊 Confidence Metrics")
-                        _metric_cols = st.columns(3)
-                        with _metric_cols[0]:
-                            st.markdown(
-                                f'<div class="metric-card">'
-                                f'<div class="metric-value">{_deduction.get("confidence", 0):.0%}</div>'
-                                f'<div class="metric-label">Overall Confidence</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _metric_cols[1]:
-                            st.markdown(
-                                f'<div class="metric-card">'
-                                f'<div class="metric-value">{_alpha.get("probability", 0):.0%}</div>'
-                                f'<div class="metric-label">Alpha Probability</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _metric_cols[2]:
-                            st.markdown(
-                                f'<div class="metric-card">'
-                                f'<div class="metric-value">{_beta.get("probability", 0):.0%}</div>'
-                                f'<div class="metric-label">Beta Probability</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-
-                        # ── Verification Gap Warning ─────────────────────────
-                        st.warning(
-                            f"**📍 Data Gap:** {_deduction.get('verification_gap', 'No gaps identified')}\n\n"
-                            "This analysis is grounded in the current knowledge graph. "
-                            "The identified gaps represent data that would strengthen our confidence."
-                        )
-
-                        # ── Ontological Grounding ────────────────────────────
-                        with st.expander("📚 View Ontological Grounding"):
-                            st.json(_result.get("ontological_grounding", {}), expanded=False)
-
-                        if st.button("🔄 Analyze Another Event", key="clear_selection"):
-                            for _k in list(st.session_state.keys()):
-                                if _k.startswith("selected_event_"):
-                                    del st.session_state[_k]
-                            st.rerun()
+                    st.write("📡 连接知识图谱数据库...")
+                    _resp = _api.grounded_deduce(_selected)
+                    if "error" in _resp:
+                        _deduction_error = str(_resp["error"])
+                        _status.update(label="⚠️ 推演失败", state="error")
                     else:
-                        st.error(f"Backend error: {_resp.status_code}")
-                        st.code(_resp.text, language="json")
-
-                except requests.exceptions.Timeout:
-                    st.error("⏱️ Analysis timed out after 30 seconds. The backend may be overloaded.")
-                except requests.exceptions.ConnectionError:
-                    st.error("⚠️ Cannot connect to backend. Ensure the BACKEND_URL environment variable is correctly set.")
-                    st.info("Start backend with: `uvicorn backend.app.main:app --reload`")
+                        _deduction_result = _resp.get("deduction_result", {})
+                        st.write("✅ GraphContext 加载完成")
+                        _paths_count = (
+                            _resp.get("ontological_grounding", {})
+                            .get("total_paths_extracted", 0)
+                        )
+                        st.write(f"📊 提取路径数：{_paths_count}")
+                        _status.update(label="✅ 推演完成", state="complete")
                 except Exception as _exc:
-                    st.error(f"Analysis failed: {str(_exc)}")
+                    _deduction_error = str(_exc)
+                    _status.update(label="⚠️ 连接失败", state="error")
+
+            if _deduction_error:
+                st.error(f"推演失败：{_deduction_error}")
+                st.info("请确认后端服务已启动，并检查 BACKEND_URL 环境变量。")
+
+            elif _deduction_result is not None:
+                _dr = _deduction_result
+
+                # 【1】核心驱动因素
+                st.markdown("**【1】核心驱动因素**")
+                st.info(f"🎯 {_dr.get('driving_factor', '（未识别）')}")
+
+                # 【2】两个推演路径（并排）
+                st.markdown("**【2】推演路径**")
+                _col_alpha, _col_beta = st.columns(2, gap="medium")
+
+                _alpha = _dr.get("scenario_alpha", {})
+                _beta = _dr.get("scenario_beta", {})
+                _alpha_prob = _alpha.get("probability", 0)
+                _beta_prob = _beta.get("probability", 0)
+
+                with _col_alpha:
+                    st.success(
+                        f"🟢 路径 Alpha: {_alpha.get('name', '现状延续路径')}"
+                    )
+                    _alpha_chain = _alpha.get("causal_chain", "N/A")
+                    st.code(_alpha_chain, language=None)
+                    st.metric(
+                        "概率",
+                        f"{_alpha_prob:.0%}",
+                        help="Alpha 路径发生概率",
+                    )
+
+                with _col_beta:
+                    st.warning(
+                        f"🟡 路径 Beta: {_beta.get('name', '结构性断裂路径')}"
+                    )
+                    _beta_chain = _beta.get("causal_chain", "N/A")
+                    st.code(_beta_chain, language=None)
+                    st.metric(
+                        "概率",
+                        f"{_beta_prob:.0%}",
+                        help="Beta 路径发生概率",
+                    )
+
+                st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+                # 【3】谍报的知识缺口
+                st.markdown("**【3】谍报的知识缺口**")
+                st.error(
+                    f"⚠️ {_dr.get('verification_gap', '暂无数据缺口标记')}"
+                )
+
+                # 【4】置信度总体评分
+                st.markdown("**【4】置信度总体评分**")
+                _confidence_raw = _dr.get("confidence", 0.0)
+                # Backend returns confidence as a decimal (0.0–1.0); guard against
+                # any future callers that may already supply a 0–100 integer.
+                _confidence_pct = (
+                    int(round(_confidence_raw * 100))
+                    if _confidence_raw <= 1.0
+                    else int(round(_confidence_raw))
+                )
+                st.metric("真信度", f"{_confidence_pct}%")
+
+                # GraphContext 证据（可选展示，非嵌套）
+                _graph_evidence = _dr.get("graph_evidence", "")
+                if _graph_evidence:
+                    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                    st.markdown("**📚 图谱证据（GraphContext）**")
+                    st.code(_graph_evidence, language=None)
+
+            if st.button("🔄 重新选择情报", key="clear_selection"):
+                st.session_state.selected_news = None
+                st.rerun()
 
         else:
             st.markdown(
                 """
                 <div style="text-align:center;padding:48px 24px;color:#999;">
                     <p style="font-size:48px;margin-bottom:16px;">🔮</p>
-                    <p><b>Select an event from the Intelligence Feed</b></p>
+                    <p><b>从左侧"关键情报流"中选择一条情报</b></p>
                     <p style="font-size:12px;margin-top:8px;">
-                        Click "Predict" to activate the Ontological Judgment Engine
+                        点击"执行本体推演"按钮，激活图谱推演引擎
                     </p>
                 </div>
                 """,
@@ -906,7 +886,7 @@ if page == "🏠 主页":
     with _col_f1:
         st.caption("EL-DRUIN Ontological Intelligence Platform")
     with _col_f2:
-        st.caption("v0.1 (Elite Dashboard)")
+        st.caption("v0.2 (Graph-Grounded)")
     with _col_f3:
         st.caption("⚔️✝️")
 
