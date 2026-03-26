@@ -12,8 +12,8 @@ Run::
 
     streamlit run frontend/app.py
 
-The app expects the FastAPI backend to be reachable at
-http://localhost:8001/api/v1 (configurable via BACKEND_URL env var).
+The app expects the FastAPI backend to be reachable at the URL
+configured via the BACKEND_URL environment variable.
 """
 
 import logging
@@ -156,7 +156,14 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Backend URL (env-configurable)
 # ---------------------------------------------------------------------------
-_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/")
+_backend_url_raw = os.environ.get("BACKEND_URL")
+if not _backend_url_raw:
+    raise RuntimeError(
+        "BACKEND_URL environment variable is not set. "
+        "Please configure it in your deployment environment. "
+        "Expected format: https://your-backend-domain.com"
+    )
+_backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
@@ -757,7 +764,7 @@ if page == "🏠 主页":
                         "claim": f"What will be the impact of {_selected_event['title']}?",
                     }
                     _backend_deduce_url = (
-                        os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/")
+                        _backend_url
                         + "/api/v1/analysis/grounded/deduce"
                     )
                     _resp = requests.post(_backend_deduce_url, json=_payload, timeout=30)
@@ -874,7 +881,7 @@ if page == "🏠 主页":
                 except requests.exceptions.Timeout:
                     st.error("⏱️ Analysis timed out after 30 seconds. The backend may be overloaded.")
                 except requests.exceptions.ConnectionError:
-                    st.error("⚠️ Cannot connect to backend. Ensure it's running on localhost:8001")
+                    st.error("⚠️ Cannot connect to backend. Ensure the BACKEND_URL environment variable is correctly set.")
                     st.info("Start backend with: `uvicorn backend.app.main:app --reload`")
                 except Exception as _exc:
                     st.error(f"Analysis failed: {str(_exc)}")
