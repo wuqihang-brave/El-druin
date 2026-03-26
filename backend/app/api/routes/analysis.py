@@ -72,27 +72,43 @@ def _get_analyzer():
 
 
 def _get_kuzu_connection() -> Any:
-    """Return a KuzuDB connection to the main application database."""
+    """Return a KuzuDB connection to the main application database.
+
+    Reads the database path from the ``KUZU_DB_PATH`` environment variable so
+    the service works in cloud deployments (e.g. Streamlit Cloud / Railway)
+    where ``./data/kuzu_db`` does not exist.  Falls back to the settings value
+    and then to the hard-coded default.  Returns ``None`` – instead of raising –
+    when the path does not exist or the connection fails, so callers can degrade
+    gracefully.
+
+    Priority: KUZU_DB_PATH env var > settings.kuzu_db_path > ``./data/kuzu_db``
+    """
     _ensure_intelligence_importable()
-    # Use the main application database path (kuzu_db_path / ./data/kuzu_db).
-    # Note: kuzu_kg_path (./data/el_druin.kuzu) is the separate knowledge-graph
-    # database and must NOT be used here.
-    db_path = "./data/kuzu_db"
-    try:
-        import kuzu
+    # Priority: env var > settings > hard-coded default
+    kuzu_db_path_env = os.getenv("KUZU_DB_PATH")
+    if kuzu_db_path_env:
+        db_path = kuzu_db_path_env
+    else:
+        db_path = "./data/kuzu_db"
         try:
             from app.core.config import get_settings
             settings = get_settings()
-            db_path = getattr(settings, "kuzu_db_path", None) or "./data/kuzu_db"
-        except Exception:
-            pass
+            db_path = getattr(settings, "kuzu_db_path", None) or db_path
+        except (ImportError, AttributeError) as exc:
+            logger.debug("Could not read kuzu_db_path from settings: %s", exc)
 
+    if not os.path.exists(db_path):
+        logger.warning("KuzuDB path not found: %s – running without graph context", db_path)
+        return None
+
+    try:
+        import kuzu
         logger.debug("Opening KuzuDB at path: %s", db_path)
         db = kuzu.Database(db_path)
         return kuzu.Connection(db)
     except Exception as exc:
-        logger.warning("KuzuDB connection unavailable (path=%s): %s", db_path, exc)
-        raise
+        logger.warning("Failed to connect to KuzuDB (path=%s): %s", db_path, exc)
+        return None
 
 
 def _get_llm_service() -> Any:
@@ -269,18 +285,31 @@ def analyze_with_deduction_soul(
         _ensure_intelligence_importable()
         llm_service = _get_llm_service()
         kuzu_conn = _get_kuzu_connection()
-        
+
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
-        
+
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,
             kuzu_conn=kuzu_conn,
         )
-        return analyzer.analyze_with_ontological_grounding(
+        raw_result = analyzer.analyze_with_ontological_grounding(
             news_fragment=request.news_fragment,
             seed_entities=request.seed_entities,
             claim=request.claim,
         )
+
+        # Guarantee all required structured fields are present in deduction_result.
+        deduction_result: Dict[str, Any] = raw_result.get("deduction_result", {})
+        deduction_result.setdefault("driving_factor", "")
+        deduction_result.setdefault("scenario_alpha", {})
+        deduction_result.setdefault("scenario_beta", {})
+        deduction_result.setdefault("verification_gap", "")
+        deduction_result.setdefault("confidence", 0.0)
+
+        return {
+            "status": raw_result.get("status", "success"),
+            "deduction_result": deduction_result,
+        }
     except Exception as exc:
         logger.exception("Deduction Soul analysis failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
