@@ -16,8 +16,13 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Read backend URL from environment variable, defaults to localhost for local development
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
+BACKEND_URL = os.getenv("BACKEND_URL")
+if not BACKEND_URL:
+    raise RuntimeError(
+        "BACKEND_URL environment variable is not set. "
+        "Please configure it in your deployment environment. "
+        "Expected format: https://your-backend-domain.com"
+    )
 _DEFAULT_BASE_URL = f"{BACKEND_URL}/api/v1"
 _TIMEOUT = 10  # seconds
 

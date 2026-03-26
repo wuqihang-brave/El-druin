@@ -69,7 +69,14 @@ except FileNotFoundError:
 # ---------------------------------------------------------------------------
 # API client
 # ---------------------------------------------------------------------------
-_backend_url = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api/v1"
+_backend_url_raw = os.environ.get("BACKEND_URL")
+if not _backend_url_raw:
+    raise RuntimeError(
+        "BACKEND_URL environment variable is not set. "
+        "Please configure it in your deployment environment. "
+        "Expected format: https://your-backend-domain.com"
+    )
+_backend_url = _backend_url_raw.rstrip("/") + "/api/v1"
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
