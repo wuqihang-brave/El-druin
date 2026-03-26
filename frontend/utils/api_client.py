@@ -21,9 +21,9 @@ if not BACKEND_URL:
     raise RuntimeError(
         "BACKEND_URL environment variable is not set. "
         "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com"
+        "Expected format: https://your-backend-domain.com/api/v1"
     )
-_DEFAULT_BASE_URL = f"{BACKEND_URL}/api/v1"
+_DEFAULT_BASE_URL = BACKEND_URL
 _TIMEOUT = 10  # seconds
 
 
