@@ -16,17 +16,17 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = os.getenv("BACKEND_URL")
-if not BACKEND_URL:
-    raise RuntimeError(
-        "BACKEND_URL environment variable is not set. "
-        "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com/api/v1"
-    )
-_DEFAULT_BASE_URL = BACKEND_URL
-_TIMEOUT = 10  # seconds
+# --- 修改开始 ---
+# 优先级：环境变量 > 默认本地地址
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
 
+# 核心修复：自动清理掉可能导致 404 的旧前缀
+if BACKEND_URL.endswith("/api/v1"):
+    BACKEND_URL = BACKEND_URL.replace("/api/v1", "")
 
+_DEFAULT_BASE_URL = BACKEND_URL.rstrip("/")
+_TIMEOUT = 15  # 增加一点超时时间，防止 502
+# --- 修改结束 ---
 class APIClient:
     """Thin HTTP wrapper around the EL'druin FastAPI backend."""
 
