@@ -174,12 +174,42 @@ class OntologyGroundedAnalyzer:
         )
 
         logger.info("Activating Deduction Soul for logical inference...")
-        
-        deduction_result = self.deduction_engine.deduce_from_ontological_paths(
-            news_summary=news_fragment[:200],
-            ontological_context=combined_premise,
-            seed_entities=seed_entities,
-        )
+
+        try:
+            deduction_result = self.deduction_engine.deduce_from_ontological_paths(
+                news_summary=news_fragment[:200],
+                ontological_context=combined_premise,
+                seed_entities=seed_entities,
+            )
+        except Exception as exc:  # noqa: BLE001 – any engine failure must not propagate as a 500
+            logger.error("DeductionEngine raised an unexpected error: %s", exc)
+            from intelligence.deduction_engine import (
+                CausalChain,
+                DeductionResult,
+                Scenario,
+                ScenarioType,
+            )
+            deduction_result = DeductionResult(
+                driving_factor="DeductionEngine error – see logs",
+                scenario_alpha=Scenario(
+                    name="现状延续路径",
+                    scenario_type=ScenarioType.CONTINUATION,
+                    causal_chain=CausalChain(
+                        source_fact="", triggering_relation="", resulting_change=""
+                    ),
+                    probability=0.0,
+                ),
+                scenario_beta=Scenario(
+                    name="结构性断裂路径",
+                    scenario_type=ScenarioType.STRUCTURAL_BREAK,
+                    causal_chain=CausalChain(
+                        source_fact="", triggering_relation="", resulting_change=""
+                    ),
+                    probability=0.0,
+                ),
+                verification_gap=f"Deduction engine error: {exc}",
+                deduction_confidence=0.0,
+            )
 
         # Step 3: Return structured result with complete deduction JSON
         return {

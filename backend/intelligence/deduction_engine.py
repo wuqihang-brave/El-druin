@@ -151,21 +151,23 @@ class DeductionEngine:
         self.logger.info("Activating Deduction Soul...")
         self.logger.info("Analyzing event: %s...", news_summary[:100])
 
-        response = self.llm.call(
-            prompt=prompt,
-            system=DEDUCTION_SOUL_SYSTEM_PROMPT,
-            temperature=0.2,   # Very low – deterministic logic
-            max_tokens=1500,
-            response_format="json",
-        )
-
         try:
+            response = self.llm.call(
+                prompt=prompt,
+                system=DEDUCTION_SOUL_SYSTEM_PROMPT,
+                temperature=0.2,   # Very low – deterministic logic
+                max_tokens=1500,
+                response_format="json",
+            )
             deduction_json = json.loads(response)
             result = self._validate_and_structure_deduction(deduction_json)
             self.logger.info("Deduction complete. Output validated as strict JSON.")
             return result
         except (json.JSONDecodeError, ValueError) as exc:
-            self.logger.error("LLM failed to output valid JSON: %s", exc)
+            self.logger.error("LLM returned invalid JSON: %s", exc)
+            return self._fallback_deduction(news_summary, ontological_context)
+        except Exception as exc:  # noqa: BLE001 – any LLM/network failure must degrade gracefully
+            self.logger.error("Deduction Soul failed unexpectedly: %s", exc)
             return self._fallback_deduction(news_summary, ontological_context)
 
     # ------------------------------------------------------------------

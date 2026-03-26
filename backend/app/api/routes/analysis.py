@@ -299,17 +299,37 @@ def analyze_with_deduction_soul(
         )
 
         # Guarantee all required structured fields are present in deduction_result.
-        deduction_result: Dict[str, Any] = raw_result.get("deduction_result", {})
+        deduction_result: Optional[Dict[str, Any]] = raw_result.get("deduction_result")
+        if not deduction_result:
+            logger.warning("deduction_result missing from analyzer output – returning 503")
+            raise HTTPException(
+                status_code=503,
+                detail="Deduction engine returned no result. Check LLM configuration.",
+            )
         deduction_result.setdefault("driving_factor", "")
         deduction_result.setdefault("scenario_alpha", {})
         deduction_result.setdefault("scenario_beta", {})
         deduction_result.setdefault("verification_gap", "")
         deduction_result.setdefault("confidence", 0.0)
 
+        logger.debug(
+            "Deduction complete. driving_factor=%r  confidence=%s",
+            deduction_result.get("driving_factor"),
+            deduction_result.get("confidence"),
+        )
+
         return {
             "status": raw_result.get("status", "success"),
+            "ontological_grounding": raw_result.get("ontological_grounding", {
+                "seed_entities": request.seed_entities,
+                "premises": {},
+                "total_paths_extracted": 0,
+            }),
             "deduction_result": deduction_result,
+            "timestamp": raw_result.get("timestamp", ""),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Deduction Soul analysis failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
