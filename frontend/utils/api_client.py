@@ -5,88 +5,64 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# 路径清洗逻辑：确保不重复叠加 /api/v1
-_RAW_BACKEND = os.getenv("BACKEND_URL", "http://localhost:8001")
-_CLEAN_BASE = _RAW_BACKEND.rstrip("/")
-if _CLEAN_BASE.endswith("/api/v1"):
-    _API_ROOT = _CLEAN_BASE
-else:
-    _API_ROOT = f"{_CLEAN_BASE}/api/v1"
+# --- 极简路径逻辑：只保留到端口号 ---
+_RAW_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
+# 彻底去掉结尾的所有斜杠和 /api/v1，交给具体方法去拼
+_BASE_URL = _RAW_URL.replace("/api/v1", "").rstrip("/")
 
 class APIClient:
-    """
-    EL'druin API 客户端。
-    已根据 app.py 源码补齐所有缺失方法，解决 AttributeError。
-    """
-    def __init__(self, base_url: str = _API_ROOT) -> None:
-        self.base_url = base_url.rstrip("/")
+    def __init__(self, base_url: str = _BASE_URL) -> None:
+        self.base_url = base_url
         self._session = requests.Session()
-        logger.info(f"APIClient initialized with base_url: {self.base_url}")
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+        # 统一补齐 /api/v1，防止 app.py 传参不一致
+        if not path.startswith("/api/v1"):
+            path = f"/api/v1{path}"
         url = f"{self.base_url}{path}"
         try:
-            r = self._session.get(url, params=params, timeout=15)
+            r = self._session.request(method, url, timeout=45, **kwargs)
             r.raise_for_status()
             return r.json()
         except Exception as e:
+            logger.error(f"API Error on {url}: {e}")
             return {"error": str(e)}
 
-    def _post(self, path: str, json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        url = f"{self.base_url}{path}"
-        try:
-            r = self._session.post(url, json=json, params=params, timeout=60)
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:
-            return {"error": str(e)}
+    # --- 基础方法 ---
+    def _get(self, path: str, params=None): return self._request("GET", path, params=params)
+    def _post(self, path: str, json=None, params=None): return self._request("POST", path, json=json, params=params)
 
-    # --- 1. 修复核心报错：系统状态页与主页渲染 ---
-    
-    def get_news_sources(self) -> Dict[str, Any]:
-        """修复 AttributeError: 'APIClient' object has no attribute 'get_news_sources'"""
-        return self._get("/news/sources")
-
-    def get_hierarchical_graph(self, min_degree: int = 0, max_degree: int = 100) -> Dict[str, Any]:
-        """修复 app.py 第 1383 行左右的报错"""
-        return self._get("/knowledge/graph/hierarchy", params={"min_degree": min_degree, "max_degree": max_degree})
-
-    def get_node_narrative(self, node_name: str) -> Dict[str, Any]:
-        return self._get(f"/knowledge/graph/node-narrative/{node_name}")
-
-    # --- 2. 知识图谱与推演 ---
-
-    def ingest_knowledge_graph(self, limit: int = 100, hours: int = 24) -> Dict[str, Any]:
-        return self._post("/knowledge/ingest", params={"limit": limit, "hours": hours})
-
-    def grounded_deduce(self, news: Dict[str, Any]) -> Dict[str, Any]:
-        """核心推演接口"""
-        news_text = news.get("summary") or news.get("description") or news.get("content") or ""
-        raw_entities = news.get("entities", [])
-        seed_entities = [e.get("name", "") if isinstance(e, dict) else str(e) for e in raw_entities]
-        
-        return self._post("/analysis/grounded/deduce", json={
-            "news_fragment": news_text,
-            "seed_entities": [e for e in seed_entities if e],
-            "claim": f"Impact analysis: {news.get('title', 'event')}"
-        })
-
-    # --- 3. 基础数据查询 ---
-
-    def get_latest_news(self, limit: int = 20, hours: int = 24) -> Dict[str, Any]:
+    # --- 修复新闻页面 (404 解决) ---
+    def get_latest_news(self, limit=20, hours=24):
         return self._get("/news/latest", params={"limit": limit, "hours": hours})
 
-    def get_kg_stats(self) -> Dict[str, Any]:
-        return self._get("/knowledge/stats")
+    def get_news_sources(self):
+        return self._get("/news/sources")
 
-    def get_kg_entities(self, limit: int = 100) -> Dict[str, Any]:
-        return self._get("/knowledge/entities", params={"limit": limit})
+    # --- 修复主页图谱 ---
+    def get_hierarchical_graph(self, min_degree=0, max_degree=100):
+        return self._get("/knowledge/graph/hierarchy", params={"min_degree": min_degree, "max_degree": max_degree})
 
-    def get_kg_relations(self, limit: int = 200) -> Dict[str, Any]:
-        return self._get("/knowledge/relations")
+    # --- 核心：本体论推演 (不再为空的关键) ---
+    def grounded_deduce(self, news: Dict[str, Any]):
+        # 1. 提取文本
+        text = news.get("summary") or news.get("content") or ""
+        # 2. 提取实体
+        entities = news.get("entities", [])
+        seed_entities = [e.get("name") if isinstance(e, dict) else str(e) for e in entities if e]
+        
+        # 3. 发送请求
+        return self._post("/analysis/grounded/deduce", json={
+            "news_fragment": text,
+            "seed_entities": seed_entities,
+            "claim": f"分析事件的深层本体影响: {news.get('title', '未知事件')}"
+        })
 
-    def health_check(self) -> Dict[str, Any]:
-        return self._get("/health")
+    # --- 其他必要方法 ---
+    def ingest_knowledge_graph(self, limit=100, hours=24):
+        return self._post("/knowledge/ingest", params={"limit": limit, "hours": hours})
 
-# 导出供外部使用的实例
+    def get_kg_stats(self): return self._get("/knowledge/stats")
+    def health_check(self): return self._get("/health")
+
 api_client = APIClient()
