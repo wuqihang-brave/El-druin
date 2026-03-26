@@ -147,6 +147,17 @@ class TestDeductionResult:
         assert "scenario_beta" in j
         assert "verification_gap" in j
         assert "confidence" in j
+        assert "graph_evidence" in j
+
+    def test_to_strict_json_graph_evidence_default_empty(self) -> None:
+        j = self._make_result().to_strict_json()
+        assert j["graph_evidence"] == ""
+
+    def test_to_strict_json_graph_evidence_preserved(self) -> None:
+        result = self._make_result()
+        result.graph_evidence = "事实: [A] --(REL)--> [B (类型:Concept)]"
+        j = result.to_strict_json()
+        assert j["graph_evidence"] == "事实: [A] --(REL)--> [B (类型:Concept)]"
 
     def test_to_strict_json_alpha_shape(self) -> None:
         j = self._make_result().to_strict_json()
