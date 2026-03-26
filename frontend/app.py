@@ -666,6 +666,8 @@ if page == "🏠 主页":
     # ── Session-state defaults ───────────────────────────────────────────────
     if "selected_news" not in st.session_state:
         st.session_state.selected_news: Optional[Dict[str, Any]] = None
+    if "deduction_result" not in st.session_state:
+        st.session_state.deduction_result: Optional[Dict[str, Any]] = None
 
     # ── Main content: 40/60 split ────────────────────────────────────────────
     col_feed, col_deduction = st.columns([4, 6], gap="large")
@@ -748,11 +750,12 @@ if page == "🏠 主页":
                 st.caption(_summary)
 
             if st.button(
-                "🔬 执行本体推演",
-                key=f"deduce_btn_{_idx}",
+                "🎯 执行本体推演",
+                key=f"deduce_{_idx}_{_article.get('link', _title)}",
                 use_container_width=True,
             ):
                 st.session_state.selected_news = _article
+                st.session_state.deduction_result = None
                 st.rerun()
 
             st.markdown("---")
@@ -768,28 +771,30 @@ if page == "🏠 主页":
             st.markdown(f"**分析目标：** {_sel_title}")
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
-            _deduction_result: Optional[Dict[str, Any]] = None
+            _deduction_result: Optional[Dict[str, Any]] = st.session_state.get("deduction_result")
             _deduction_error: Optional[str] = None
 
-            with st.status("🔍 正在检索 KuzuDB...", expanded=True) as _status:
-                try:
-                    st.write("📡 连接知识图谱数据库...")
-                    _resp = _api.grounded_deduce(_selected)
-                    if "error" in _resp:
-                        _deduction_error = str(_resp["error"])
-                        _status.update(label="⚠️ 推演失败", state="error")
-                    else:
-                        _deduction_result = _resp.get("deduction_result", {})
-                        st.write("✅ GraphContext 加载完成")
-                        _paths_count = (
-                            _resp.get("ontological_grounding", {})
-                            .get("total_paths_extracted", 0)
-                        )
-                        st.write(f"📊 提取路径数：{_paths_count}")
-                        _status.update(label="✅ 推演完成", state="complete")
-                except Exception as _exc:
-                    _deduction_error = str(_exc)
-                    _status.update(label="⚠️ 连接失败", state="error")
+            if _deduction_result is None:
+                with st.status("🔍 正在检索 KuzuDB...", expanded=True) as _status:
+                    try:
+                        st.write("📡 连接知识图谱数据库...")
+                        _resp = _api.grounded_deduce(_selected)
+                        if "error" in _resp:
+                            _deduction_error = str(_resp["error"])
+                            _status.update(label="⚠️ 推演失败", state="error")
+                        else:
+                            _deduction_result = _resp.get("deduction_result", {})
+                            st.session_state.deduction_result = _deduction_result
+                            st.write("✅ GraphContext 加载完成")
+                            _paths_count = (
+                                _resp.get("ontological_grounding", {})
+                                .get("total_paths_extracted", 0)
+                            )
+                            st.write(f"📊 提取路径数：{_paths_count}")
+                            _status.update(label="✅ 推演完成", state="complete")
+                    except Exception as _exc:
+                        _deduction_error = str(_exc)
+                        _status.update(label="⚠️ 连接失败", state="error")
 
             if _deduction_error:
                 st.error(f"推演失败：{_deduction_error}")
@@ -798,52 +803,56 @@ if page == "🏠 主页":
             elif _deduction_result is not None:
                 _dr = _deduction_result
 
-                # 【1】核心驱动因素
-                st.markdown("**【1】核心驱动因素**")
-                st.info(f"🎯 {_dr.get('driving_factor', '（未识别）')}")
+                # 【1】核心驱动因素 (collapsible expander)
+                with st.expander("**【1】核心驱动因素**", expanded=True):
+                    st.info(f"🎯 {_dr.get('driving_factor', '（未识别）')}")
 
-                # 【2】两个推演路径（并排）
+                # 【2】推演路径 – Alpha (gold/amber) and Beta (red)
                 st.markdown("**【2】推演路径**")
-                _col_alpha, _col_beta = st.columns(2, gap="medium")
-
                 _alpha = _dr.get("scenario_alpha", {})
                 _beta = _dr.get("scenario_beta", {})
-                _alpha_prob = _alpha.get("probability", 0)
-                _beta_prob = _beta.get("probability", 0)
+                _alpha_prob = _alpha.get("probability", 0) if isinstance(_alpha, dict) else 0
+                _beta_prob = _beta.get("probability", 0) if isinstance(_beta, dict) else 0
+
+                _col_alpha, _col_beta = st.columns(2, gap="medium")
 
                 with _col_alpha:
-                    st.success(
-                        f"🟢 路径 Alpha: {_alpha.get('name', '现状延续路径')}"
+                    _alpha_name = _alpha.get("name", "秩序维护路径") if isinstance(_alpha, dict) else "秩序维护路径"
+                    _alpha_chain = _alpha.get("causal_chain", "N/A") if isinstance(_alpha, dict) else "（数据格式异常）"
+                    st.markdown(
+                        f'<div style="background-color:#4a3800;border-left:4px solid #D4AF37;'
+                        f'padding:12px;margin:4px 0;border-radius:4px;">'
+                        f'<b>🟡 Scenario Alpha</b><br/>'
+                        f'<span style="color:#D4AF37;font-size:12px;">{_alpha_name}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
                     )
-                    _alpha_chain = _alpha.get("causal_chain", "N/A")
                     st.code(_alpha_chain, language=None)
-                    st.metric(
-                        "概率",
-                        f"{_alpha_prob:.0%}",
-                        help="Alpha 路径发生概率",
-                    )
+                    st.metric("概率", f"{_alpha_prob:.0%}", help="Alpha 路径发生概率")
 
                 with _col_beta:
-                    st.warning(
-                        f"🟡 路径 Beta: {_beta.get('name', '结构性断裂路径')}"
+                    _beta_name = _beta.get("name", "结构性断裂路径") if isinstance(_beta, dict) else "结构性断裂路径"
+                    _beta_chain = _beta.get("causal_chain", "N/A") if isinstance(_beta, dict) else "（数据格式异常）"
+                    st.markdown(
+                        f'<div style="background-color:#3d0000;border-left:4px solid #cc3333;'
+                        f'padding:12px;margin:4px 0;border-radius:4px;">'
+                        f'<b>🔴 Scenario Beta</b><br/>'
+                        f'<span style="color:#ff6666;font-size:12px;">{_beta_name}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
                     )
-                    _beta_chain = _beta.get("causal_chain", "N/A")
                     st.code(_beta_chain, language=None)
-                    st.metric(
-                        "概率",
-                        f"{_beta_prob:.0%}",
-                        help="Beta 路径发生概率",
-                    )
+                    st.metric("概率", f"{_beta_prob:.0%}", help="Beta 路径发生概率")
 
                 st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
-                # 【3】谍报的知识缺口
-                st.markdown("**【3】谍报的知识缺口**")
-                st.error(
-                    f"⚠️ {_dr.get('verification_gap', '暂无数据缺口标记')}"
-                )
+                # 【3】谍报的知识缺口 (collapsible expander)
+                with st.expander("**【3】谍报的知识缺口**", expanded=False):
+                    st.error(
+                        f"⚠️ {_dr.get('verification_gap', '暂无数据缺口标记')}"
+                    )
 
-                # 【4】置信度总体评分
+                # 【4】置信度总体评分 (progress bar)
                 st.markdown("**【4】置信度总体评分**")
                 _confidence_raw = _dr.get("confidence", 0.0)
                 # Backend returns confidence as a decimal (0.0–1.0); guard against
@@ -854,8 +863,9 @@ if page == "🏠 主页":
                     else int(round(_confidence_raw))
                 )
                 st.metric("真信度", f"{_confidence_pct}%")
+                st.progress(_confidence_pct / 100, text=f"置信度：{_confidence_pct}%")
 
-                # GraphContext 证据（可选展示，非嵌套）
+                # 【5】图谱证据（Graph Evidence）
                 _graph_evidence = _dr.get("graph_evidence", "")
                 if _graph_evidence:
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
