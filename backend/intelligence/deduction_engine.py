@@ -18,6 +18,9 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Maximum characters from news_summary used as a snippet in fallback deduction.
+_FALLBACK_SNIPPET_LENGTH = 120
+
 
 class ScenarioType(Enum):
     """Scenario classification"""
@@ -102,6 +105,8 @@ DEDUCTION_SOUL_SYSTEM_PROMPT = """\
 3. 必须输出严格的 JSON 格式。
 4. 每个预测都必须追溯到至少一条本体关系路径。
 5. 如果无法从已知路径推演，必须明确说明"缺失的关键数据"。
+6. 如果上下文提示'暂无直接关联路径'，你可以使用通用逻辑和新闻事实进行合理推演，但必须在 graph_evidence 中写明'无直接KG路径，使用通用本体逻辑'，并将 confidence 控制在 0.4-0.65。
+7. 严禁返回"Unknown"、"Unable to determine"或任何无意义的占位符。必须输出有实质内容的 driving_factor 和两个 scenario。
 
 【思维过程】
 第一步：识别本体关系中的核心矛盾或纽带（driving_factor）
@@ -182,6 +187,8 @@ class DeductionEngine:
     ) -> str:
         """Build strict prompt that forces logical deduction."""
         return f"""\
+如果知识图谱上下文为空或提示无直接路径，请基于新闻事实 + 通用本体逻辑（地缘政治、科技、经济规律）进行推演，不要返回 Unknown。
+
 You are EL'druin, an ontological intelligence system. You are given:
 1. A current news event
 2. Ontological context from KuzuDB (1-hop and 2-hop relationship paths with strengths)
@@ -193,6 +200,7 @@ Task:
    • Scenario Beta = Structural break / disruption path (less probable)
 - For each scenario give: name, probability (0.0-1.0), causal_chain (3-5 step logical sequence), one-sentence description
 - Return ONLY valid JSON, no markdown, no explanation.
+- NEVER return "Unknown" or "Unable to determine" for any field.
 
 JSON schema:
 {{
@@ -286,37 +294,44 @@ Now output the JSON:
     ) -> DeductionResult:
         """Fallback deduction if JSON parsing fails.
 
-        *news_summary* and *ontological_context* are accepted for a consistent
-        call signature but are not used in the fallback path.
+        Uses news_summary to extract a driving factor and produces two
+        meaningful scenarios grounded in general ontological logic.
+        Confidence is set to 0.5 to reflect the absence of KG evidence.
         """
-        del news_summary, ontological_context  # not used in fallback
         self.logger.warning("Falling back to structured deduction...")
 
+        # Extract a concise driving factor from the news summary
+        snippet = news_summary[:_FALLBACK_SNIPPET_LENGTH].strip() if news_summary else "当前新闻事件"
+        driving_factor = f"基于新闻摘要推演：{snippet}"
+
         alpha_chain = CausalChain(
-            source_fact="当前状态",
-            triggering_relation="延续",
-            resulting_change="维持原状",
+            source_fact=snippet,
+            triggering_relation="现有格局延续",
+            resulting_change="相关实体维持当前行为模式，局势渐进演变",
         )
         beta_chain = CausalChain(
-            source_fact="关键假设",
-            triggering_relation="崩溃",
-            resulting_change="状态反转",
+            source_fact=snippet,
+            triggering_relation="关键节点出现突变或外部冲击",
+            resulting_change="现有均衡打破，相关实体被迫采取对抗或撤退策略",
         )
 
         return DeductionResult(
-            driving_factor="Unable to determine from LLM response",
+            driving_factor=driving_factor,
             scenario_alpha=Scenario(
                 name="现状延续路径",
                 scenario_type=ScenarioType.CONTINUATION,
                 causal_chain=alpha_chain,
-                probability=0.7,
+                probability=0.65,
+                grounding_paths=[],
             ),
             scenario_beta=Scenario(
                 name="结构性断裂路径",
                 scenario_type=ScenarioType.STRUCTURAL_BREAK,
                 causal_chain=beta_chain,
-                probability=0.3,
+                probability=0.35,
+                grounding_paths=[],
             ),
-            verification_gap="LLM 回应格式错误，建议重新分析",
-            deduction_confidence=0.0,
+            verification_gap="LLM 回应格式错误；推演基于通用本体逻辑，建议补充知识图谱数据后重新分析",
+            deduction_confidence=0.5,
+            graph_evidence="通用本体逻辑推演（无直接KG路径）",
         )
