@@ -17,65 +17,10 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
-# ═══════════════════════════════════════════════════════════════════
-# Helper: Get Ontological Context from KuzuDB
-# ═══════════════════════════════════════════════════════════════════
-
-def get_ontological_context(kuzu_conn: Any, entity_name: str) -> str:
-    """Query KuzuDB for 1-hop and 2-hop paths from *entity_name*.
-
-    Returns a multi-line string where every line describes one relationship
-    path, e.g.::
-
-        EntityA --[RELATION]--> EntityB
-        EntityA --[REL1]--> EntityB --[REL2]--> EntityC
-
-    Falls back gracefully when KuzuDB is unavailable or the entity has no
-    relationships.
-    """
-    if kuzu_conn is None:
-        return f"[No KuzuDB connection – context unavailable for '{entity_name}']"
-
-    # Sanitize entity name to prevent Cypher injection
-    safe_name = entity_name.replace("'", "\\'").replace("\\", "\\\\")
-
-    try:
-        # 1-hop paths: A --[rel]--> B
-        query_1hop = (
-            "MATCH (a)-[r]->(b) "
-            f"WHERE a.name = '{safe_name}' "
-            "RETURN a.name, type(r), b.name LIMIT 20"
-        )
-        result_1hop = kuzu_conn.execute(query_1hop)
-        lines: List[str] = []
-        
-        while result_1hop.hasNext():
-            row = result_1hop.getNext()
-            lines.append(f"{row[0]} --[{row[1]}]--> {row[2]}")
-
-        # 2-hop paths: A --[rel1]--> B --[rel2]--> C
-        query_2hop = (
-            "MATCH (a)-[r1]->(b)-[r2]->(c) "
-            f"WHERE a.name = '{safe_name}' "
-            "RETURN a.name, type(r1), b.name, type(r2), c.name LIMIT 20"
-        )
-        result_2hop = kuzu_conn.execute(query_2hop)
-        
-        while result_2hop.hasNext():
-            row = result_2hop.getNext()
-            lines.append(
-                f"{row[0]} --[{row[1]}]--> {row[2]} --[{row[3]}]--> {row[4]}"
-            )
-
-        if not lines:
-            return f"[No ontological paths found for '{entity_name}']"
-
-        return "\n".join(lines)
-
-    except Exception as exc:
-        logger.warning("KuzuDB query failed for '%s': %s", entity_name, exc)
-        return f"[KuzuDB query error for '{entity_name}': {exc}]"
-
+try:
+    from ontology.kuzu_context_extractor import get_ontological_context as _get_ontological_context  # type: ignore
+except ImportError:
+    _get_ontological_context = None  # type: ignore[assignment]
 
 # ═══════════════════════════════════════════════════════════════════
 # Main Analyzer: OntologyGroundedAnalyzer with Deduction Soul
@@ -158,10 +103,16 @@ class OntologyGroundedAnalyzer:
 
         # Step 1: Extract ontological context for each seed entity
         ontological_premises: Dict[str, str] = {}
-        
+
+        if _get_ontological_context is None:
+            logger.warning("ontology.kuzu_context_extractor not importable; skipping graph context")
+
         for entity in seed_entities:
             try:
-                context = get_ontological_context(self.kuzu, entity)
+                if _get_ontological_context is not None:
+                    context = _get_ontological_context(self.kuzu, entity)
+                else:
+                    context = ""
                 ontological_premises[entity] = context
                 logger.info("Extracted ontological context for: %s", entity)
             except Exception as exc:
