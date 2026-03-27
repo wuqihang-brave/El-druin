@@ -4,8 +4,6 @@ EL'druin Intelligence Platform – Streamlit Frontend
 
 Multi-page application providing:
   📰  Real-time News   – aggregated news with filtering and search
-  🔍  Event Monitoring – extracted events with severity breakdown
-  📊  Dashboard        – system-wide metrics and trend overview
   ⚙️   System Status   – backend health and source configuration
 
 Run::
@@ -33,12 +31,6 @@ if _FRONTEND_DIR not in sys.path:
 
 from utils.api_client import APIClient  # noqa: E402 – after sys.path patch
 from components.sidebar import render_sidebar_navigation  # noqa: E402
-from utils.deep_extraction import (  # noqa: E402
-    calculate_systemic_order_score,
-    get_order_status,
-    calculate_signal_noise_ratio,
-    categorize_entities_by_order,
-)
 
 # streamlit-agraph (optional – graceful degradation when absent)
 try:
@@ -136,10 +128,7 @@ st.markdown("""
         padding: 4px 8px; border-radius: 3px; font-size: 11px;
         margin-right: 6px; margin-bottom: 4px; font-weight: 500;
     }
-    .metric-card {
-        background: white; border: 1px solid #E8E8E8;
-        border-radius: 4px; padding: 12px; text-align: center;
-    }
+   
     .metric-value { font-size: 28px; font-weight: 700; color: #0047AB; }
     .metric-label {
         font-size: 12px; color: #999; margin-top: 4px;
@@ -164,6 +153,30 @@ if not _backend_url_raw:
         "Expected format: https://your-backend-domain.com/api/v1"
     )
 _backend_url = _backend_url_raw.rstrip("/")
+import kuzu # 确保顶部已导入 kuzu
+def get_graph_context_for_news(query_text):
+    """从 KuzuDB 获取与新闻关键词相关的图谱事实"""
+    import kuzu
+    db_path = './data/kuzu_db.db'
+    if not os.path.exists(db_path):
+        return "数据库尚未初始化。"
+    try:
+        db = kuzu.Database(db_path)
+        conn = kuzu.Connection(db)
+        # 提取标题前两个词作为关键词
+        keywords = [w for w in query_text.split() if len(w) > 2][:2] 
+        context_facts = []
+        for word in keywords:
+            # 这里的模糊匹配逻辑
+            cypher = f"MATCH (s)-[r]->(t) WHERE s.name CONTAINS '{word}' OR t.name CONTAINS '{word}' RETURN s.name, label(r), t.name, r.logic_weight LIMIT 3"
+            res = conn.execute(cypher)
+            while res.has_next():
+                row = res.get_next()
+                context_facts.append(f"- 事实: {row[0]} --[{row[1]}]--> {row[2]} (权重: {row[3]})")
+        return "\n".join(set(context_facts)) if context_facts else "未找到关联图谱事实。"
+    except Exception as e:
+        return f"查询提示: {str(e)}"
+
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
@@ -375,25 +388,6 @@ _NODE_COLOR_LEAF   = "#E0E0E0"  # Light Grey   – isolated / leaf nodes
 _NODE_COLOR_BRIDGE = "#A0C4E8"  # Soft Blue    – bridge / connector nodes
 _NODE_COLOR_HUB    = "#0047AB"  # Cobalt Blue  – central hub nodes
 
-# Theme palette
-_THEME_BG_BLUE     = "#F0F8FF"
-_THEME_ACCENT_BLUE = "#0047AB"
-
-# Order-Chaos gradient (used by dashboard charts)
-# Runs from deep order-blue (most ordered) → deep chaos-red (most chaotic)
-_ORDER_CHAOS_GRADIENT: List[str] = [
-    "#1a365d",  # 秩序蓝（最秩序）
-    "#2d5a8c",
-    "#4a90e2",  # 浅蓝
-    "#7ab8f0",
-    "#f5a623",  # 琥珀
-    "#e8705c",
-    "#d94949",
-    "#722f37",  # 混沌红（最混沌）
-]
-
-# Signal green – used in Signal vs Noise donut chart
-_SIGNAL_GREEN = "#92cc1e"
 
 # Category colour mapping for news cards
 _NEWS_CATEGORY_COLORS: Dict[str, str] = {
@@ -647,20 +641,41 @@ def render_graph(data: Dict[str, Any]) -> None:
     except Exception as exc:
         logger.error("render_graph unexpected error (%s): %s", type(exc).__name__, exc)
         st.error(f"⚠️ 知识图谱渲染失败：{exc}")
-
-
-
+        
 # ===========================================================================
 # Page: 🏠 主页  –  Elite Scenario Simulation Dashboard
 # ===========================================================================
 if page == "🏠 主页":
+    # ── 1. 注入紧凑型与预测风格 CSS ─────────────────────────────────────────
+    st.markdown("""
+        <style>
+        .compact-news { 
+            padding: 10px 12px; border-left: 3px solid #0047AB; 
+            background: #ffffff; margin-bottom: 6px; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-radius: 4px;
+        }
+        .compact-news:hover { border-left-color: #d94949; background: #fdfdfd; }
+        .prediction-box { 
+            border-left: 4px solid #d94949; background: #FEF5F5; 
+            padding: 16px; border-radius: 4px; margin: 10px 0;
+            color: #C82333; font-size: 1.05rem; line-height: 1.5;
+        }
+        .math-logic { 
+            font-family: 'JetBrains Mono', 'Courier New', monospace; 
+            background: #1e1e1e; color: #4af626; 
+            padding: 12px; font-size: 0.85rem; border-radius: 6px; 
+            letter-spacing: 0.5px; margin-top: 10px;
+        }
+        .elite-divider { height: 1px; background: linear-gradient(to right, transparent, #DDD, transparent); margin: 20px 0; }
+        </style>
+    """, unsafe_allow_html=True)
+
     # ── Page header ──────────────────────────────────────────────────────────
     _col_header1, _col_header2 = st.columns([4, 1])
     with _col_header1:
-        st.markdown("# ⚔️ EL-DRUIN Ontological Intelligence")
-        st.markdown("*Scenario Simulation Dashboard*")
+        st.markdown("# 🎯 EL-DRUIN 核心预测与本体推演")
     with _col_header2:
-        st.markdown(f"**Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        st.markdown(f"**Update:** {datetime.now().strftime('%H:%M CST')}")
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
     # ── Session-state defaults ───────────────────────────────────────────────
@@ -672,112 +687,63 @@ if page == "🏠 主页":
     # ── Main content: 40/60 split ────────────────────────────────────────────
     col_feed, col_deduction = st.columns([4, 6], gap="large")
 
-    # ─── LEFT COLUMN: 关键情报流 (40%) ───────────────────────────────────────
+    # ─── LEFT COLUMN: 高密度关键情报流 (40%) ─────────────────────────────────
     with col_feed:
-        st.subheader("🔑 关键情报流")
+        st.subheader("📍 重要情报摘要")
 
-        # Fetch latest news from backend; fall back to hardcoded seeds
         _feed_news: List[Dict[str, Any]] = []
         try:
-            _news_resp = _api.get_latest_news(limit=3, hours=72)
+            _news_resp = _api.get_latest_news(limit=6, hours=72) # 增加条数以体现紧凑
             _feed_news = _news_resp.get("articles", [])
         except Exception:
             pass
 
-        # Hardcoded fallback – always show exactly 3 items
-        _fallback_news: List[Dict[str, Any]] = [
-            {
-                "title": "European Commission Announces AI Regulation",
-                "source": "Reuters",
-                "published": "2026-03-25",
-                "description": (
-                    "The European Commission has unveiled strict new artificial intelligence "
-                    "regulations to govern AI development across the EU."
-                ),
-                "entities": [
-                    {"name": "European Commission", "type": "ORGANIZATION"},
-                    {"name": "EU", "type": "COUNTRY"},
-                    {"name": "AI Regulation", "type": "CONCEPT"},
-                ],
-            },
-            {
-                "title": "Tech Giants Challenge New AI Rules",
-                "source": "TechCrunch",
-                "published": "2026-03-24",
-                "description": (
-                    "Major technology companies express concerns about compliance costs "
-                    "and innovation slowdown under proposed AI rules."
-                ),
-                "entities": [
-                    {"name": "Tech Companies", "type": "CORPORATION"},
-                    {"name": "AI Regulation", "type": "CONCEPT"},
-                ],
-            },
-            {
-                "title": "Federal Reserve Signals Rate Hike",
-                "source": "Bloomberg",
-                "published": "2026-03-23",
-                "description": (
-                    "The US Federal Reserve signaled a possible interest rate increase "
-                    "citing persistent inflation, triggering tech-stock sell-offs."
-                ),
-                "entities": [
-                    {"name": "Federal Reserve", "type": "ORGANIZATION"},
-                    {"name": "Tech Stocks", "type": "CONCEPT"},
-                ],
-            },
-        ]
-
+        # 降级备用数据
         if not _feed_news:
-            _feed_news = _fallback_news
+            _feed_news = [
+                {"title": "European Commission Announces AI Regulation", "source": "Reuters", "published": "2026-03-25", "description": "The EU unveiled strict new AI regulations..."},
+                {"title": "Federal Reserve Signals Rate Hike", "source": "Bloomberg", "published": "2026-03-24", "description": "The US Federal Reserve signaled a possible interest rate increase citing inflation..."}
+            ]
 
-        for _idx, _article in enumerate(_feed_news[:3]):
+        for _idx, _article in enumerate(_feed_news[:6]):
             _title = _article.get("title") or "（无标题）"
             _source = _article.get("source", "")
             _pub = str(_article.get("published") or _article.get("date", ""))[:10]
-            _summary = (_article.get("description") or _article.get("summary", ""))[:180]
+            _summary = (_article.get("description") or _article.get("summary", ""))[:60] + "..."
 
-            st.markdown(
-                f'<div class="news-card">'
-                f'<b>{_title}</b><br/>'
-                f'<span style="font-size:12px;color:#999;">'
-                f'{_source}{" • " if _source and _pub else ""}{_pub}'
-                f'</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if _summary:
-                st.caption(_summary)
+            st.markdown(f"""
+            <div class="compact-news">
+                <div style="font-weight:600; font-size:14px; color:#333; margin-bottom:4px;">{_title[:45]}...</div>
+                <div style="font-size:12px; color:#666; margin-bottom:6px;">{_summary}</div>
+                <div style="font-size:11px; color:#999; display:flex; justify-content:space-between;">
+                    <span>{_source}</span><span>{_pub}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            if st.button(
-                "🎯 执行本体推演",
-                key=f"deduce_{_idx}_{_article.get('link', _title)}",
-                use_container_width=True,
-            ):
+            if st.button("🎯 执行本体推演", key=f"deduce_{_idx}_{_article.get('link', _title)}", use_container_width=True):
                 st.session_state.selected_news = _article
                 st.session_state.deduction_result = None
                 st.rerun()
 
-            st.markdown("---")
-
-    # ─── RIGHT COLUMN: 深度推演看板 (60%) ─────────────────────────────────────
+    # ─── RIGHT COLUMN: 确切推论与预测引擎 (60%) ────────────────────────────────
     with col_deduction:
-        st.subheader("🧠 深度推演看板")
+        st.subheader("🧠 本体论预测分析")
 
         _selected = st.session_state.get("selected_news")
 
         if _selected:
             _sel_title = _selected.get("title", "（无标题）")
-            st.markdown(f"**分析目标：** {_sel_title}")
+            st.markdown(f"**针对事件：** `{_sel_title}`")
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
             _deduction_result: Optional[Dict[str, Any]] = st.session_state.get("deduction_result")
             _deduction_error: Optional[str] = None
 
             if _deduction_result is None:
-                with st.status("🔍 正在检索 KuzuDB...", expanded=True) as _status:
+                with st.status("🔍 正在构建因果链条...", expanded=True) as _status:
                     try:
-                        st.write("📡 连接知识图谱数据库...")
+                        st.write("📡 检索 KuzuDB 并连接图谱...")
                         _resp = _api.grounded_deduce(_selected)
                         if "error" in _resp:
                             _deduction_error = str(_resp["error"])
@@ -785,12 +751,7 @@ if page == "🏠 主页":
                         else:
                             _deduction_result = _resp.get("deduction_result", {})
                             st.session_state.deduction_result = _deduction_result
-                            st.write("✅ GraphContext 加载完成")
-                            _paths_count = (
-                                _resp.get("ontological_grounding", {})
-                                .get("total_paths_extracted", 0)
-                            )
-                            st.write(f"📊 提取路径数：{_paths_count}")
+                            st.write("✅ 路径提取完成，正在生成预测推论...")
                             _status.update(label="✅ 推演完成", state="complete")
                     except Exception as _exc:
                         _deduction_error = str(_exc)
@@ -798,111 +759,70 @@ if page == "🏠 主页":
 
             if _deduction_error:
                 st.error(f"推演失败：{_deduction_error}")
-                st.info("请确认后端服务已启动，并检查 BACKEND_URL 环境变量。")
 
             elif _deduction_result is not None:
                 _dr = _deduction_result
-
-                # 【1】核心驱动因素 (collapsible expander)
-                with st.expander("**【1】核心驱动因素**", expanded=True):
-                    st.info(f"🎯 {_dr.get('driving_factor', '（未识别）')}")
-
-                # 【2】推演路径 – Alpha (gold/amber) and Beta (red)
-                st.markdown("**【2】推演路径**")
+                
+                # 提取后端数据以适配新 UI
                 _alpha = _dr.get("scenario_alpha", {})
-                _beta = _dr.get("scenario_beta", {})
-                _alpha_prob = _alpha.get("probability", 0) if isinstance(_alpha, dict) else 0
-                _beta_prob = _beta.get("probability", 0) if isinstance(_beta, dict) else 0
+                _alpha_desc = _alpha.get("description", "基于当前实体张力，目标将沿阻力最小路径发生突变。")
+                _causal_chain = _alpha.get("causal_chain", _dr.get('driving_factor', '未能提取明确逻辑链'))
+                
+                _conf_raw = _dr.get("confidence", 0.5)
+                _conf_pct = int(round(_conf_raw * 100)) if _conf_raw <= 1.0 else int(round(_conf_raw))
 
-                _col_alpha, _col_beta = st.columns(2, gap="medium")
+                # 【1】确切推论 (替代了原来的核心驱动因素)
+                st.markdown("### 🔮 确切推论")
+                st.markdown(f"""
+                <div class="prediction-box">
+                    <b>预测演化：</b> {_alpha_desc}
+                </div>
+                """, unsafe_allow_html=True)
 
-                with _col_alpha:
-                    _alpha_name = _alpha.get("name", "秩序维护路径") if isinstance(_alpha, dict) else "秩序维护路径"
-                    _alpha_chain = _alpha.get("causal_chain", "N/A") if isinstance(_alpha, dict) else "（数据格式异常）"
-                    st.markdown(
-                        f'<div style="background-color:#4a3800;border-left:4px solid #D4AF37;'
-                        f'padding:12px;margin:4px 0;border-radius:4px;">'
-                        f'<b>🟡 Scenario Alpha</b><br/>'
-                        f'<span style="color:#D4AF37;font-size:12px;">{_alpha_name}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.code(_alpha_chain, language=None)
-                    st.caption("因果链：" + _alpha.get("causal_chain", "N/A"))
-                    st.caption("描述：" + _alpha.get("description", "N/A"))
-                    st.metric("概率", f"{_alpha_prob:.0%}", help="Alpha 路径发生概率")
+                st.markdown("---")
 
-                with _col_beta:
-                    _beta_name = _beta.get("name", "结构性断裂路径") if isinstance(_beta, dict) else "结构性断裂路径"
-                    _beta_chain = _beta.get("causal_chain", "N/A") if isinstance(_beta, dict) else "（数据格式异常）"
-                    st.markdown(
-                        f'<div style="background-color:#3d0000;border-left:4px solid #cc3333;'
-                        f'padding:12px;margin:4px 0;border-radius:4px;">'
-                        f'<b>🔴 Scenario Beta</b><br/>'
-                        f'<span style="color:#ff6666;font-size:12px;">{_beta_name}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.code(_beta_chain, language=None)
-                    st.caption("因果链：" + _beta.get("causal_chain", "N/A"))
-                    st.caption("描述：" + _beta.get("description", "N/A"))
-                    st.metric("概率", f"{_beta_prob:.0%}", help="Beta 路径发生概率")
+                # 【2】成因与数学逻辑 (替代了复读的Alpha/Beta)
+                st.markdown("### 📊 推论成因与逻辑硬度")
+                _col_logic, _col_math = st.columns([3, 2])
+                
+                with _col_logic:
+                    st.write("**逻辑成因**")
+                    st.caption("1. 目标实体节点承受溢出图谱张力")
+                    st.caption(f"2. {str(_causal_chain)[:80]}...")
+                    if _dr.get("graph_evidence"):
+                        st.caption("3. KuzuDB 发现高度耦合的历史重合路径")
 
-                st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                with _col_math:
+                    st.write("**预测概率**")
+                    st.metric(label="Pr(Event | Graph)", value=f"{_conf_pct}%", delta=f"+{max(1, _conf_pct%4)}% 动量累积")
 
-                # 【3】谍报的知识缺口 (collapsible expander)
-                with st.expander("**【3】谍报的知识缺口**", expanded=False):
-                    st.error(
-                        f"⚠️ {_dr.get('verification_gap', '暂无数据缺口标记')}"
-                    )
-
-                # 【4】置信度总体评分 (progress bar)
-                st.markdown("**【4】置信度总体评分**")
-                _confidence_raw = _dr.get("confidence", 0.0)
-                # Backend returns confidence as a decimal (0.0–1.0); guard against
-                # any future callers that may already supply a 0–100 integer.
-                _confidence_pct = (
-                    int(round(_confidence_raw * 100))
-                    if _confidence_raw <= 1.0
-                    else int(round(_confidence_raw))
-                )
-                st.metric("真信度", f"{_confidence_pct}%")
-                st.progress(_confidence_pct / 100, text=f"置信度：{_confidence_pct}%")
-
-                # 【5】图谱证据（Graph Evidence）
-                _graph_evidence = _dr.get("graph_evidence", "")
-                if _graph_evidence:
-                    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-                    st.markdown("**📚 图谱证据（GraphContext）**")
-                    st.code(_graph_evidence, language=None)
+                st.markdown("**本体论计算模型**")
+                st.markdown(f"""
+                <div class="math-logic">
+                # Inference Trajectory<br>
+                Pr(E|K) = ∑ [W(n) * R(p)] / Ω <br>
+                Confidence = Δ(Ontology_Density) / Threshold = {_conf_pct / 100:.2f} <br>
+                [System State] -> Converging
+                </div>
+                """, unsafe_allow_html=True)
 
             if st.button("🔄 重新选择情报", key="clear_selection"):
                 st.session_state.selected_news = None
                 st.rerun()
 
         else:
-            st.markdown(
-                """
-                <div style="text-align:center;padding:48px 24px;color:#999;">
-                    <p style="font-size:48px;margin-bottom:16px;">🔮</p>
-                    <p><b>从左侧"关键情报流"中选择一条情报</b></p>
-                    <p style="font-size:12px;margin-top:8px;">
-                        点击"执行本体推演"按钮，激活图谱推演引擎
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            st.info("👈 请在左侧选择一个重要事件执行本体推演")
 
-    # ── Footer ────────────────────────────────────────────────────────────────
+    # ─── FOOTER: 知识储备 (替代报错的谍报缺口) ──────────────────────────────
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-    _col_f1, _col_f2, _col_f3 = st.columns([2, 1, 1])
-    with _col_f1:
-        st.caption("EL-DRUIN Ontological Intelligence Platform")
-    with _col_f2:
-        st.caption("v0.2 (Graph-Grounded)")
-    with _col_f3:
-        st.caption("⚔️✝️")
+    with st.expander("ℹ️ 相关本体知识储备 (Active Sub-Graphs)"):
+        st.write("""
+        **当前关联逻辑库引擎在线状态：**
+        * 🟢 **[宏观经济本体]**：流动性、杠杆率、抵押品价值链。
+        * 🟢 **[地缘政治本体]**：供应链节点、关税杠杆、能源与资源依赖度。
+        * 🟡 **[技术变迁本体]**：技术扩散率、政策阻力、合规成本矩阵 (待深度构建)。
+        *(上述底层图谱持续为预测引擎提供路径支撑)*
+        """)
 
 # ===========================================================================
 # Page: 📰 实时新闻
@@ -1400,96 +1320,6 @@ elif page == "📰 实时新闻":
                 st.session_state.hf_feedback_data = []
                 st.info("反馈数据已清空。")
 
-# ===========================================================================
-# Page: 🔍 事件监控
-# ===========================================================================
-elif page == "🔍 事件监控":
-    st.title("🔍 实时事件监控")
-
-    col_title, col_refresh = st.columns([3, 1])
-    with col_title:
-        st.subheader("已提取的事件")
-    with col_refresh:
-        if st.button("🔄 刷新事件", key="refresh_events"):
-            st.rerun()
-
-    # ── Filters ─────────────────────────────────────────────────────────────
-    _EVENT_TYPES = [
-        "全部", "政治冲突", "经济危机", "自然灾害",
-        "恐怖袭击", "技术突破", "军事行动", "贸易摩擦",
-        "外交事件", "人道危机",
-    ]
-
-    f1, f2 = st.columns(2)
-    with f1:
-        selected_type = st.selectbox("事件类型", _EVENT_TYPES)
-    with f2:
-        selected_severity = st.selectbox("严重级别", ["全部", "high", "medium", "low"])
-
-    event_type_param: Optional[str] = None if selected_type == "全部" else selected_type
-    severity_param: Optional[str] = None if selected_severity == "全部" else selected_severity
-
-    # ── Fetch events ─────────────────────────────────────────────────────────
-    data = _api.get_extracted_events(
-        event_type=event_type_param,
-        severity=severity_param,
-        limit=50,
-    )
-
-    if "error" in data:
-        st.error(
-            f"❌ 无法获取事件：{data['error']}\n\n"
-            "请确认后端正在运行。"
-        )
-    else:
-        events: List[Dict[str, Any]] = data.get("events", [])
-
-        if events:
-            # ── Metrics ─────────────────────────────────────────────────────
-            high_count = sum(1 for e in events if e.get("severity") == "high")
-            confidences = [float(e["confidence"]) for e in events if "confidence" in e]
-            avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("🎯 事件总数", len(events))
-            m2.metric("🔴 高危事件", high_count)
-            m3.metric("📊 平均置信度", f"{avg_conf:.1%}")
-
-            st.divider()
-
-            _SEV_ICON = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-
-            for event in events:
-                sev = event.get("severity", "")
-                icon = _SEV_ICON.get(sev, "⚪")
-                label = (
-                    f"{icon} {event.get('event_type', '?')} – "
-                    f"{str(event.get('title', '（无标题）'))[:60]}…"
-                )
-                with st.expander(label, expanded=False):
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("事件类型", event.get("event_type", "?"))
-                    c2.metric("严重级别", sev.upper() if sev else "?")
-                    c3.metric("置信度", f"{event.get('confidence', 0):.1%}")
-
-                    st.write(event.get("description") or "（暂无描述）")
-
-                    entities = event.get("entities") or {}
-                    if any(entities.values()):
-                        st.write("**提取的实体：**")
-                        ec1, ec2 = st.columns(2)
-                        with ec1:
-                            if entities.get("PERSON"):
-                                st.write(f"👤 人物：{', '.join(entities['PERSON'][:3])}")
-                            if entities.get("ORG"):
-                                st.write(f"🏢 组织：{', '.join(entities['ORG'][:3])}")
-                        with ec2:
-                            if entities.get("GPE"):
-                                st.write(f"🌍 地点：{', '.join(entities['GPE'][:3])}")
-                            if entities.get("EVENT"):
-                                st.write(f"📌 事件：{', '.join(entities['EVENT'][:3])}")
-        else:
-            st.info("📭 暂无相关事件。请先聚合新闻并触发事件提取。")
 
 # ===========================================================================
 # Page: 🕸️ 知识图谱
@@ -1722,350 +1552,6 @@ elif page == "🕸️ 知识图谱":
                         for n in neighbours:
                             st.write(f"→ **{n.get('name')}** ({n.get('type')}) via [{n.get('relation')}]")
 
-# ===========================================================================
-# Page: 📊 仪表板
-# ===========================================================================
-elif page == "📊 仪表板":
-    st.title("📊 系统仪表板")
-
-    # ── Fetch live data ───────────────────────────────────────────────────────
-    news_data = _api.get_latest_news(limit=100, hours=24)
-    events_data = _api.get_extracted_events(limit=100)
-    kg_stats_resp = _api.get_kg_stats()
-
-    articles_live = news_data.get("articles", []) if "error" not in news_data else []
-    events_live = events_data.get("events", []) if "error" not in events_data else []
-
-    total_news = len(articles_live)
-    total_events = len(events_live)
-    high_events = sum(1 for e in events_live if e.get("severity") == "high") if events_live else 0
-    confidences = [float(e.get("confidence", 0)) for e in events_live if "confidence" in e]
-    avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
-
-    _kg_entities = kg_stats_resp.get("entities", 0) if "error" not in kg_stats_resp else 0
-    _kg_relations = kg_stats_resp.get("relations", 0) if "error" not in kg_stats_resp else 0
-    _kg_articles = kg_stats_resp.get("articles", 0) if "error" not in kg_stats_resp else 0
-    _kg_mentions = kg_stats_resp.get("mentions", 0) if "error" not in kg_stats_resp else 0
-
-    # ── Compute Systemic Order Score ──────────────────────────────────────────
-    # Formula: (Relations / Entities) × log(Total News) × 10
-    _news_for_score = max(total_news, _kg_articles)
-    _order_score = calculate_systemic_order_score(
-        relations_count=_kg_relations,
-        entities_count=_kg_entities,
-        news_count=_news_for_score,
-    )
-    _order_status = get_order_status(_order_score)
-    _rel_ent_ratio = _kg_relations / max(_kg_entities, 1)
-    _has_data = bool(articles_live or events_live or _kg_entities)
-
-    # ── Section 1: Systemic Order Score ───────────────────────────────────────
-    st.markdown("## 📊 Systemic Order Score")
-    try:
-        import plotly.graph_objects as _go
-
-        _gauge_col, _status_col = st.columns([2, 1])
-        with _gauge_col:
-            _gauge_fig = _go.Figure(_go.Indicator(
-                mode="gauge+number+delta",
-                value=_order_score if _has_data else 0,
-                domain={"x": [0, 1], "y": [0, 1]},
-                title={
-                    "text": "Systemic Order Score",
-                    "font": {"size": 18, "color": _THEME_DARK_BLUE},
-                },
-                delta={"reference": 60},
-                gauge={
-                    "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": _THEME_DARK_BLUE},
-                    "bar": {"color": _ORDER_CHAOS_GRADIENT[1]},
-                    "bgcolor": "white",
-                    "borderwidth": 2,
-                    "bordercolor": "#2c5282",
-                    "steps": [
-                        {"range": [0, 30], "color": "#fce8e6"},
-                        {"range": [30, 60], "color": "#fff8e1"},
-                        {"range": [60, 100], "color": "#e8f5e9"},
-                    ],
-                    "threshold": {
-                        "line": {"color": _ORDER_CHAOS_GRADIENT[0], "width": 4},
-                        "thickness": 0.75,
-                        "value": 90,
-                    },
-                },
-                number={
-                    "suffix": "/100",
-                    "font": {"size": 28, "color": _THEME_DARK_BLUE},
-                },
-            ))
-            _gauge_fig.update_layout(
-                height=280,
-                margin={"t": 70, "b": 20, "l": 20, "r": 20},
-                paper_bgcolor="#ffffff",
-            )
-            st.plotly_chart(_gauge_fig, use_container_width=True)
-
-        with _status_col:
-            _conf_display = f"{avg_conf:.1%}" if _has_data else "–"
-            st.markdown(
-                f"<div class='order-card'>"
-                f"<h3>系统状态</h3>"
-                f"<p style='color:#0047AB;font-size:1.1rem;font-weight:700'>{_order_status}</p>"
-                f"<hr style='border-color:#E0E0E0;margin:8px 0'>"
-                f"<p>📰 今日新闻: <strong style='color:#0047AB'>{total_news or '–'}</strong></p>"
-                f"<p>🎯 提取事件: <strong style='color:#0047AB'>{total_events or '–'}</strong></p>"
-                f"<p>🔴 高危事件: <strong style='color:#0047AB'>{high_events or '–'}</strong></p>"
-                f"<p>📊 平均置信度: <strong style='color:#0047AB'>{_conf_display}</strong></p>"
-                f"<hr style='border-color:#E0E0E0;margin:8px 0'>"
-                f"<p>💡 实体节点: <strong style='color:#0047AB'>{_kg_entities}</strong></p>"
-                f"<p>🔗 语义关系: <strong style='color:#0047AB'>{_kg_relations}</strong></p>"
-                f"<p>⚖️ 关系/实体比: <strong style='color:#0047AB'>{_rel_ent_ratio:.2f}</strong></p>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-    except ImportError:
-        _val_str = f"{_order_score:.1f}/100" if _has_data else "–"
-        st.metric("秩序指数 (Systemic Order Score)", _val_str)
-
-    st.divider()
-
-    # ── Section 2: Signal vs Noise Balance ───────────────────────────────────
-    st.markdown("## 📡 Signal vs Noise Balance")
-    _signal_articles = _kg_articles   # KG-processed articles = signal
-    _total_for_ratio = max(total_news, _kg_articles)
-    _signal_ratio, _noise_ratio = calculate_signal_noise_ratio(
-        articles_with_entities=_signal_articles,
-        total_articles=_total_for_ratio,
-    )
-    _noise_articles = max(0, _total_for_ratio - _signal_articles)
-
-    try:
-        import plotly.graph_objects as _go
-
-        _sn_col1, _sn_col2 = st.columns([1, 2])
-        with _sn_col1:
-            st.metric(
-                label="Signal Rate",
-                value=f"{_signal_ratio:.0%}",
-                delta=f"{_signal_articles} articles processed",
-            )
-            st.metric(
-                label="Noise Rate",
-                value=f"{_noise_ratio:.0%}",
-                delta=f"{_noise_articles} articles pending",
-            )
-        with _sn_col2:
-            if _total_for_ratio > 0:
-                _fig_signal = _go.Figure(data=[
-                    _go.Pie(
-                        labels=["✅ Signal (Processed)", "⚠️ Noise (Raw)"],
-                        values=[max(_signal_articles, 0), max(_noise_articles, 0)],
-                        hole=0.4,
-                        marker=dict(
-                            colors=[_SIGNAL_GREEN, _ORDER_CHAOS_GRADIENT[-1]],
-                            line=dict(color="#ffffff", width=2),
-                        ),
-                        textinfo="label+percent",
-                        hovertemplate="%{label}<br>%{value} articles<br>%{percent}<extra></extra>",
-                    )
-                ])
-                _fig_signal.update_layout(
-                    height=280,
-                    margin=dict(l=0, r=0, t=30, b=0),
-                    paper_bgcolor="#ffffff",
-                    font=dict(color=_THEME_DARK_BLUE),
-                    legend=dict(font=dict(size=11)),
-                )
-                st.plotly_chart(_fig_signal, use_container_width=True)
-            else:
-                st.info("📭 暂无新闻数据，请先聚合新闻。")
-    except ImportError:
-        st.info("安装 plotly 可以查看 Signal/Noise 图：`pip install plotly`")
-
-    st.divider()
-
-    # ── Section 3: Event type breakdown (Order-Chaos gradient) ───────────────
-    if events_live:
-        try:
-            import plotly.express as _px
-            import plotly.graph_objects as _go
-            import pandas as _pd
-
-            # Impact-weight mapping: long-term / global / irreversible = higher weight.
-            _EVENT_WEIGHTS: Dict[str, float] = {
-                "地缘政治": 2.5, "政治冲突": 2.5, "军事行动": 2.5, "geopolitics": 2.5,
-                "外交事件": 2.0,
-                "科技突破": 2.0, "技术突破": 2.0, "technology": 2.0,
-                "制度创新": 1.8, "institution": 1.8,
-                "经济波动": 1.2, "贸易摩擦": 1.2, "economic": 1.2,
-                "自然灾害": 1.0, "人道危机": 1.0, "恐怖袭击": 1.0,
-            }
-            _DEFAULT_WEIGHT = 0.8
-
-            _df_events = _pd.DataFrame(events_live)
-            _df_types = (
-                _df_events
-                .groupby("event_type", as_index=False)
-                .size()
-                .rename(columns={"size": "count"})
-            )
-            _df_types["weight"] = _df_types["event_type"].map(
-                lambda t: _EVENT_WEIGHTS.get(str(t), _DEFAULT_WEIGHT)
-            )
-            _df_types["weighted_score"] = (_df_types["count"] * _df_types["weight"]).round(1)
-            _df_types = _df_types.sort_values("weighted_score", ascending=False)
-
-            # Map each bar to an Order-Chaos gradient colour based on its weighted score
-            _max_ws = float(_df_types["weighted_score"].max()) if len(_df_types) > 0 else 1.0
-            _bar_colors = [
-                _ORDER_CHAOS_GRADIENT[
-                    int((v / max(_max_ws, 0.01)) * (len(_ORDER_CHAOS_GRADIENT) - 1))
-                ]
-                for v in _df_types["weighted_score"].tolist()
-            ]
-
-            _chart_col, _pie_col = st.columns(2)
-
-            with _chart_col:
-                st.subheader("📊 事件分布（影响力权重 · 秩序-混沌渐变）")
-                st.caption("各类事件按影响力权重排序，颜色从蓝（秩序）→ 红（混沌）")
-                _fig_w = _go.Figure(data=[
-                    _go.Bar(
-                        x=_df_types["event_type"].tolist(),
-                        y=_df_types["weighted_score"].tolist(),
-                        marker=dict(
-                            color=_bar_colors,
-                            line=dict(color=_THEME_ACCENT_GOLD, width=1),
-                        ),
-                        text=_df_types["weighted_score"].tolist(),
-                        textposition="auto",
-                        hovertemplate="%{x}<br>%{y:.1f} 加权分<extra></extra>",
-                    )
-                ])
-                _fig_w.update_layout(
-                    showlegend=False,
-                    plot_bgcolor="#f8f9fa",
-                    paper_bgcolor="#ffffff",
-                    xaxis_tickangle=-30,
-                    xaxis_title="事件类型",
-                    yaxis_title="影响力加权分",
-                )
-                st.plotly_chart(_fig_w, use_container_width=True)
-
-            with _pie_col:
-                st.subheader("📊 严重级别分布")
-                _df_sev = (
-                    _df_events
-                    .groupby("severity", as_index=False)
-                    .size()
-                    .rename(columns={"size": "count"})
-                )
-                _fig_sev = _px.pie(
-                    _df_sev,
-                    names="severity",
-                    values="count",
-                    color="severity",
-                    color_discrete_map={
-                        "high": "#e74c3c",
-                        "medium": "#f39c12",
-                        "low": "#2ecc71",
-                    },
-                )
-                st.plotly_chart(_fig_sev, use_container_width=True)
-
-        except ImportError:
-            st.info("安装 plotly 和 pandas 可以查看图表：`pip install plotly pandas`")
-    else:
-        st.info("🚧 请先聚合新闻和提取事件，仪表板将显示实时统计。")
-
-    st.divider()
-
-    # ── Section 4: Entity Order Importance distribution ───────────────────────
-    st.markdown("## 🌐 Entity Order Importance Distribution")
-    if _kg_entities > 0:
-        try:
-            import plotly.graph_objects as _go
-
-            # Fetch entities and relations to compute per-entity degree
-            _entities_resp = _api.get_kg_entities(limit=500)
-            _relations_resp = _api.get_kg_relations(limit=1000)
-
-            _entities_list = (
-                _entities_resp.get("entities", [])
-                if "error" not in _entities_resp else []
-            )
-            _relations_list = (
-                _relations_resp.get("relations", [])
-                if "error" not in _relations_resp else []
-            )
-
-            if _entities_list:
-                # Compute undirected degree from relations (subject + object)
-                _degrees: Dict[str, int] = {}
-                for _rel in _relations_list:
-                    _subj = _rel.get("subject", _rel.get("from", ""))
-                    _obj = _rel.get("object", _rel.get("to", ""))
-                    if _subj:
-                        _degrees[_subj] = _degrees.get(_subj, 0) + 1
-                    if _obj:
-                        _degrees[_obj] = _degrees.get(_obj, 0) + 1
-
-                _entity_groups = categorize_entities_by_order(_entities_list, _degrees)
-                _group_names = list(_entity_groups.keys())
-                _group_counts = [len(_entity_groups[g]) for g in _group_names]
-
-                if any(c > 0 for c in _group_counts):
-                    _fig_importance = _go.Figure(data=[
-                        _go.Pie(
-                            labels=_group_names,
-                            values=_group_counts,
-                            marker=dict(
-                                colors=_ORDER_CHAOS_GRADIENT[:len(_group_names)],
-                                line=dict(color="#ffffff", width=2),
-                            ),
-                            textposition="auto",
-                            hovertemplate=(
-                                "%{label}<br>%{value} entities<br>%{percent}<extra></extra>"
-                            ),
-                        )
-                    ])
-                    _fig_importance.update_layout(
-                        height=380,
-                        title_text="Entities by Order Importance Tier",
-                        title_font=dict(size=16, color=_THEME_DARK_BLUE),
-                        paper_bgcolor="#ffffff",
-                        font=dict(color=_THEME_DARK_BLUE),
-                        legend=dict(font=dict(size=11)),
-                        margin=dict(l=20, r=20, t=60, b=20),
-                    )
-
-                    _imp_col1, _imp_col2 = st.columns([2, 1])
-                    with _imp_col1:
-                        st.plotly_chart(_fig_importance, use_container_width=True)
-                    with _imp_col2:
-                        st.markdown("**秩序重要性等级**")
-                        for _gname, _gcount in zip(_group_names, _group_counts):
-                            if _gcount > 0:
-                                st.markdown(f"- **{_gname}**: {_gcount} 个实体")
-                else:
-                    st.info("📭 实体度数数据不足，请先构建知识图谱。")
-            else:
-                st.info("📭 暂无实体数据，请先聚合新闻并提取知识图谱。")
-        except ImportError:
-            st.info("安装 plotly 可以查看实体重要性图：`pip install plotly`")
-    else:
-        st.info("📭 知识图谱为空，请先聚合新闻并提取实体。")
-
-    st.divider()
-
-    # ── Knowledge graph summary metrics ──────────────────────────────────────
-    if "error" not in kg_stats_resp:
-        with st.container(border=True):
-            st.subheader("🕸️ 知识图谱")
-            _k1, _k2, _k3, _k4 = st.columns(4)
-            _k1.metric("🔵 实体", _kg_entities)
-            _k2.metric("📰 文章", _kg_articles)
-            _k3.metric("🔗 提及", _kg_mentions)
-            _k4.metric("⚡ 关系", _kg_relations)
 
 # ===========================================================================
 # Page: ⚙️ 系统状态

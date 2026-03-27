@@ -25,7 +25,7 @@ import logging
 import time
 from typing import Any, Dict, List, Literal, Optional
 
-from knowledge_layer.order_models import CategoryType, OrderedTriple
+from backend.knowledge_layer.order_models import CategoryType, OrderedTriple
 
 logger = logging.getLogger(__name__)
 

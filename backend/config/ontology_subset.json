@@ -1,244 +1,51 @@
 {
+  "version": "El-druin-Ontology-v2.0-STIX-Aligned",
+  "description": "基于 STIX 2.1 规范与 Schema.org 融合的情报本体定义",
   "classes": {
     "Person": {
-      "description": "A person (alive, dead, undead, or fictional).",
-      "schema_url": "https://schema.org/Person",
-      "parent": "https://schema.org/Thing"
+      "description": "人类个体。在情报中指关键联系人、政治人物或已知的个体威胁主体。",
+      "stix_mapping": "identity-person",
+      "parent": "Thing"
     },
     "Organization": {
-      "description": "An organization such as a school, NGO, corporation, club, etc.",
-      "schema_url": "https://schema.org/Organization",
-      "parent": "https://schema.org/Thing"
+      "description": "组织机构，包括政府、企业、非营利组织或国际团体。",
+      "stix_mapping": "identity-organization",
+      "parent": "Thing"
     },
-    "Corporation": {
-      "description": "Organization: A business corporation.",
-      "schema_url": "https://schema.org/Corporation",
-      "parent": "https://schema.org/Organization"
+    "Location": {
+      "description": "地理位置或地缘政治实体（GPE），如国家、省份、城市或具体坐标。",
+      "stix_mapping": "location",
+      "parent": "Place"
     },
-    "NGO": {
-      "description": "Organization: Non-governmental Organization.",
-      "schema_url": "https://schema.org/NGO",
-      "parent": "https://schema.org/Organization"
-    },
-    "GovernmentOrganization": {
-      "description": "A governmental organization or agency.",
-      "schema_url": "https://schema.org/GovernmentOrganization",
-      "parent": "https://schema.org/Organization"
-    },
-    "Project": {
-      "description": "An enterprise (potentially individual but typically collaborative), planned to achieve a particular aim.\nUse properties from <a class=\"localLink\" href=\"/Organization\">Organization</a>, <a class=\"localLink\" href=\"/subOrganization\">subOrganization</a>/<a class=\"localLink\" href=\"/parentOrganization\">parentOrganization</a> to indicate project sub-structures.",
-      "schema_url": "https://schema.org/Project",
-      "parent": "https://schema.org/Organization"
-    },
-    "EducationalOrganization": {
-      "description": "An educational organization.",
-      "schema_url": "https://schema.org/EducationalOrganization",
-      "parent": "https://schema.org/CivicStructure, https://schema.org/Organization"
-    },
-    "MedicalOrganization": {
-      "description": "A medical organization (physical or not), such as hospital, institution or clinic.",
-      "schema_url": "https://schema.org/MedicalOrganization",
-      "parent": "https://schema.org/Organization"
-    },
-    "LocalBusiness": {
-      "description": "A particular physical business or branch of an organization. Examples of LocalBusiness include a restaurant, a particular branch of a restaurant chain, a branch of a bank, a medical practice, a club, a bowling alley, etc.",
-      "schema_url": "https://schema.org/LocalBusiness",
-      "parent": "https://schema.org/Organization, https://schema.org/Place"
-    },
-    "Place": {
-      "description": "Entities that have a somewhat fixed, physical extension.",
-      "schema_url": "https://schema.org/Place",
-      "parent": "https://schema.org/Thing"
-    },
-    "Country": {
-      "description": "A country.",
-      "schema_url": "https://schema.org/Country",
-      "parent": "https://schema.org/AdministrativeArea, https://www.omg.org/spec/Commons/GeopoliticalEntities/GeopoliticalEntity"
-    },
-    "City": {
-      "description": "A city or town.",
-      "schema_url": "https://schema.org/City",
-      "parent": "https://schema.org/AdministrativeArea"
-    },
-    "State": {
-      "description": "A state or province of a country.",
-      "schema_url": "https://schema.org/State",
-      "parent": "https://schema.org/AdministrativeArea"
-    },
-    "AdministrativeArea": {
-      "description": "A geographical region, typically under the jurisdiction of a particular government.",
-      "schema_url": "https://schema.org/AdministrativeArea",
-      "parent": "https://schema.org/Place"
-    },
-    "GeoCoordinates": {
-      "description": "The geographic coordinates of a place or event.",
-      "schema_url": "https://schema.org/GeoCoordinates",
-      "parent": "https://schema.org/StructuredValue"
-    },
-    "LandmarksOrHistoricalBuildings": {
-      "description": "An historical landmark or building.",
-      "schema_url": "https://schema.org/LandmarksOrHistoricalBuildings",
-      "parent": "https://schema.org/Place"
-    },
-    "Airport": {
-      "description": "An airport.",
-      "schema_url": "https://schema.org/Airport",
-      "parent": "https://schema.org/CivicStructure"
-    },
-    "NewsArticle": {
-      "description": "A NewsArticle is an article whose content reports news, or provides background context and supporting materials for understanding the news.<br/><br/>\n\nA more detailed overview of <a href=\"/docs/news.html\">schema.org News markup</a> is also available.",
-      "schema_url": "https://schema.org/NewsArticle",
-      "parent": "https://schema.org/Article"
-    },
-    "Report": {
-      "description": "A Report generated by governmental or non-governmental organization.",
-      "schema_url": "https://schema.org/Report",
-      "parent": "https://schema.org/Article"
-    },
-    "DigitalDocument": {
-      "description": "An electronic file or document.",
-      "schema_url": "https://schema.org/DigitalDocument",
-      "parent": "https://schema.org/CreativeWork, https://spec.edmcouncil.org/fibo/ontology/FND/Arrangements/Documents/Document"
-    },
-    "Message": {
-      "description": "A single message from a sender to one or more organizations or people.",
-      "schema_url": "https://schema.org/Message",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "Dataset": {
-      "description": "A body of structured information describing some topic(s) of interest.",
-      "schema_url": "https://schema.org/Dataset",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "Blog": {
-      "description": "A <a href=\"https://en.wikipedia.org/wiki/Blog\">blog</a>, sometimes known as a \"weblog\". Note that the individual posts (<a class=\"localLink\" href=\"/BlogPosting\">BlogPosting</a>s) in a <a class=\"localLink\" href=\"/Blog\">Blog</a> are often colloquially referred to by the same term.",
-      "schema_url": "https://schema.org/Blog",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "Book": {
-      "description": "A book.",
-      "schema_url": "https://schema.org/Book",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "SocialMediaPosting": {
-      "description": "A post to a social media platform, including blog posts, tweets, Facebook posts, etc.",
-      "schema_url": "https://schema.org/SocialMediaPosting",
-      "parent": "https://schema.org/Article"
-    },
-    "SoftwareApplication": {
-      "description": "A software application.",
-      "schema_url": "https://schema.org/SoftwareApplication",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "SoftwareSourceCode": {
-      "description": "Computer programming source code. Example: Full (compile ready) solutions, code snippet samples, scripts, templates.",
-      "schema_url": "https://schema.org/SoftwareSourceCode",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "ComputerLanguage": {
-      "description": "This type covers computer programming languages such as Scheme and Lisp, as well as other language-like computer representations. Natural languages are best represented with the <a class=\"localLink\" href=\"/Language\">Language</a> type.",
-      "schema_url": "https://schema.org/ComputerLanguage",
-      "parent": "https://schema.org/Intangible"
-    },
-    "DataFeed": {
-      "description": "A single feed providing structured information about one or more entities or topics.",
-      "schema_url": "https://schema.org/DataFeed",
-      "parent": "https://schema.org/Dataset"
-    },
-    "APIReference": {
-      "description": "Reference documentation for application programming interfaces (APIs).",
-      "schema_url": "https://schema.org/APIReference",
-      "parent": "https://schema.org/TechArticle"
-    },
-    "CreativeWork": {
-      "description": "The most generic kind of creative work, including books, movies, photographs, software programs, etc.",
-      "schema_url": "https://schema.org/CreativeWork",
-      "parent": "https://schema.org/Thing"
-    },
-    "WebPage": {
-      "description": "A web page. Every web page is implicitly assumed to be declared to be of type WebPage, so the various properties about that webpage, such as <code>breadcrumb</code> may be used. We recommend explicit declaration if these properties are specified, but if they are found outside of an itemscope, they will be assumed to be about the page.",
-      "schema_url": "https://schema.org/WebPage",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "Product": {
-      "description": "Any offered product or service. For example: a pair of shoes; a concert ticket; the rental of a car; a haircut; or an episode of a TV show streamed online.",
-      "schema_url": "https://schema.org/Product",
-      "parent": "https://schema.org/Thing"
+    "ThreatActor": {
+      "description": "具有潜在威胁的个人、团体或敌对国家势力。",
+      "stix_mapping": "threat-actor",
+      "parent": "Organization"
     },
     "Event": {
-      "description": "An event happening at a certain time and location, such as a concert, lecture, or festival. Ticketing information may be added via the <a class=\"localLink\" href=\"/offers\">offers</a> property. Repeated events may be structured as separate Event objects.",
-      "schema_url": "https://schema.org/Event",
-      "parent": "https://schema.org/Thing"
+      "description": "具体发生的冲突、攻击、会议或社会动荡事件。",
+      "stix_type": "incident",
+      "parent": "Event"
     },
-    "Action": {
-      "description": "An action performed by a direct agent and indirect participants upon a direct object. Optionally happens at a location with the help of an inanimate instrument. The execution of the action may produce a result. Specific action sub-type documentation specifies the exact expectation of each argument/role.<br/><br/>\n\nSee also <a href=\"https://blog.schema.org/2014/04/16/announcing-schema-org-actions/\">blog post</a> and <a href=\"https://schema.org/docs/actions.html\">Actions overview document</a>.",
-      "schema_url": "https://schema.org/Action",
-      "parent": "https://schema.org/Thing"
+    "Infrastructure": {
+      "description": "关键物理设施或网络空间资产，如发电厂、服务器、通信基站等。",
+      "stix_mapping": "infrastructure",
+      "parent": "Thing"
     },
-    "ControlAction": {
-      "description": "An agent controls a device or application.",
-      "schema_url": "https://schema.org/ControlAction",
-      "parent": "https://schema.org/Action"
+    "Policy": {
+      "description": "制裁禁令、法律文件、行政命令或防御性的战略计划。",
+      "stix_mapping": "course-of-action",
+      "parent": "Intangible"
     },
-    "AssessAction": {
-      "description": "The act of forming one's opinion, reaction or sentiment.",
-      "schema_url": "https://schema.org/AssessAction",
-      "parent": "https://schema.org/Action"
+    "Tool": {
+      "description": "行动中使用的特定工具，如武器、恶意软件、情报采集软件等。",
+      "stix_mapping": "tool",
+      "parent": "Product"
     },
-    "OrganizeAction": {
-      "description": "The act of manipulating/administering/supervising/controlling one or more objects.",
-      "schema_url": "https://schema.org/OrganizeAction",
-      "parent": "https://schema.org/Action"
-    },
-    "SearchAction": {
-      "description": "The act of searching for an object.<br/><br/>\n\nRelated actions:<br/><br/>\n\n<ul>\n<li><a class=\"localLink\" href=\"/FindAction\">FindAction</a>: SearchAction generally leads to a FindAction, but not necessarily.</li>\n</ul>",
-      "schema_url": "https://schema.org/SearchAction",
-      "parent": "https://schema.org/Action"
-    },
-    "CreateAction": {
-      "description": "The act of deliberately creating/producing/generating/building a result out of the agent.",
-      "schema_url": "https://schema.org/CreateAction",
-      "parent": "https://schema.org/Action"
-    },
-    "CommunicateAction": {
-      "description": "The act of conveying information to another person via a communication medium (instrument) such as speech, email, or telephone conversation.",
-      "schema_url": "https://schema.org/CommunicateAction",
-      "parent": "https://schema.org/InteractAction"
-    },
-    "MonetaryAmount": {
-      "description": "A monetary value or range. This type can be used to describe an amount of money such as $50 USD, or a range as in describing a bank account being suitable for a balance between £1,000 and £1,000,000 GBP, or the value of a salary, etc. It is recommended to use <a class=\"localLink\" href=\"/PriceSpecification\">PriceSpecification</a> Types to describe the price of an Offer, Invoice, etc.",
-      "schema_url": "https://schema.org/MonetaryAmount",
-      "parent": "https://schema.org/StructuredValue"
-    },
-    "Role": {
-      "description": "Represents additional information about a relationship or property. For example a Role can be used to say that a 'member' role linking some SportsTeam to a player occurred during a particular time period. Or that a Person's 'actor' role in a Movie was for some particular characterName. Such properties can be attached to a Role entity, which is then associated with the main entities using ordinary properties like 'member' or 'actor'.<br/><br/>\n\nSee also <a href=\"https://blog.schema.org/2014/06/16/introducing-role/\">blog post</a>.",
-      "schema_url": "https://schema.org/Role",
-      "parent": "https://schema.org/Intangible"
-    },
-    "Observation": {
-      "description": "Instances of the class <a class=\"localLink\" href=\"/Observation\">Observation</a> are used to specify observations about an entity at a particular time. The principal properties of an <a class=\"localLink\" href=\"/Observation\">Observation</a> are <a class=\"localLink\" href=\"/observationAbout\">observationAbout</a>, <a class=\"localLink\" href=\"/measuredProperty\">measuredProperty</a>, <a class=\"localLink\" href=\"/statType\">statType</a>, [[value] and <a class=\"localLink\" href=\"/observationDate\">observationDate</a>  and <a class=\"localLink\" href=\"/measuredProperty\">measuredProperty</a>. Some but not all Observations represent a <a class=\"localLink\" href=\"/QuantitativeValue\">QuantitativeValue</a>. Quantitative observations can be about a <a class=\"localLink\" href=\"/StatisticalVariable\">StatisticalVariable</a>, which is an abstract specification about which we can make observations that are grounded at a particular location and time.<br/><br/>\n\nObservations can also encode a subset of simple RDF-like statements (its observationAbout, a StatisticalVariable, defining the measuredPoperty; its observationAbout property indicating the entity the statement is about, and <a class=\"localLink\" href=\"/value\">value</a> )<br/><br/>\n\nIn the context of a quantitative knowledge graph, typical properties could include <a class=\"localLink\" href=\"/measuredProperty\">measuredProperty</a>, <a class=\"localLink\" href=\"/observationAbout\">observationAbout</a>, <a class=\"localLink\" href=\"/observationDate\">observationDate</a>, <a class=\"localLink\" href=\"/value\">value</a>, <a class=\"localLink\" href=\"/unitCode\">unitCode</a>, <a class=\"localLink\" href=\"/unitText\">unitText</a>, <a class=\"localLink\" href=\"/measurementMethod\">measurementMethod</a>.",
-      "schema_url": "https://schema.org/Observation",
-      "parent": "https://schema.org/Intangible, https://schema.org/QuantitativeValue"
-    },
-    "StatisticalPopulation": {
-      "description": "A StatisticalPopulation is a set of instances of a certain given type that satisfy some set of constraints. The property <a class=\"localLink\" href=\"/populationType\">populationType</a> is used to specify the type. Any property that can be used on instances of that type can appear on the statistical population. For example, a <a class=\"localLink\" href=\"/StatisticalPopulation\">StatisticalPopulation</a> representing all <a class=\"localLink\" href=\"/Person\">Person</a>s with a <a class=\"localLink\" href=\"/homeLocation\">homeLocation</a> of East Podunk California would be described by applying the appropriate <a class=\"localLink\" href=\"/homeLocation\">homeLocation</a> and <a class=\"localLink\" href=\"/populationType\">populationType</a> properties to a <a class=\"localLink\" href=\"/StatisticalPopulation\">StatisticalPopulation</a> item that stands for that set of people.\nThe properties <a class=\"localLink\" href=\"/numConstraints\">numConstraints</a> and <a class=\"localLink\" href=\"/constraintProperty\">constraintProperty</a> are used to specify which of the populations properties are used to specify the population. Note that the sense of \"population\" used here is the general sense of a statistical\npopulation, and does not imply that the population consists of people. For example, a <a class=\"localLink\" href=\"/populationType\">populationType</a> of <a class=\"localLink\" href=\"/Event\">Event</a> or <a class=\"localLink\" href=\"/NewsArticle\">NewsArticle</a> could be used. See also <a class=\"localLink\" href=\"/Observation\">Observation</a>, where a <a class=\"localLink\" href=\"/populationType\">populationType</a> such as <a class=\"localLink\" href=\"/Person\">Person</a> or <a class=\"localLink\" href=\"/Event\">Event</a> can be indicated directly. In most cases it may be better to use <a class=\"localLink\" href=\"/StatisticalVariable\">StatisticalVariable</a> instead of <a class=\"localLink\" href=\"/StatisticalPopulation\">StatisticalPopulation</a>.",
-      "schema_url": "https://schema.org/StatisticalPopulation",
-      "parent": "https://schema.org/Intangible"
-    },
-    "Review": {
-      "description": "A review of an item - for example, of a restaurant, movie, or store.",
-      "schema_url": "https://schema.org/Review",
-      "parent": "https://schema.org/CreativeWork"
-    },
-    "Rating": {
-      "description": "A rating is an evaluation on a numeric scale, such as 1 to 5 stars.",
-      "schema_url": "https://schema.org/Rating",
-      "parent": "https://schema.org/Intangible"
-    },
-    "Enumeration": {
-      "description": "Lists or enumerations—for example, a list of cuisines or music genres, etc.",
-      "schema_url": "https://schema.org/Enumeration",
-      "parent": "https://schema.org/Intangible"
+    "Vulnerability": {
+      "description": "防御系统、社会秩序或网络资产中可被利用的弱点。",
+      "stix_mapping": "vulnerability",
+      "parent": "Intangible"
     }
   }
 }

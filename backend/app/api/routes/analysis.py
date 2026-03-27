@@ -14,7 +14,7 @@ import logging
 import os
 import sys
 from typing import Any, Dict, List, Optional
-
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -249,96 +249,61 @@ def analyze_with_ontological_grounding(
 # ═══════════════════════════════════════════════════════════════════
 # Endpoint 3: Deduction Soul (Strict logical inference)
 # ═══════════════════════════════════════════════════════════════════
-
 @router.post("/grounded/deduce")
 def analyze_with_deduction_soul(
     request: OntologyGroundedAnalysisRequest,
 ) -> Dict[str, Any]:
-    """【推演灵魂激活】Analyze news with strict ontological deduction.
-    
-    LLM is forced to:
-    1. Base all predictions on explicit ontological paths
-    2. Trace every inference to specific relationships
-    3. Output strict JSON with causal chains
-    4. Never invent—only deduce
-    
-    Request body:
-    {
-        "news_fragment": "The European Commission announced strict AI regulations...",
-        "seed_entities": ["European Commission", "AI Regulation", "EU"],
-        "claim": "What will be the impact?"
-    }
-    
-    Response:
-    {
-        "status": "success",
-        "deduction_result": {
-            "driving_factor": "...",
-            "scenario_alpha": {...},
-            "scenario_beta": {...},
-            "verification_gap": "...",
-            "confidence": 0.85
-        }
-    }
-    """
+    """【推演灵魂激活】Analyze news with strict ontological deduction."""
     try:
         _ensure_intelligence_importable()
-        llm_service = _get_llm_service()
         kuzu_conn = _get_kuzu_connection()
+        llm_service = _get_llm_service()
 
+        # 1. 显式提取本体上下文
+        from ontology.kuzu_context_extractor import get_ontological_context
+        
+        extracted_graph_context = []
+        for entity in request.seed_entities:
+            ctx = get_ontological_context(kuzu_conn, entity)
+            if ctx:
+                extracted_graph_context.append(ctx)
+
+        # 2. 调用分析器
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
-
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,
             kuzu_conn=kuzu_conn,
         )
+
+        # 注入图谱事实作为上下文
         raw_result = analyzer.analyze_with_ontological_grounding(
             news_fragment=request.news_fragment,
             seed_entities=request.seed_entities,
-            claim=request.claim,
+            claim=f"【本体关系证据】：{str(extracted_graph_context)}\n\n推演问题：{request.claim}",
         )
 
-        # Guarantee all required structured fields are present in deduction_result.
-        deduction_result: Optional[Dict[str, Any]] = raw_result.get("deduction_result")
-        if not deduction_result:
-            logger.warning("deduction_result missing from analyzer output – returning 503")
-            raise HTTPException(
-                status_code=503,
-                detail="Deduction engine returned no result. Check LLM configuration.",
-            )
-        deduction_result.setdefault("driving_factor", "")
-        deduction_result.setdefault("scenario_alpha", {})
-        deduction_result.setdefault("scenario_beta", {})
-        deduction_result.setdefault("verification_gap", "")
-        deduction_result.setdefault("confidence", 0.0)
-        deduction_result.setdefault("graph_evidence", "")
+        deduction_result = raw_result.get("deduction_result", {})
 
-        logger.debug(
-            "Deduction complete. driving_factor=%r  confidence=%s",
-            deduction_result.get("driving_factor"),
-            deduction_result.get("confidence"),
-        )
-
+        # 3. 统一结构化返回
         return {
-            "status": raw_result.get("status", "success"),
-            "ontological_grounding": raw_result.get("ontological_grounding", {
+            "status": "success",
+            "ontological_grounding": {
                 "seed_entities": request.seed_entities,
-                "premises": {},
-                "total_paths_extracted": 0,
-            }),
+                "graph_evidence": extracted_graph_context,
+                "total_paths_extracted": len(extracted_graph_context),
+            },
             "deduction_result": deduction_result,
-            "timestamp": raw_result.get("timestamp", ""),
+            "timestamp": datetime.now().isoformat()
         }
+
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("Deduction Soul analysis failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=str(exc))
 
-
-# ══════��════════════════════════════════════════════════════════════
 # Endpoint 4: Get Ontological Context
-# ═══════════════════════════════════════════════════════════════════
+
 
 @router.get("/ontological-context/{entity_name}")
 def get_entity_ontological_context(entity_name: str) -> Dict[str, Any]:

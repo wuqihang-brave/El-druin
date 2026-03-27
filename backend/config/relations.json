@@ -1,83 +1,60 @@
 {
-  "version": "El-druin-Logic-Ontology-v1.1",
-  "description": "基于Schema.org与RECON规范的标准边集合，已适配 KuzuDB 属性 DDL",
+  "version": "El-druin-Logic-v2.1-STIX-Fixed",
+  "description": "标准 STIX 2.1 情报关联体系（已修复 KuzuDB 中划线语法冲突）",
   "relations": [
     {
-      "label": "memberOf",
-      "source": "Schema.org",
-      "description": "组织/角色归属：表示个人是某个组织、团队或职位的成员。注：代码层已兼容 isMemberOf 映射至此。",
-      "logic_weight": 0.7,
-      "direction": "outbound"
+      "label": "targets",
+      "description": "攻击或行动指向的目标实体（如：黑客组织 targets 某政府机构）。",
+      "logic_weight": 0.95,
+      "stix_standard": "targets"
     },
     {
-      "label": "isBasedOn",
-      "source": "Schema.org",
-      "description": "来源溯源：表示该信息、报告或实体是基于某个原始证据或数据集产生的。",
-      "logic_weight": 0.9,
-      "direction": "outbound"
+      "label": "uses",
+      "description": "主体在行动中使用了某种工具或基础设施（如：恶意程序 uses 某服务器）。",
+      "logic_weight": 0.85,
+      "stix_standard": "uses"
+    },
+    {
+      "label": "attributed_to",
+      "description": "归因关系。将攻击、事件回溯到特定主体或国家（原 attributed-to）。",
+      "logic_weight": 0.90,
+      "stix_standard": "attributed-to"
+    },
+    {
+      "label": "indicates",
+      "description": "预示关系。某个情报指标预示了后续的攻击或风险（如：侦察行为 indicates 潜在攻击）。",
+      "logic_weight": 0.80,
+      "stix_standard": "indicates"
     },
     {
       "label": "causes",
-      "source": "RECON",
-      "description": "直接因果：表示一个事件、动作或实体的存在直接导致了另一个结果的发生。",
+      "description": "因果逻辑。一个事件的发生直接导致了另一个结果。",
       "logic_weight": 0.85,
-      "direction": "outbound"
-    },
-    {
-      "label": "threatens",
-      "source": "RECON",
-      "description": "威胁关系：表示一个风险指标、攻击者或事件对某个组织、人员或资产构成潜在危险。",
-      "logic_weight": 0.8,
-      "direction": "outbound"
+      "stix_standard": "derived-from/causes"
     },
     {
       "label": "compromises",
-      "source": "RECON",
-      "description": "损害关系：表示某个安全事件已经导致了目标的安全性、完整性或名誉受损。",
+      "description": "损害关系。表示目标的安全性、稳定性或名誉因事件受损。",
       "logic_weight": 0.95,
-      "direction": "outbound"
+      "stix_standard": "compromises"
     },
     {
-      "label": "parentOrganization",
-      "source": "Schema.org",
-      "description": "层级关系：表示一个组织受控于另一个更大的组织或政府机构。",
-      "logic_weight": 0.8,
-      "direction": "outbound"
+      "label": "mitigates",
+      "description": "防御/消解。某种政策或行动成功降低了风险。",
+      "logic_weight": 0.70,
+      "stix_standard": "mitigates"
     },
     {
-      "label": "locatedIn",
-      "source": "Schema.org",
-      "description": "空间归属：表示实体、事件发生的地理位置或地缘政治区域。",
-      "logic_weight": 0.6,
-      "direction": "outbound"
+      "label": "member_of",
+      "description": "隶属关系。表示个体或子机构属于某个母组织（原 member-of）。",
+      "logic_weight": 0.60,
+      "stix_standard": "identity-member-of"
     },
     {
-      "label": "sameAs",
-      "source": "Schema.org",
-      "description": "实体对齐：表示两个名称不同的节点在现实中是同一个实体。",
-      "logic_weight": 1.0,
-      "direction": "bidirectional"
-    },
-    {
-      "label": "isVariantOf",
-      "source": "RECON",
-      "description": "变体关系：表示一个软件、代码库或技术方案是另一个已知实体的衍生版本。",
-      "logic_weight": 0.75,
-      "direction": "outbound"
-    },
-    {
-      "label": "mentions",
-      "source": "Schema.org",
-      "description": "提及关系：弱关联，用于逻辑关联尚不明确或作为非法标签的自动降级目标。",
-      "logic_weight": 0.3,
-      "direction": "outbound"
-    },
-    {
-      "label": "targets",
-      "source": "STIX/RECON",
-      "description": "目标指向：明确表示某种行动、软件或政策是针对特定群体或资产的。",
-      "logic_weight": 0.9,
-      "direction": "outbound"
+      "label": "located_at",
+      "description": "地理归属关系。表示实体、事件发生的物理位置（原 located-at）。",
+      "logic_weight": 0.50,
+      "stix_standard": "located-at"
     }
   ]
 }
