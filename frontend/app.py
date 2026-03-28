@@ -153,7 +153,7 @@ if not _backend_url_raw:
         "Expected format: https://your-backend-domain.com/api/v1"
     )
 _backend_url = _backend_url_raw.rstrip("/")
-import kuzu # 确保顶部已导入 kuzu
+
 def get_graph_context_for_news(query_text):
     """从 KuzuDB 获取与新闻关键词相关的图谱事实"""
     import kuzu
@@ -727,91 +727,215 @@ if page == "🏠 主页":
                 st.rerun()
 
     # ─── RIGHT COLUMN: 确切推论与预测引擎 (60%) ────────────────────────────────
+       # ─── RIGHT COLUMN: 确切推论与预测引擎 (60%) ─────────────────
     with col_deduction:
         st.subheader("🧠 本体论预测分析")
 
         _selected = st.session_state.get("selected_news")
-
         if _selected:
             _sel_title = _selected.get("title", "（无标题）")
+            _sel_desc = _selected.get("description") or _selected.get("summary") or ""
             st.markdown(f"**针对事件：** `{_sel_title}`")
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
-            _deduction_result: Optional[Dict[str, Any]] = st.session_state.get("deduction_result")
+            _deduction_result: Optional[Dict[str, Any]] = st.session_state.get(
+                "deduction_result"
+            )
             _deduction_error: Optional[str] = None
 
+            # === 1. 首次点击时，真正调用后端推理 ===
             if _deduction_result is None:
-                with st.status("🔍 正在构建因果链条...", expanded=True) as _status:
+                with st.status("🔍 正在构建因果链条（LLM + 本体 + KuzuDB）...", expanded=True) as _status:
                     try:
-                        st.write("📡 检索 KuzuDB 并连接图谱...")
-                        _resp = _api.grounded_deduce(_selected)
-                        if "error" in _resp:
+                        st.write("📡 调用后端 grounded_deduce 接口，并检索 KuzuDB 证据...")
+
+                        # 建议：显式传入文本字段，避免后端拿到奇怪的结构
+                        _payload = {
+                            "title": _sel_title,
+                            "text": _sel_desc or _sel_title,
+                            "source": _selected.get("source"),
+                            "published": str(_selected.get("published", "")),
+                            "raw": _selected,   # 原始对象一并传给后端（如果不需要可在后端忽略）
+                        }
+                        _resp = _api.grounded_deduce(_payload)
+
+                        # 兼容两种返回格式：
+                        #  1) {"deduction_result": {...}}
+                        #  2) 直接返回 {...}
+                        if "error" in _resp and "deduction_result" not in _resp:
                             _deduction_error = str(_resp["error"])
-                            _status.update(label="⚠️ 推演失败", state="error")
+                            _status.update(label="⚠ 推演失败", state="error")
                         else:
-                            _deduction_result = _resp.get("deduction_result", {})
+                            _deduction_result = _resp.get(
+                                "deduction_result", _resp
+                            )
                             st.session_state.deduction_result = _deduction_result
-                            st.write("✅ 路径提取完成，正在生成预测推论...")
+                            st.write("✅ 已获取本体推理结果与图谱证据，正在渲染...")
                             _status.update(label="✅ 推演完成", state="complete")
                     except Exception as _exc:
                         _deduction_error = str(_exc)
-                        _status.update(label="⚠️ 连接失败", state="error")
+                        _status.update(label="⚠ 连接失败", state="error")
 
+            # === 2. 处理错误  ===
             if _deduction_error:
                 st.error(f"推演失败：{_deduction_error}")
 
+            # === 3. 正常展示推理结果 ===
             elif _deduction_result is not None:
                 _dr = _deduction_result
-                
-                # 提取后端数据以适配新 UI
-                _alpha = _dr.get("scenario_alpha", {})
-                _alpha_desc = _alpha.get("description", "基于当前实体张力，目标将沿阻力最小路径发生突变。")
-                _causal_chain = _alpha.get("causal_chain", _dr.get('driving_factor', '未能提取明确逻辑链'))
-                
-                _conf_raw = _dr.get("confidence", 0.5)
-                _conf_pct = int(round(_conf_raw * 100)) if _conf_raw <= 1.0 else int(round(_conf_raw))
 
-                # 【1】确切推论 (替代了原来的核心驱动因素)
+                # -------- 3.1 提取后端字段（尽量不用占位文本） --------
+                # 主预测 / 核心情景
+                _alpha = _dr.get("scenario_alpha") or _dr.get("primary_scenario") or {}
+                _alpha_desc = (
+                    _alpha.get("description")
+                    or _dr.get("prediction")
+                    or _dr.get("summary")
+                    or ""
+                )
+                if not _alpha_desc:
+                    # 仍然没有任何说明时，再用占位文本兜底
+                    _alpha_desc = "（后端未返回场景描述，请检查 grounded_deduce 返回结构。）"
+
+                # 因果链 / 驱动路径
+                _causal_chain = (
+                    _alpha.get("causal_chain")
+                    or _dr.get("causal_chain")
+                    or _dr.get("driving_factor")
+                    or _dr.get("inference_path")
+                    or ""
+                )
+
+                # 置信度
+                _conf_raw = (
+                    _dr.get("confidence")
+                    or _alpha.get("confidence")
+                    or 0.5
+                )
+                try:
+                    _conf_raw = float(_conf_raw)
+                except Exception:
+                    _conf_raw = 0.5
+                _conf_pct = int(round(_conf_raw * 100)) if _conf_raw <= 1.0 else int(
+                    round(_conf_raw)
+                )
+
+                # 图谱证据（后端优先，其次用本地 Kuzu 查询补充）
+                _graph_evidence = (
+                    _dr.get("graph_evidence")
+                    or _dr.get("graph_facts")
+                    or _dr.get("evidence_paths")
+                    or []
+                )
+                if not _graph_evidence:
+                    # 使用前面定义的本地函数，从 KuzuDB 拉一些相关事实
+                    _graph_evidence = get_graph_context_for_news(
+                        _sel_title + " " + _sel_desc
+                    )
+
+                # 如果后端给了完整子图结构（nodes/edges），我们可以直接画图
+                _subgraph = _dr.get("graph_subgraph") or {}
+                # 期望格式：
+                #   {"nodes": [...], "edges": [...]}
+                # 与 render_graph 所需格式一致即可直接渲染
+
+                # -------- 3.2 确切推论（替代固定占位文案） --------
                 st.markdown("### 🔮 确切推论")
-                st.markdown(f"""
-                <div class="prediction-box">
-                    <b>预测演化：</b> {_alpha_desc}
-                </div>
-                """, unsafe_allow_html=True)
-
+                st.markdown(
+                    f"""
+                    <div class="prediction-box">
+                        <b>预测演化：</b> {_alpha_desc}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 st.markdown("---")
 
-                # 【2】成因与数学逻辑 (替代了复读的Alpha/Beta)
+                # -------- 3.3 成因与逻辑硬度 --------
                 st.markdown("### 📊 推论成因与逻辑硬度")
                 _col_logic, _col_math = st.columns([3, 2])
-                
+
                 with _col_logic:
                     st.write("**逻辑成因**")
-                    st.caption("1. 目标实体节点承受溢出图谱张力")
-                    st.caption(f"2. {str(_causal_chain)[:80]}...")
-                    if _dr.get("graph_evidence"):
-                        st.caption("3. KuzuDB 发现高度耦合的历史重合路径")
+                    items: List[str] = []
+
+                    if isinstance(_causal_chain, str) and _causal_chain.strip():
+                        items.append(_causal_chain)
+                    elif isinstance(_causal_chain, list):
+                        items.extend([str(x) for x in _causal_chain if x])
+
+                    # 如果后端有更结构化的 "reasoning_steps" 字段，也一并展示
+                    _steps = _dr.get("reasoning_steps") or _alpha.get("steps") or []
+                    if isinstance(_steps, list):
+                        items.extend([str(x) for x in _steps if x])
+
+                    if not items:
+                        items.append("（后端未提供详细因果链，请在 backend.grounded_deduce 中补充 'causal_chain' 或 'reasoning_steps' 字段。）")
+
+                    for idx, text in enumerate(items[:4], start=1):
+                        st.caption(f"{idx}. {text}")
+
+                    if len(items) > 4:
+                        st.caption(f"... 等 {len(items)} 条推理步骤")
 
                 with _col_math:
                     st.write("**预测概率**")
-                    st.metric(label="Pr(Event | Graph)", value=f"{_conf_pct}%", delta=f"+{max(1, _conf_pct%4)}% 动量累积")
+                    st.metric(
+                        label="Pr(Event | Graph)",
+                        value=f"{_conf_pct}%",
+                        delta=f"+{max(1, _conf_pct % 4)}% 动量累积",
+                    )
 
                 st.markdown("**本体论计算模型**")
-                st.markdown(f"""
-                <div class="math-logic">
-                # Inference Trajectory<br>
-                Pr(E|K) = ∑ [W(n) * R(p)] / Ω <br>
-                Confidence = Δ(Ontology_Density) / Threshold = {_conf_pct / 100:.2f} <br>
-                [System State] -> Converging
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div class="math-logic">
+                    # Inference Trajectory<br>
+                    Pr(E|K) = ∑ [W(n) * R(p)] / Ω <br>
+                    Confidence = Δ(Ontology_Density) / Threshold = {_conf_pct / 100:.2f} <br>
+                    [System State] -> Converging
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                # -------- 3.4 图谱证据 可视化 / 列表 --------
+                st.markdown("---")
+                st.markdown("### 🕸 图谱证据与路径")
+
+                # 3.4.1 如果后端返回了子图（graph_subgraph），直接画
+                if isinstance(_subgraph, dict) and _subgraph.get("nodes"):
+                    st.caption("来自后端 grounded_deduce 的聚焦子图：")
+                    try:
+                        render_graph(_subgraph)
+                    except Exception as _e:
+                        st.warning(f"子图渲染失败：{_e}")
+
+                # 3.4.2 若没有子图，但有字符串 / 列表形式的事实，则文本展示
+                elif _graph_evidence:
+                    st.caption("相关图谱事实：")
+                    if isinstance(_graph_evidence, str):
+                        st.text(_graph_evidence)
+                    elif isinstance(_graph_evidence, list):
+                        for fact in _graph_evidence:
+                            st.write(f"- {fact}")
+                    else:
+                        st.json(_graph_evidence)
+
+                else:
+                    st.info("未从本体图谱中检索到显式证据，请检查 KuzuDB 同步及后端推理逻辑。")
+
+                # -------- 3.5 调试用：显示原始返回结构，方便你后续调整字段映射 --------
+                with st.expander("🛠 调试：查看后端原始推理结果 JSON", expanded=False):
+                    st.json(_dr)
 
             if st.button("🔄 重新选择情报", key="clear_selection"):
                 st.session_state.selected_news = None
+                st.session_state.deduction_result = None
                 st.rerun()
-
         else:
             st.info("👈 请在左侧选择一个重要事件执行本体推演")
+
 
     # ─── FOOTER: 知识储备 (替代报错的谍报缺口) ──────────────────────────────
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
