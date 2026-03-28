@@ -783,6 +783,9 @@ if page == "🏠 主页":
             # === 3. 正常展示推理结果 ===
             elif _deduction_result is not None:
                 _dr = _deduction_result
+         
+                with st.expander("🛠 后端原始 deduction_result JSON", expanded=True):
+                       st.json(_dr)
 
                 # -------- 3.1 提取后端字段（尽量不用占位文本） --------
                 # 主预测 / 核心情景

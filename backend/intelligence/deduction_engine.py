@@ -49,14 +49,13 @@ class CausalChain:
 
 @dataclass
 class Scenario:
-    """Single evolutionary scenario grounded in ontology"""
     name: str
     scenario_type: ScenarioType
     causal_chain: CausalChain
     probability: float
+    description: str = ""  # <--- 补充
     grounding_paths: List[str] = field(default_factory=list)
     verification_requirements: List[str] = field(default_factory=list)
-
 
 @dataclass
 class DeductionResult:
@@ -74,6 +73,7 @@ class DeductionResult:
             "driving_factor": self.driving_factor,
             "scenario_alpha": {
                 "name": self.scenario_alpha.name,
+                "description": self.scenario_alpha.description,
                 "causal_chain": self.scenario_alpha.causal_chain.to_text(),
                 "entities": self.scenario_alpha.causal_chain.entities_involved,
                 "grounding_paths": self.scenario_alpha.grounding_paths,
@@ -81,6 +81,7 @@ class DeductionResult:
             },
             "scenario_beta": {
                 "name": self.scenario_beta.name,
+                "description": self.scenario_beta.description,
                 "causal_chain": self.scenario_beta.causal_chain.to_text(),
                 "trigger_condition": (
                     self.scenario_beta.grounding_paths[0]
@@ -247,6 +248,7 @@ Now output the JSON:
             scenario_type=ScenarioType.CONTINUATION,
             causal_chain=alpha_chain,
             probability=float(alpha_data.get("probability", 0.8)),
+            description=alpha_data.get("description", ""),
             grounding_paths=alpha_data.get("grounding_paths") or [],
         )
 
@@ -261,6 +263,7 @@ Now output the JSON:
             scenario_type=ScenarioType.STRUCTURAL_BREAK,
             causal_chain=beta_chain,
             probability=float(beta_data.get("probability", 0.2)),
+            description=beta_data.get("description", ""),
             grounding_paths=[trigger] if trigger else [],
         )
 
@@ -288,7 +291,7 @@ Now output the JSON:
             entities_involved=list(entities),
             confidence=0.8,
         )
-
+    print("==== Fallback deduction 已经被调用 ====")
     def _fallback_deduction(
         self, news_summary: str, ontological_context: str
     ) -> DeductionResult:
@@ -322,6 +325,7 @@ Now output the JSON:
                 scenario_type=ScenarioType.CONTINUATION,
                 causal_chain=alpha_chain,
                 probability=0.65,
+                description="【测试】延续路径的兜底描述",
                 grounding_paths=[],
             ),
             scenario_beta=Scenario(
@@ -329,6 +333,7 @@ Now output the JSON:
                 scenario_type=ScenarioType.STRUCTURAL_BREAK,
                 causal_chain=beta_chain,
                 probability=0.35,
+                description="【测试】延续路径的兜底描述",
                 grounding_paths=[],
             ),
             verification_gap="LLM 回应格式错误；推演基于通用本体逻辑，建议补充知识图谱数据后重新分析",
