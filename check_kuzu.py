@@ -9,19 +9,28 @@ print("🔍 KuzuDB 状态检查")
 print("=" * 80)
 
 # 检查目录
-db_path = "./data/kuzu_db"
-print(f"\n1️⃣ 检查目录: {db_path}")
-if os.path.exists(db_path):
-    print(f"✅ 目录存在")
-    files = os.listdir(db_path)
+db_path = "./data/kuzu_db.db"
+data_dir = os.path.dirname(db_path)
+if not os.path.exists(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+print(f"检查数据库文件: {db_path}")
+...
+if not os.path.exists(db_path):
+    print("❌ 数据库不存在")
+else:
+    print("✅ 数据库文件存在")
+print(f"\n1️⃣ 检查数据目录: {data_dir}")
+if os.path.exists(data_dir):
+    print("✅ 目录存在")
+    files = os.listdir(data_dir)
     if files:
-        print(f"   内容: {files}")
+        print(f" 内容: {files}")
     else:
-        print(f"   ⚠️ 目录为空 (正常，等待初始化)")
+        print(" ⚠️ 目录为空(正常, 等待初始化)")
 else:
     print(f"❌ 目录不存在，创建中...")
-    os.makedirs(db_path, exist_ok=True)
-    print(f"✅ 目录已创建")
+    os.makedirs(data_dir, exist_ok=True)
+    print("✅ 目录已创建")
 
 # 尝试连接 KuzuDB
 print(f"\n2️⃣ 尝���连接 KuzuDB")

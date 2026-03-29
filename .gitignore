@@ -1,5 +1,30 @@
-.env
-data/raw/
+# 1. macOS 系统缓存 (消除你 status 里那些讨厌的 .DS_Store)
+.DS_Store
+**/.DS_Store
+
+# 2. 虚拟环境 (消除 venv/ 目录及其所有内容)
+venv/
+frontend/venv/
+backend/venv/
+.venv/
+
+# 3. Python 运行时杂质
 __pycache__/
+**/*.pyc
 *.py[cod]
+*$py.class
+
+# 4. 敏感信息与配置
+.env
+.flaskenv
+
+# 5. 数据库文件 (针对你的 KuzuDB)
+# 如果你想手动同步数据库，可以注释掉下面两行
+# data/kuzu_db.db
+# backend/data/kuzu_db.db
 el_druin_db/
+data/raw/
+
+# 6. IDE 配置文件
+.vscode/
+.idea/

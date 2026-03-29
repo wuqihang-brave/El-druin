@@ -15,7 +15,8 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
-
+import logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Maximum characters from news_summary used as a snippet in fallback deduction.
@@ -140,23 +141,16 @@ class DeductionEngine:
         ontological_context: str,
         seed_entities: List[str],
     ) -> DeductionResult:
-        """【CORE METHOD】推演灵魂激活
-
-        Args:
-            news_summary:        触发事件总结
-            ontological_context: 本体关系路径（from KuzuDB）
-            seed_entities:       涉及的关键实体
-
-        Returns:
-            Strict DeductionResult with causal chains tracing back to paths.
-        """
+        """【CORE METHOD】推演灵魂激活"""
         prompt = self._build_deduction_prompt(
             news_text=news_summary,
             ontological_context=ontological_context,
         )
-
         self.logger.info("Activating Deduction Soul...")
         self.logger.info("Analyzing event: %s...", news_summary[:100])
+        self.logger.info("Ontological context length: %d", len(ontological_context))
+
+        import re
 
         try:
             response = self.llm.call(
@@ -166,16 +160,90 @@ class DeductionEngine:
                 max_tokens=1500,
                 response_format="json",
             )
-            deduction_json = json.loads(response)
+
+            # --- 调试：原始返回 ---
+            self.logger.debug(
+                "Raw LLM response in DeductionEngine (type=%s): %r",
+                type(response),
+                response,
+            )
+
+            # 1) 如果底层已经返回 dict，直接用
+            if isinstance(response, dict):
+                deduction_json = response
+            else:
+                # 2) 否则按字符串处理，先清洗再 json.loads
+                text = str(response).strip()
+
+                # 去掉 ```json / ``` 包裹
+                if text.startswith("```"):
+                    # 去掉第一行 ``` 或 ```json
+                    text = re.sub(r"^```[a-zA-Z0-9]*\n", "", text)
+                    # 去掉结尾 ```
+                    if text.endswith("```"):
+                        text = text[:-3].strip()
+
+                # 有些模型会在前后加说明文本，只取第一个 { 到 最后一个 } 之间
+                start = text.find("{")
+                end = text.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    text = text[start : end + 1]
+
+                self.logger.debug("Cleaned LLM JSON text: %r", text)
+
+                deduction_json = json.loads(text)
+
+            # --- 调试：解析后的 JSON ---
+            self.logger.debug(
+                "Parsed deduction JSON in DeductionEngine: %s",
+                json.dumps(deduction_json, ensure_ascii=False),
+            )
+
             result = self._validate_and_structure_deduction(deduction_json)
             self.logger.info("Deduction complete. Output validated as strict JSON.")
             return result
+
         except (json.JSONDecodeError, ValueError) as exc:
+            # 结构不合法，走 fallback，但保留日志
             self.logger.error("LLM returned invalid JSON: %s", exc)
-            return self._fallback_deduction(news_summary, ontological_context)
-        except Exception as exc:  # noqa: BLE001 – any LLM/network failure must degrade gracefully
+            self.logger.error("Invalid JSON response content (raw): %r", response)
+            # --- 尝试宽松修补一次 ---
+            try:
+                raw_text = str(response)
+                
+                import re
+                # 1) 如果 confidence 字段被截断，例如 `"confidence":'` 或 `"confidence":`
+                #    用 0.6 作为默认值补上
+                fixed = re.sub(
+                    r'"confidence"\s*:\s*([\'"])?\s*$',
+                    '"confidence": 0.6',
+                    raw_text,
+                    flags=re.MULTILINE,
+                )
+                
+                # 2) 截取第一个 { 到最后一个 }，避免前后有额外垃圾
+                start = fixed.find("{")
+                end = fixed.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    fixed = fixed[start : end + 1]
+
+                self.logger.debug("Heuristically fixed JSON text: %r", fixed)
+
+                deduction_json = json.loads(fixed)
+                self.logger.info("Heuristic JSON fix succeeded, using LLM result.")
+                return self._validate_and_structure_deduction(deduction_json)
+                
+            except Exception as fix_exc:
+                self.logger.error("Heuristic JSON fix failed: %s", fix_exc)
+                self.logger.error("Falling back to structured deduction...")
+                return self._fallback_deduction(news_summary, ontological_context)
+         
+        except Exception as exc:  # noqa: BLE001
+            # 任何 LLM / 网络 / 其它异常，也走 fallback
             self.logger.error("Deduction Soul failed unexpectedly: %s", exc)
+            self.logger.error("Raw response when failed: %r", response if 'response' in locals() else None)
             return self._fallback_deduction(news_summary, ontological_context)
+
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -291,7 +359,7 @@ Now output the JSON:
             entities_involved=list(entities),
             confidence=0.8,
         )
-    print("==== Fallback deduction 已经被调用 ====")
+   
     def _fallback_deduction(
         self, news_summary: str, ontological_context: str
     ) -> DeductionResult:

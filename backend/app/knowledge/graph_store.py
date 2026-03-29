@@ -42,7 +42,7 @@ class _KuzuStore:
     def __init__(self, db_path: str) -> None:
         import kuzu  # type: ignore
 
-        os.makedirs(db_path, exist_ok=True)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._db = kuzu.Database(db_path)
         self._conn = kuzu.Connection(self._db)
         self._init_schema()

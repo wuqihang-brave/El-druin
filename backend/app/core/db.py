@@ -54,7 +54,7 @@ def _init_graph_store_db(db_path: str) -> None:
     try:
         import kuzu  # type: ignore
 
-        os.makedirs(db_path, exist_ok=True)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
 
@@ -155,6 +155,6 @@ def get_db_connection(db_path: Optional[str] = None) -> Any:
         except Exception:
             db_path = os.getenv("KUZU_DB_PATH", "./data/kuzu_db")
 
-    os.makedirs(db_path, exist_ok=True)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     db = kuzu.Database(db_path)
     return kuzu.Connection(db)
