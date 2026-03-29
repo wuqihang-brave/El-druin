@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-
+import time
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -255,49 +255,75 @@ def analyze_with_ontological_grounding(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+
+
+
 # ═══════════════════════════════════════════════════════════════════
-# Endpoint 3: Deduction Soul (Strict logical inference)
+# Endpoint 3: Deduction Soul (Ontology-Grounded)
 # ═══════════════════════════════════════════════════════════════════
+
 @router.post("/grounded/deduce")
 def analyze_with_deduction_soul(
     request: OntologyGroundedAnalysisRequest,
 ) -> Dict[str, Any]:
-    """【推演灵魂激活】Analyze news with strict ontological deduction."""
+    """
+    严格依赖本体路径推理��并在 seed_entities 为空时自动调抽取器兜底
+    """
     try:
         _ensure_intelligence_importable()
         kuzu_conn = _get_kuzu_connection()
         llm_service = _get_llm_service()
 
-        # 1. 显式提取本体上下文
+        # ===== Step 1: 兜底保证 seed_entities 非空 =====
+        effective_entities = request.seed_entities
+
+        if not effective_entities or len(effective_entities) == 0:
+            logger.warning("⚠️ seed_entities 为空，自动调用实体抽取兜底")
+            try:
+                from intelligence.entity_extraction import EntityExtractionEngine
+                extractor = EntityExtractionEngine(llm_service)
+                req_id = f"deduce_{int(time.time() * 1000)}"
+                extracted = extractor.extract(request.news_fragment, req_id)
+                temp_seed = []
+                if isinstance(extracted, list):
+                    for ent in extracted:
+                        if hasattr(ent, "name"):
+                            temp_seed.append(ent.name)
+                        elif isinstance(ent, dict) and "name" in ent:
+                            temp_seed.append(ent["name"])
+                else:
+                    logger.error(f"抽取器返回值不是 list，而是: {type(extracted)}，内容: {repr(extracted)}")
+                effective_entities = [x for x in temp_seed if x]
+                logger.info(f"✅ 实体兜底生效, 得到实体: {effective_entities}")
+            except Exception as exc:
+                logger.exception(f"自动实体抽取失败，无法兜底: {exc}")
+
+        # ===== Step 2: 获取本体路径 =====
         from ontology.kuzu_context_extractor import get_ontological_context
-        
         extracted_graph_context = []
-        for entity in request.seed_entities:
+        for entity in effective_entities:
             ctx = get_ontological_context(kuzu_conn, entity)
             if ctx:
                 extracted_graph_context.append(ctx)
 
-        # 2. 调用分析器
+        # ===== Step 3: 用原有流转，走 grounded_analyzer 分析器 =====
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,
             kuzu_conn=kuzu_conn,
         )
-
-        # 注入图谱事实作为上下文
         raw_result = analyzer.analyze_with_ontological_grounding(
             news_fragment=request.news_fragment,
-            seed_entities=request.seed_entities,
+            seed_entities=effective_entities,
             claim=f"【本体关系证据】：{str(extracted_graph_context)}\n\n推演问题：{request.claim}",
         )
 
         deduction_result = raw_result.get("deduction_result", {})
 
-        # 3. 统一结构化返回
         return {
             "status": "success",
             "ontological_grounding": {
-                "seed_entities": request.seed_entities,
+                "seed_entities": effective_entities,
                 "graph_evidence": extracted_graph_context,
                 "total_paths_extracted": len(extracted_graph_context),
             },

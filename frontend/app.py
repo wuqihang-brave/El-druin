@@ -19,7 +19,8 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
+from dotenv import load_dotenv
+load_dotenv()
 import requests
 import streamlit as st
 
