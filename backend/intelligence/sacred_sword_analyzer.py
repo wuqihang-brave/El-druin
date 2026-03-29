@@ -75,7 +75,21 @@ class SacredSwordAnalyzer:
 
     def __init__(self, settings: Any = None) -> None:
         self._settings = settings
-
+        self._client_type = None
+        self._client = None
+        if self._settings is not None:
+          self._client_type = getattr(self._settings, "llm_provider", None)
+        if self._client_type == "groq":
+            import groq
+            self._client = groq.Groq(
+                api_key=self._settings.groq_api_key,
+                # ...其他client参数
+            )
+        elif self._client_type == "openai":
+            import openai
+            self._client = openai.OpenAI(
+                api_key=self._settings.openai_api_key,
+            )
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
@@ -274,44 +288,49 @@ class SacredSwordAnalyzer:
         """
         return self._llm_call(prompt, temperature=temperature)
 
-    def _llm_call(self, prompt: str, temperature: float = 0.3) -> Optional[str]:
-        """Call the configured LLM provider; return None on failure."""
-        if self._settings is None or not getattr(self._settings, "llm_enabled", False):
+    def _llm_call(
+        self, 
+        prompt: str, 
+        temperature: float = 0.2, 
+        max_tokens: int = 1500,  # 确保接收这个参数
+        response_format: str = "json"
+    ) -> Optional[str]:
+        """Unified LLM call dispatcher."""
+        if self._client_type == "groq":
+                # 只在这里返回，并确保带上 max_tokens
+                return self._call_groq(prompt, temperature, max_tokens)
+            
+        if self._client_type == "openai":
+                # 如果有 OpenAI，也记得传下去
+                return self._call_openai(prompt, temperature, max_tokens)
+                
+            # 如果都不匹配，返回 None 或空
+        return None
+        
+    # 修改 _call_groq 定义
+    def _call_groq(self, prompt: str, temperature: float, max_tokens: int) -> Optional[str]:
+        """Direct call to Groq API with reinforced constraints."""
+        if not self._client:
             return None
         try:
-            if self._settings.llm_provider == "openai":
-                return self._call_openai(prompt, temperature)
-            if self._settings.llm_provider == "groq":
-                return self._call_groq(prompt, temperature)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Sacred Sword LLM call failed: %s", exc)
-        return None
+            model_name = getattr(self._settings, "llm_model", "llama-3.1-8b-instant")
+            chat_completion = self._client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,  # ✅ 这里的 max_tokens 现在是动态的 1500 了
+                # 👇 强制 Groq 输出合法的 JSON 对象，不乱说话
+                response_format={"type": "json_object"} 
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as exc:
+            logger.error(f"Groq API call failed: {exc}")
+            return None# ...
+        
 
-    def _call_openai(self, prompt: str, temperature: float) -> str:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage
+    
 
-        llm = ChatOpenAI(
-            model=self._settings.llm_model,
-            temperature=temperature,
-            api_key=self._settings.openai_api_key,
-            max_tokens=200,
-        )
-        response = llm.invoke([HumanMessage(content=prompt)])
-        return str(response.content).strip()
-
-    def _call_groq(self, prompt: str, temperature: float) -> str:
-        from langchain_groq import ChatGroq
-        from langchain_core.messages import HumanMessage
-
-        llm = ChatGroq(
-            model=self._settings.llm_model,
-            temperature=temperature,
-            api_key=self._settings.groq_api_key,
-            max_tokens=200,
-        )
-        response = llm.invoke([HumanMessage(content=prompt)])
-        return str(response.content).strip()
+ 
 
     def _llm_refine_facts(
         self,

@@ -121,7 +121,6 @@ def _get_llm_service() -> Any:
             raise RuntimeError("LLM not enabled")
         
         from intelligence.sacred_sword_analyzer import SacredSwordAnalyzer
-        
         class _LLMAdapter:
             def __init__(self, cfg: Any) -> None:
                 self._analyzer = SacredSwordAnalyzer(settings=cfg)
@@ -132,18 +131,28 @@ def _get_llm_service() -> Any:
                 system: str = "",
                 temperature: float = 0.2,
                 max_tokens: int = 1500,
-                response_format: str = "json",
                 **kwargs: Any
             ) -> str:
-                result = self._analyzer._llm_call(prompt, temperature=temperature)
+                # 这一行缩进 1 个 Tab (或 4 个空格)
+                full_prompt = f"System: {system}\n\nUser Request: {prompt}"
+                
+                # 这一行必须和上面的 full_prompt 对齐！
+                result = self._analyzer._llm_call(
+                    prompt=full_prompt, 
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                
+                # 这一行也必须对齐！
                 return result or "{}"
-        
         return _LLMAdapter(settings)
     except Exception:
         class _StubLLM:
             def call(self, **kwargs: Any) -> str:
                 return "{}"
         return _StubLLM()
+
+
 
 
 # ═══════════════════════════════════════════════════════════════════
