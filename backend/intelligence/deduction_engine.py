@@ -25,7 +25,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-
+from ontology.relation_schema import enrich_mechanism_labels_with_patterns, build_pattern_context_for_prompt
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -419,6 +419,8 @@ class DeductionEngine:
             news_text=news_summary,
             seed_entities=seed_entities,
         )
+        mechanisms = enrich_mechanism_labels_with_patterns(mechanisms)
+        pattern_context = build_pattern_context_for_prompt(mechanisms)
         self.logger.info(
             "Extracted %d mechanism labels: %s",
             len(mechanisms),
@@ -436,6 +438,7 @@ class DeductionEngine:
             ontological_context=ontological_context,
             mechanism_context=mechanism_context,
             pre_driving_factor=pre_driving_factor,
+            pattern_context=pattern_context, 
         )
         self.logger.info("Activating Deduction Soul v2...")
         self.logger.info("Analyzing event: %s...", news_summary[:100])
@@ -517,6 +520,7 @@ class DeductionEngine:
         ontological_context: str,
         mechanism_context: str,
         pre_driving_factor: str,
+        pattern_context: str, 
     ) -> str:
         return f"""\
 你正在执行本体论因果推演任务。

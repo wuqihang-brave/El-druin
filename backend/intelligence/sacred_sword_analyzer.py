@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
-
+from ontology.relation_schema import enrich_mechanism_labels_with_patterns, build_pattern_context_for_prompt
 from intelligence.deduction_engine import (  # type: ignore[import]
     DrivingFactorAggregator,
     MechanismLabel,
@@ -250,7 +250,19 @@ class SacredSwordAnalyzer:
                     name = str(item)
                 if name:
                     seed_entities.append(name)
+        # === 1. 先提取 MechanismLabel 列表 ===
+        mechanisms = extract_mechanism_labels(
+            graph_context=combined_context,
+            news_text=news_joined,
+            seed_entities=seed_entities or None,
+        )
 
+        # ==== 2. enrich patterns，把本体/先验信息注入 ===
+        from ontology.relation_schema import enrich_mechanism_labels_with_patterns
+        mechanisms = enrich_mechanism_labels_with_patterns(mechanisms)
+
+        # === 3. 返回 enrich 后的新 mechanism_labels ===
+        return mechanisms
         return extract_mechanism_labels(
             graph_context=combined_context,
             news_text=news_joined,
