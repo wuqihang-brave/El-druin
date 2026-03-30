@@ -103,7 +103,8 @@ class EntityExtractionEngine:
         news_text: str,
         request_id: str,
     ) -> List[OntologicalEntity]:
-        """Extract entities with three-layer labelling.
+        """
+        Extract entities with three-layer labelling.
 
         Args:
             news_text:  Raw news article text.
@@ -122,19 +123,29 @@ class EntityExtractionEngine:
         )
 
         raw_entities = self._parse_response(response)
-
         entities: List[OntologicalEntity] = []
+
+        def handle_raw_entity(raw_item):
+            # 只处理dict类型（实体），如是list递归展开
+            if isinstance(raw_item, dict):
+                entity = self._create_ontological_entity(
+                    raw=raw_item,
+                    request_id=request_id,
+                    source_text=news_text,
+                )
+                if entity:
+                    entities.append(entity)
+            elif isinstance(raw_item, list):
+                for sub in raw_item:
+                    handle_raw_entity(sub)
+            else:
+                # 其他类型（不明字符串、None等）忽略，可加debug日志
+                logger.warning("EntityExtractionEngine: Skipping unknown type: %r", raw_item)
+
         for raw in raw_entities:
-            entity = self._create_ontological_entity(
-                raw=raw,
-                request_id=request_id,
-                source_text=news_text,
-            )
-            if entity:
-                entities.append(entity)
+            handle_raw_entity(raw)
 
         return entities
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
