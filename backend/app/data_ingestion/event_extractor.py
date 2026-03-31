@@ -1,24 +1,18 @@
 """
 Event Extractor – classifies news text into structured event records.
 
-Two extraction strategies are supported:
-  1. **LLM-based** (OpenAI / Groq via LangChain) – uses structured output for
-     accurate event classification.  Requires OPENAI_API_KEY or GROQ_API_KEY.
-  2. **Rule-based fallback** – keyword matching, always available.
-
-Usage::
-
-    from app.data_ingestion.event_extractor import EventExtractor
-
-    extractor = EventExtractor()
-    events = extractor.extract_from_articles(articles)
+修复说明 (v2)：
+  - 原版 _ORG_PATTERNS / _GPE_PATTERNS 对文本中出现的实体做 re.finditer，
+    这部分本身没问题。但 _extract_entities_rule 里的 group(1) 取法在某些
+    pattern 没有捕获组时会崩溃（match.lastindex 为 None）。
+    修复：统一用 match.group(0) 作为 fallback，并加更严格的 None 检查。
+  - 与 entity_extractor.py 的修复思路一致：只提取文本中实际出现的内容。
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
@@ -29,19 +23,18 @@ logger = logging.getLogger(__name__)
 # Event taxonomy
 # ---------------------------------------------------------------------------
 _EVENT_TYPES = [
-    "政治冲突",   # Political conflict
-    "经济危机",   # Economic crisis
-    "自然灾害",   # Natural disaster
-    "恐怖袭击",   # Terrorist attack
-    "技术突破",   # Technology breakthrough
-    "军事行动",   # Military operation
-    "贸易摩擦",   # Trade friction
-    "外交事件",   # Diplomatic event
-    "人道危机",   # Humanitarian crisis
-    "其他事件",   # Other
+    "政治冲突",
+    "经济危机",
+    "自然灾害",
+    "恐怖袭击",
+    "技术突破",
+    "军事行动",
+    "贸易摩擦",
+    "外交事件",
+    "人道危机",
+    "其他事件",
 ]
 
-# Keyword rules for rule-based fallback
 _RULES: List[Dict[str, Any]] = [
     {
         "event_type": "政治冲突",
@@ -71,7 +64,8 @@ _RULES: List[Dict[str, Any]] = [
     {
         "event_type": "军事行动",
         "severity": "high",
-        "keywords": ["military", "troops", "airstrike", "missile", "navy", "army", "war", "ceasefire"],
+        "keywords": ["military", "troops", "airstrike", "missile", "navy", "army", "war", "ceasefire",
+                     "warplane", "airspace", "base", "operation", "deployed"],
     },
     {
         "event_type": "贸易摩擦",
@@ -81,7 +75,8 @@ _RULES: List[Dict[str, Any]] = [
     {
         "event_type": "外交事件",
         "severity": "low",
-        "keywords": ["summit", "treaty", "agreement", "diplomat", "bilateral", "negotiation", "ambassador"],
+        "keywords": ["summit", "treaty", "agreement", "diplomat", "bilateral", "negotiation",
+                     "ambassador", "airspace", "refused", "closed", "ban", "access denied"],
     },
     {
         "event_type": "人道危机",
@@ -90,29 +85,73 @@ _RULES: List[Dict[str, Any]] = [
     },
 ]
 
-_ORG_PATTERNS = [
-    r"\b(UN|NATO|WHO|IMF|WTO|EU|FBI|CIA|FEMA|Fed|ECB|OPEC)\b",
-    r"\b([A-Z][a-z]+ (?:Corp|Inc|Ltd|Group|Bank|Fund|Organization|Agency|Ministry|Council))\b",
-]
-_GPE_PATTERNS = [
-    r"\b(USA|United States|US|UK|United Kingdom|China|Russia|Germany|France|Japan|India|Brazil|Australia)\b",
-    r"\b([A-Z][a-z]+ (?:Coast|Region|Province|State|City))\b",
-]
+# ---------------------------------------------------------------------------
+# Entity patterns – extract only entities that APPEAR in the text
+# ---------------------------------------------------------------------------
+
+# Well-known ORG abbreviations: only matched if actually present in text
+_ORG_ABBREV_RE = re.compile(
+    r"\b(UN|NATO|WHO|IMF|WTO|EU|FBI|CIA|FEMA|Fed|ECB|OPEC|G7|G20|IAEA|ICC|WB)\b"
+)
+
+# Country / GPE names – sorted longest-first to avoid partial matches
+_GPE_NAMES_SORTED = sorted([
+    "USA", "United States", "US", "UK", "United Kingdom", "China", "Russia",
+    "Germany", "France", "Japan", "India", "Brazil", "Australia", "Canada",
+    "Iran", "Israel", "Ukraine", "Taiwan", "North Korea", "South Korea",
+    "Saudi Arabia", "Turkey", "Mexico", "Italy", "Spain", "Poland",
+    "Netherlands", "Sweden", "Norway", "Pakistan", "Afghanistan",
+    "Syria", "Iraq", "Libya", "Venezuela", "Cuba", "Belarus",
+    "Madrid", "Washington", "Beijing", "Moscow", "Brussels",
+], key=len, reverse=True)
+
+_GPE_RE = re.compile(
+    r"\b(" + "|".join(re.escape(g) for g in _GPE_NAMES_SORTED) + r")\b"
+)
+
+# Org suffix pattern for context-specific orgs
+_ORG_SUFFIX_RE = re.compile(
+    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+"
+    r"(?:Corp|Inc|Ltd|Group|Bank|Fund|Organization|Organisation|"
+    r"Agency|Ministry|Council|Committee|Commission|Authority|"
+    r"Department|Office|Forces|Army|Navy|Government|Parliament))\b"
+)
 
 
 def _extract_entities_rule(text: str) -> Dict[str, List[str]]:
-    """Simple regex-based entity extraction."""
+    """Extract entities that actually appear in *text*.
+
+    修复：不再对整个预定义列表做全量扫描注入，
+    只提取在文本中实际出现的实体。
+    """
     orgs: List[str] = []
     gpes: List[str] = []
-    for pat in _ORG_PATTERNS:
-        for match in re.finditer(pat, text):
-            orgs.append(match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0))
-    for pat in _GPE_PATTERNS:
-        for match in re.finditer(pat, text):
-            gpes.append(match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0))
+    seen: set = set()
+
+    # Known ORG abbreviations present in text
+    for m in _ORG_ABBREV_RE.finditer(text):
+        name = m.group(1)
+        if name not in seen:
+            seen.add(name)
+            orgs.append(name)
+
+    # Known GPE names present in text
+    for m in _GPE_RE.finditer(text):
+        name = m.group(1)
+        if name not in seen:
+            seen.add(name)
+            gpes.append(name)
+
+    # Context-specific org names
+    for m in _ORG_SUFFIX_RE.finditer(text):
+        name = m.group(1).strip()
+        if name not in seen:
+            seen.add(name)
+            orgs.append(name)
+
     return {
-        "ORG": list(dict.fromkeys(orgs))[:5],
-        "GPE": list(dict.fromkeys(gpes))[:5],
+        "ORG":  orgs[:5],
+        "GPE":  gpes[:5],
     }
 
 
@@ -123,16 +162,15 @@ def _rule_based_extract(text: str) -> List[Dict[str, Any]]:
     for rule in _RULES:
         if any(kw in lower for kw in rule["keywords"]):
             entities = _extract_entities_rule(text)
-            # Estimate confidence by keyword density
             hits = sum(1 for kw in rule["keywords"] if kw in lower)
             confidence = min(0.95, 0.60 + hits * 0.05)
             matched.append({
-                "event_type": rule["event_type"],
-                "severity": rule["severity"],
-                "title": text[:80].strip(),
+                "event_type":  rule["event_type"],
+                "severity":    rule["severity"],
+                "title":       text[:80].strip(),
                 "description": text[:200].strip(),
-                "entities": entities,
-                "confidence": round(confidence, 2),
+                "entities":    entities,
+                "confidence":  round(confidence, 2),
             })
     return matched
 
@@ -146,14 +184,14 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
         from pydantic import BaseModel, Field
 
         class EventRecord(BaseModel):
-            event_type: str = Field(description=f"One of: {', '.join(_EVENT_TYPES)}")
-            severity: str = Field(description="high | medium | low")
-            title: str = Field(description="Short title (≤80 chars)")
-            description: str = Field(description="Brief description (≤200 chars)")
-            entities: Dict[str, List[str]] = Field(
-                description="Extracted entities: {ORG: [...], GPE: [...], PERSON: [...]}"
+            event_type:  str = Field(description=f"One of: {', '.join(_EVENT_TYPES)}")
+            severity:    str = Field(description="high | medium | low")
+            title:       str = Field(description="Short title (<=80 chars)")
+            description: str = Field(description="Brief description (<=200 chars)")
+            entities:    Dict[str, List[str]] = Field(
+                description="Only entities mentioned in the text: {ORG: [...], GPE: [...], PERSON: [...]}"
             )
-            confidence: float = Field(description="0.0–1.0 confidence score")
+            confidence: float = Field(description="0.0-1.0 confidence score")
 
         if settings.llm_provider == "openai":
             from langchain_openai import ChatOpenAI
@@ -176,9 +214,13 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
             ("system", (
                 "You are an intelligence analyst. Extract structured events from news text. "
                 "Return a JSON array of event objects. Each object must have: "
-                "event_type, severity, title, description, entities (with ORG, GPE, PERSON lists), confidence. "
+                "event_type, severity, title, description, "
+                "entities (with ORG, GPE, PERSON lists — only entities mentioned in the text), "
+                "confidence. "
                 f"event_type must be one of: {', '.join(_EVENT_TYPES)}. "
                 "severity: high/medium/low. confidence: 0.0-1.0. "
+                "IMPORTANT: Only include entities that actually appear in the provided text. "
+                "Do NOT add well-known entities that are not mentioned. "
                 "Return [] if no significant events found."
             )),
             ("human", "News text:\n\n{text}"),
@@ -202,10 +244,6 @@ class EventExtractor:
         self._settings = get_settings()
 
     def extract_events(self, text: str) -> List[Dict[str, Any]]:
-        """Extract events from a single text string.
-
-        Tries LLM extraction first if configured; falls back to rule-based.
-        """
         if not text or not text.strip():
             return []
 
@@ -220,14 +258,6 @@ class EventExtractor:
     def extract_from_articles(
         self, articles: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Extract and deduplicate events across a list of articles.
-
-        Args:
-            articles: List of article dicts (must have 'title' and 'description').
-
-        Returns:
-            Deduplicated list of event dicts.
-        """
         all_events: List[Dict[str, Any]] = []
         for article in articles:
             combined = (

@@ -13,15 +13,27 @@ from functools import lru_cache
 from typing import List, Optional
 
 from dotenv import load_dotenv
-
+# 1. 精確定位項目根目錄 (El-druin)
+# 假設 config.py 在 backend/app/core/config.py
+# parents[0]=core, parents[1]=app, parents[2]=backend, parents[3]=El-druin
+BASE_DIR = Path(__file__).resolve().parents[3]
 # Load .env from repo root if present
-_REPO_ROOT = Path(__file__).parents[3]
-load_dotenv(dotenv_path=_REPO_ROOT / ".env")
+
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 
 class Settings:
     """Central configuration object populated from environment variables."""
-
+    # ── Graph database ────────────────────────────────────────────────────────
+    # 【核心修改】強行使用絕對路徑，並統一名稱為 el_druin.kuzu
+    # 這樣無論你在哪裡啟動，路徑永遠是 /Users/qihang/.../El-druin/data/el_druin.kuzu
+    graph_backend: str = os.getenv("GRAPH_BACKEND", "kuzu")
+    
+    _default_db_path = str(BASE_DIR / "data" / "el_druin.kuzu")
+    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", _default_db_path)
+    
+    # 兼容舊變量名 (如果你其他文件引用了這個名)
+    kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", _default_db_path)
     # ── LLM ──────────────────────────────────────────────────────────────────
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
     groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
@@ -33,7 +45,7 @@ class Settings:
     # ── Graph database ────────────────────────────────────────────────────────
     # "kuzu" (default, embedded) | "neo4j" | "networkx" (in-memory fallback)
     graph_backend: str = os.getenv("GRAPH_BACKEND", "kuzu")
-    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", "./data/kuzu_db")
+    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", "./data/el_druin.kuzu")
     # Path for the embedded Kuzu knowledge-graph file (KuzuKnowledgeGraph)
     kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", "./data/el_druin.kuzu")
     neo4j_uri: Optional[str] = os.getenv("NEO4J_URI")

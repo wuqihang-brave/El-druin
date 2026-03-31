@@ -72,30 +72,31 @@ def _get_analyzer():
 
 
 def _get_kuzu_connection() -> Any:
-    """Return a KuzuDB connection to the main application database.
+    """Return a KuzuDB connection aligned with kuzu_graph.DEFAULT_DB_PATH.
 
-    Reads the database path from the ``KUZU_DB_PATH`` environment variable so
-    the service works in cloud deployments (e.g. Streamlit Cloud / Railway)
-    where ``./data/kuzu_db`` does not exist.  Falls back to the settings value
-    and then to the hard-coded default.  Returns ``None`` – instead of raising –
-    when the path does not exist or the connection fails, so callers can degrade
-    gracefully.
-
-    Priority: KUZU_DB_PATH env var > settings.kuzu_db_path > ``./data/kuzu_db``
+    修复：统一使用 kuzu_graph.DEFAULT_DB_PATH，避免写入和读取在不同文件上进行。
+    Priority: KUZU_DB_PATH env > kuzu_graph.DEFAULT_DB_PATH > settings > fallback
     """
     _ensure_intelligence_importable()
-    # Priority: env var > settings > hard-coded default
-    kuzu_db_path_env = os.getenv("KUZU_DB_PATH")
-    if kuzu_db_path_env:
-        db_path = kuzu_db_path_env
-    else:
-        db_path = "./data/kuzu_db"
+
+    db_path = os.getenv("KUZU_DB_PATH")
+
+    if not db_path:
+        try:
+            from app.knowledge.kuzu_graph import DEFAULT_DB_PATH as _KG_PATH  # type: ignore
+            db_path = _KG_PATH
+        except ImportError:
+            pass
+
+    if not db_path:
         try:
             from app.core.config import get_settings
-            settings = get_settings()
-            db_path = getattr(settings, "kuzu_db_path", None) or db_path
+            db_path = getattr(get_settings(), "kuzu_db_path", None)
         except (ImportError, AttributeError) as exc:
-            logger.debug("Could not read kuzu_db_path from settings: %s", exc)
+            logger.debug("kuzu_db_path from settings: %s", exc)
+
+    if not db_path:
+        db_path = "./data/el_druin.kuzu"
 
     if not os.path.exists(db_path):
         logger.warning("KuzuDB path not found: %s – running without graph context", db_path)
@@ -103,12 +104,134 @@ def _get_kuzu_connection() -> Any:
 
     try:
         import kuzu
-        logger.debug("Opening KuzuDB at path: %s", db_path)
+        logger.debug("Opening KuzuDB at: %s", db_path)
         db = kuzu.Database(db_path)
         return kuzu.Connection(db)
     except Exception as exc:
-        logger.warning("Failed to connect to KuzuDB (path=%s): %s", db_path, exc)
+        logger.warning("KuzuDB connect failed (path=%s): %s", db_path, exc)
         return None
+
+
+def _cot_deduction_from_text(
+    news_fragment: str,
+    seed_entities: List[str],
+    llm_service: Any,
+) -> Dict[str, Any]:
+    """
+    Chain-of-Thought 兜底推演（当图谱路径为 0 时调用）。
+
+    参考 om_database_matching.py 的推理模板思路：
+    - 先让 LLM 识别事件领域（类比 OM 的 ontology alignment check）
+    - 再基于领域框架做结构化推演
+    - 显式标注 "无图谱路径，CoT 推演" 以区分置信度
+
+    不同于盲目猜测：CoT 要求 LLM 显式写出推演步骤，
+    每步都必须引用原文片段，不允许凭空发挥。
+    """
+    entities_str = ", ".join(seed_entities[:8]) if seed_entities else "（未指定）"
+
+    cot_prompt = f"""
+你是一名情报分析官，正在对以下新闻进行结构化推演分析。
+【注意】当前知识图谱中没有该事件的直接关系路径，
+你必须完全基于原文进行推演，每步推演都必须引用原文证据。
+
+【新闻原文】
+{news_fragment}
+
+【已识别实体】
+{entities_str}
+
+【Chain-of-Thought 推演步骤（必须按以下格式完成）】
+
+Step 1 - 领域识别：
+  这条新闻属于哪个领域？（体育/商业/地缘政治/经济/科技/社会/军事）
+  原文证据：引用原文关键词
+
+Step 2 - 核心矛盾/驱动因素：
+  事件的核心驱动力是什么？哪个实体在驱动变化？
+  原文证据：引用原文句子
+
+Step 3 - Alpha 路径（最可能演化）：
+  如果当前驱动因素继续，最可能发生什么？
+  4步因果链：[事实] --> [机制] --> [中间效应] --> [最终后果]
+  原文支撑：...
+
+Step 4 - Beta 路径（结构性断裂）：
+  如果 Alpha 路径的关键节点失效，会发生什么？
+  触发条件：...
+
+Step 5 - 数据缺口：
+  推演中最关键的不确定信息是什么？
+
+完成以上步骤后，返回严格 JSON：
+{{
+  "domain": "领域名称",
+  "driving_factor": "核心驱动力（引用原文实体）",
+  "scenario_alpha": {{
+    "name": "路径名称",
+    "probability": 0.4-0.65,
+    "causal_chain": "A --> [机制] --> B --> C",
+    "description": "一句话描述"
+  }},
+  "scenario_beta": {{
+    "name": "路径名称",
+    "probability": 0.1-0.35,
+    "causal_chain": "A --> [机制] --> B --> C",
+    "trigger_condition": "触发条件",
+    "description": "一句话描述"
+  }},
+  "confidence": 0.3-0.55,
+  "graph_evidence": "无图谱路径，CoT 基于原文推演",
+  "verification_gap": "最关键的数据缺口"
+}}
+
+只输出 JSON，不加任何说明。
+"""
+    try:
+        response = llm_service.call(
+            prompt=cot_prompt,
+            system=(
+                "你是严谨的情报分析官。严格按照 Chain-of-Thought 步骤推演，"
+                "每步必须引用原文证据。无图谱路径时 confidence 不得超过 0.55。"
+            ),
+            temperature=0.2,
+            max_tokens=1500,
+            response_format="json",
+        )
+        import re, json as _json
+        if isinstance(response, dict):
+            return response
+        text = str(response).strip()
+        # 提取 JSON
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            text = text[start: end + 1]
+        result = _json.loads(text)
+        # 强制限制置信度（CoT 无图谱路径）
+        result["confidence"] = min(float(result.get("confidence", 0.45)), 0.55)
+        result["graph_evidence"] = "无图谱路径，CoT 基于原文推演"
+        return result
+    except Exception as exc:
+        logger.error("CoT deduction failed: %s", exc)
+        return {
+            "driving_factor": f"基于原文推演：{news_fragment[:80]}",
+            "scenario_alpha": {
+                "name": "现状延续路径",
+                "probability": 0.55,
+                "causal_chain": f"{news_fragment[:60]} --> [事件演化] --> 相关实体调整 --> 格局渐变",
+                "description": "CoT 兜底推演",
+            },
+            "scenario_beta": {
+                "name": "结构性断裂路径",
+                "probability": 0.25,
+                "causal_chain": f"{news_fragment[:60]} --> [关键节点失效] --> 极端博弈 --> 格局重组",
+                "trigger_condition": "关键依赖节点被外部冲击打断",
+                "description": "CoT 兜底推演（黑天鹅）",
+            },
+            "confidence": 0.35,
+            "graph_evidence": "无图谱路径，CoT 兜底",
+            "verification_gap": "需要更多原文细节和图谱路径支撑",
+        }
 
 
 def _get_llm_service() -> Any:
@@ -306,7 +429,43 @@ def analyze_with_deduction_soul(
             if ctx:
                 extracted_graph_context.append(ctx)
 
-        # ===== Step 3: 用原有流转，走 grounded_analyzer 分析器 =====
+        # ===== Step 2b: 检查路径质量 =====
+        # 判断是否所有实体都返回了 0 路径（"0 1-hop + 0 2-hop" 是空图谱的标志）
+        non_empty_contexts = [
+            c for c in extracted_graph_context
+            if "0 1-hop + 0 2-hop" not in c
+        ]
+        has_real_graph_evidence = len(non_empty_contexts) > 0
+
+        logger.info(
+            "Graph context: %d total, %d non-empty",
+            len(extracted_graph_context), len(non_empty_contexts),
+        )
+
+        # ===== Step 3: 路径为 0 时走 CoT 兜底，不进入 grounded_analyzer =====
+        if not has_real_graph_evidence:
+            logger.warning(
+                "⚠️ 所有实体图谱路径均为 0，启动 CoT 兜底推演"
+                "（参考 om_database_matching.py 推理模板）"
+            )
+            deduction_result = _cot_deduction_from_text(
+                news_fragment=request.news_fragment,
+                seed_entities=effective_entities,
+                llm_service=llm_service,
+            )
+            return {
+                "status": "success_cot_fallback",
+                "ontological_grounding": {
+                    "seed_entities":          effective_entities,
+                    "graph_evidence":         extracted_graph_context,
+                    "total_paths_extracted":  0,
+                    "note": "图谱路径为 0，使用 CoT 兜底推演（置信度已限制至 ≤0.55）",
+                },
+                "deduction_result": deduction_result,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # ===== Step 4: 有图谱路径时走 grounded_analyzer =====
         from intelligence.grounded_analyzer import OntologyGroundedAnalyzer
         analyzer = OntologyGroundedAnalyzer(
             llm_service=llm_service,

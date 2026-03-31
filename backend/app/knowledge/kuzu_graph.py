@@ -64,13 +64,17 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core.config import Settings
+
+_settings = Settings()
+DEFAULT_DB_PATH = _settings.kuzu_db_path  # 這裡不要再寫死 "./data/..." 了
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_DB_PATH: str = "./data/el_druin.kuzu"
+
 
 #: Typed node tables recognised by the schema.
 TYPED_NODE_TABLES: Tuple[str, ...] = ("Person", "Organization", "Location", "Event")

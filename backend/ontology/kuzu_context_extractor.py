@@ -141,6 +141,16 @@ class KuzuContextExtractor:
     # Private helpers
     # ------------------------------------------------------------------
 
+    # All relation tables defined in kuzu_graph.py / graph_store.py
+    _ENTITY_REL_TABLES = (
+        "RELATED_TO",
+        "LOCATED_IN",
+        "PARTICIPATES_IN",
+        "WORKS_FOR",
+        "MEMBER_OF",
+        "CONTRADICTS",
+    )
+
     def _get_one_hop_paths(
         self,
         seed_entity: str,
@@ -149,54 +159,60 @@ class KuzuContextExtractor:
     ) -> List[RelationshipPath]:
         """Get direct relationships from seed entity.
 
-        修复要点：
-        - WHERE 子句独立放在完整 MATCH 模式后，不插入节点模式中间
-        - 不查询 b.role / b.virtue（字段不保证存在，避免 BinderException）
-        - COALESCE(r.strength, 1.0) 保证 strength 字段不存在时安全回退
-
-        Cypher::
-
-            MATCH (a)-[r]->(b)
-            WHERE a.name = 'X' [AND a.type = 'Y']
-            RETURN a.name, a.type, label(r), b.name, b.type, COALESCE(r.strength, 1.0)
+        修复要点（v3）：
+        - KuzuDB 不支持跨多张 REL TABLE 的无标签匹配 MATCH (a)-[r]->(b)
+          当各 REL TABLE schema 不同时（例如 RELATED_TO 有 relation_type 列，
+          LOCATED_IN 没有），KuzuDB 会抛出 BinderException。
+        - 解决方案：对每张 REL TABLE 单独发一条查询，再合并结果。
+        - 列名统一用 confidence（与 kuzu_graph.py / graph_store.py 对齐）。
+        - WHERE 子句独立放在完整 MATCH 模式后。
         """
         paths: List[RelationshipPath] = []
-        try:
-            where = f"a.name = '{self._escape_cypher(seed_entity)}'"
-            if entity_type:
-                where += f" AND a.type = '{self._escape_cypher(entity_type)}'"
+        esc = self._escape_cypher(seed_entity)
+        per_table = max(1, limit // len(self._ENTITY_REL_TABLES))
 
-            query = (
-                f"MATCH (a)-[r]->(b)"
-                f" WHERE {where}"
-                f" RETURN"
-                f"  a.name AS source_name,"
-                f"  a.type AS source_type,"
-                f"  label(r) AS relation_type,"
-                f"  b.name AS target_name,"
-                f"  b.type AS target_type,"
-                f"  COALESCE(r.strength, 1.0) AS rel_strength"
-                f" LIMIT {limit}"
-            )
+        for rel_table in self._ENTITY_REL_TABLES:
+            try:
+                where = f"a.name = '{esc}'"
+                if entity_type:
+                    where += f" AND a.type = '{self._escape_cypher(entity_type)}'"
 
-            result = self.conn.execute(query)
-            while result.has_next():
-                row = result.get_next()
-                paths.append(RelationshipPath(
-                    hop=1,
-                    source_entity=row[0] or seed_entity,
-                    source_type=row[1] or "UNKNOWN",
-                    relation_type=row[2] or "RELATED_TO",
-                    target_entity=row[3] or "",
-                    target_type=row[4] or "UNKNOWN",
-                    target_role=None,
-                    target_virtue=None,
-                    strength=float(row[5]) if row[5] is not None else 1.0,
-                ))
-            logger.debug("Found %d 1-hop paths for %s", len(paths), seed_entity)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Error fetching 1-hop paths: %s", exc)
-        return paths
+                if rel_table == "RELATED_TO":
+                    query = (
+                        f"MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity)"
+                        f" WHERE {where}"
+                        f" RETURN a.name, a.type, 'RELATED_TO',"
+                        f"  b.name, b.type, COALESCE(r.confidence, 0.8)"
+                        f" LIMIT {per_table}"
+                    )
+                else:
+                    query = (
+                        f"MATCH (a:Entity)-[r:{rel_table}]->(b:Entity)"
+                        f" WHERE {where}"
+                        f" RETURN a.name, a.type, '{rel_table}',"
+                        f"  b.name, b.type, COALESCE(r.confidence, 0.8)"
+                        f" LIMIT {per_table}"
+                    )
+
+                result = self.conn.execute(query)
+                while result.has_next():
+                    row = result.get_next()
+                    paths.append(RelationshipPath(
+                        hop=1,
+                        source_entity=row[0] or seed_entity,
+                        source_type=row[1] or "UNKNOWN",
+                        relation_type=row[2] or rel_table,
+                        target_entity=row[3] or "",
+                        target_type=row[4] or "UNKNOWN",
+                        target_role=None,
+                        target_virtue=None,
+                        strength=float(row[5]) if row[5] is not None else 0.8,
+                    ))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("1-hop[%s] for %s: %s", rel_table, seed_entity, exc)
+
+        logger.debug("Found %d 1-hop paths for %s", len(paths), seed_entity)
+        return paths[:limit]
 
     def _get_two_hop_paths(
         self,
@@ -206,62 +222,66 @@ class KuzuContextExtractor:
     ) -> List[RelationshipPath]:
         """Get secondary relationships (entity -> intermediate -> target).
 
-        修复要点：
-        - 同 _get_one_hop_paths，WHERE 子句独立放置
-        - COALESCE 保护 r1.strength 和 r2.strength
-
-        Cypher::
-
-            MATCH (a)-[r1]->(b)-[r2]->(c)
-            WHERE a.name = 'X' [AND a.type = 'Y']
-            RETURN a.name, a.type, label(r1), b.name, b.type,
-                   label(r2), c.name, c.type,
-                   COALESCE(r1.strength,1.0), COALESCE(r2.strength,1.0)
+        修复要点（v3）：
+        - 同 _get_one_hop_paths，不使用无标签 MATCH (a)-[r1]->(b)-[r2]->(c)
+        - 按 REL TABLE 逐一查询，避免跨表 schema 不一致导致 BinderException
+        - 使用 confidence 列名与 schema 对齐
         """
         paths: List[RelationshipPath] = []
-        try:
-            where = f"a.name = '{self._escape_cypher(seed_entity)}'"
-            if entity_type:
-                where += f" AND a.type = '{self._escape_cypher(entity_type)}'"
+        esc = self._escape_cypher(seed_entity)
 
-            query = (
-                f"MATCH (a)-[r1]->(b)-[r2]->(c)"
-                f" WHERE {where}"
-                f" RETURN"
-                f"  a.name AS source_name,"
-                f"  a.type AS source_type,"
-                f"  label(r1) AS first_relation,"
-                f"  b.name AS intermediate_name,"
-                f"  b.type AS intermediate_type,"
-                f"  label(r2) AS second_relation,"
-                f"  c.name AS target_name,"
-                f"  c.type AS target_type,"
-                f"  COALESCE(r1.strength, 1.0) AS rel1_strength,"
-                f"  COALESCE(r2.strength, 1.0) AS rel2_strength"
-                f" LIMIT {limit}"
-            )
+        # 2-hop queries: first hop from each rel table, second hop always RELATED_TO
+        two_hop_combos = [("RELATED_TO", "RELATED_TO")] + [
+            (t, "RELATED_TO") for t in self._ENTITY_REL_TABLES
+            if t not in ("RELATED_TO", "CONTRADICTS")
+        ]
 
-            result = self.conn.execute(query)
-            while result.has_next():
-                row = result.get_next()
-                r1s = float(row[8]) if row[8] is not None else 1.0
-                r2s = float(row[9]) if row[9] is not None else 1.0
-                paths.append(RelationshipPath(
-                    hop=2,
-                    source_entity=row[0] or seed_entity,
-                    source_type=row[1] or "UNKNOWN",
-                    relation_type=row[2] or "RELATED_TO",
-                    target_entity=row[3] or "",
-                    target_type=row[4] or "UNKNOWN",
-                    target_virtue=None,
-                    second_relation=row[5],
-                    third_entity=row[6],
-                    strength=min(r1s, r2s),
-                ))
-            logger.debug("Found %d 2-hop paths for %s", len(paths), seed_entity)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Error fetching 2-hop paths: %s", exc)
-        return paths
+        per_combo = max(1, limit // len(two_hop_combos))
+        for r1_lbl, r2_lbl in two_hop_combos:
+            try:
+                if r1_lbl == "RELATED_TO":
+                    query = (
+                        f"MATCH (a:Entity)-[r1:RELATED_TO]->(b:Entity)"
+                        f"-[r2:RELATED_TO]->(c:Entity)"
+                        f" WHERE a.name = '{esc}'"
+                        f" RETURN a.name, a.type, 'RELATED_TO', b.name, b.type,"
+                        f"  'RELATED_TO', c.name, c.type,"
+                        f"  COALESCE(r1.confidence, 0.8), COALESCE(r2.confidence, 0.8)"
+                        f" LIMIT {per_combo}"
+                    )
+                else:
+                    query = (
+                        f"MATCH (a:Entity)-[r1:{r1_lbl}]->(b:Entity)"
+                        f"-[r2:RELATED_TO]->(c:Entity)"
+                        f" WHERE a.name = '{esc}'"
+                        f" RETURN a.name, a.type, '{r1_lbl}', b.name, b.type,"
+                        f"  'RELATED_TO', c.name, c.type,"
+                        f"  COALESCE(r1.confidence, 0.8), COALESCE(r2.confidence, 0.8)"
+                        f" LIMIT {per_combo}"
+                    )
+
+                result = self.conn.execute(query)
+                while result.has_next():
+                    row = result.get_next()
+                    r1s = float(row[8]) if row[8] is not None else 0.8
+                    r2s = float(row[9]) if row[9] is not None else 0.8
+                    paths.append(RelationshipPath(
+                        hop=2,
+                        source_entity=row[0] or seed_entity,
+                        source_type=row[1] or "UNKNOWN",
+                        relation_type=row[2] or r1_lbl,
+                        target_entity=row[3] or "",
+                        target_type=row[4] or "UNKNOWN",
+                        target_virtue=None,
+                        second_relation=row[5] or r2_lbl,
+                        third_entity=row[6],
+                        strength=min(r1s, r2s),
+                    ))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("2-hop[%s→%s] for %s: %s", r1_lbl, r2_lbl, seed_entity, exc)
+
+        logger.debug("Found %d 2-hop paths for %s", len(paths), seed_entity)
+        return paths[:limit]
 
     @staticmethod
     def _escape_cypher(text: str) -> str:

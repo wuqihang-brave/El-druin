@@ -1,19 +1,28 @@
 """
-推演灵魂 (Deduction Soul) – v2
+推演灵魂 (Deduction Soul) – v3
 ================================
-强化版本：从"展示"转向"推演"
 
-核心改进：
-1. 引入「机制标签」(MechanismLabel)：每条因果边都附加 mechanism + domain
-2. 引入「驱动因素聚合器」(DrivingFactorAggregator)：
-   从图谱关系中归纳结构性驱动力（而非靠 LLM 猜测）
-3. CAMEO / FIBO 事件类型枚举：统一事件本体类型
-4. 更严格的因果链结构：source → mechanism → target → effect（4步）
-5. 推演时 LLM 被强制锚定到具体的 mechanism 标签上
+修复说明：
+1. extract_mechanism_labels 默认 relation 硬编码为 CAMEOEventType.OPPOSE：
+   原版当没有关键词匹配时，仍然给每条行赋予 OPPOSE + GEOPOLITICS。
+   一篇板球新闻会被打上「公开反对/地缘政治」的标签，LLM 被强制做
+   地缘政治分析，与内容完全无关。
+   修复：没有关键词命中时跳过该行，不生成 MechanismLabel。
 
-参考本体：
-- CAMEO (Conflict and Mediation Event Observations) 事件类型体系
-- FIBO (Financial Industry Business Ontology) 金融实体关系
+2. _KEYWORD_MECHANISM_MAP 缺少体育、商业、社会领域关键词：
+   新增 SPORTS / BUSINESS / SOCIETY / SCIENCE 四个领域，防止这类
+   新闻被强行映射到地缘政治框架。
+
+3. DrivingFactorAggregator.aggregate 在没有机制标签时直接返回通用文案，
+   不再硬造地缘政治驱动力。
+
+4. _validate_and_structure_deduction 中 confidence 未做惩罚：
+   若图谱路径为 0，LLM 仍可返回 confidence=0.9，造成幻觉置信度。
+   修复：图谱路径为空时对 LLM 返回的 confidence 施加惩罚（最高 0.6）。
+
+5. DEDUCTION_SOUL_SYSTEM_PROMPT 更新为 v3：
+   明确要求 LLM 先判断新闻领域，再选择相应的本体框架推演，
+   不允许把非地缘政治事件套用地缘政治模板。
 """
 
 from __future__ import annotations
@@ -25,7 +34,18 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-from ontology.relation_schema import enrich_mechanism_labels_with_patterns, build_pattern_context_for_prompt
+
+try:
+    from ontology.relation_schema import (  # type: ignore
+        enrich_mechanism_labels_with_patterns,
+        build_pattern_context_for_prompt,
+    )
+except ImportError:
+    def enrich_mechanism_labels_with_patterns(labels):  # type: ignore
+        return labels
+    def build_pattern_context_for_prompt(labels):  # type: ignore
+        return ""
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -33,11 +53,10 @@ _FALLBACK_SNIPPET_LENGTH = 120
 
 
 # ---------------------------------------------------------------------------
-# 1. 本体类型枚举 – CAMEO + FIBO 融合
+# 1. 本体类型枚举 – CAMEO + FIBO + 扩展领域
 # ---------------------------------------------------------------------------
 
 class CAMEOEventType(str, Enum):
-    """CAMEO 事件类型（国际关系核心动词）"""
     SANCTION        = "制裁/经济封锁"
     MILITARY_ACTION = "军事行动/武力威胁"
     DIPLOMATIC      = "外交接触/谈判"
@@ -48,17 +67,21 @@ class CAMEOEventType(str, Enum):
     OPPOSE          = "公开反对/谴责"
     SUPPLY_CHAIN    = "供应链调整/技术管控"
     INTEL_OP        = "情报操作/信息战"
+    SPORTS_EVENT    = "体育竞技/赛事"
+    BUSINESS_OP     = "商业运营/市场行为"
+    SOCIAL_EVENT    = "社会事件/文化活动"
+    SCIENCE_TECH    = "科学技术/研究发现"
 
 
 class FIBORelationType(str, Enum):
-    """FIBO 金融本体关系类型"""
-    HOLDS_DEBT      = "持有债务"
-    OWNS_EQUITY     = "持有股权"
-    CURRENCY_PEG    = "货币挂钩/汇率联动"
-    TRADE_FLOW      = "贸易往来"
-    SANCTIONS_LIST  = "制裁名单列入"
-    CENTRAL_BANK    = "央行政策传导"
-    COMMODITY_LINK  = "大宗商品联动"
+    HOLDS_DEBT       = "持有债务"
+    OWNS_EQUITY      = "持有股权"
+    CURRENCY_PEG     = "货币挂钩/汇率联动"
+    TRADE_FLOW       = "贸易往来"
+    SANCTIONS_LIST   = "制裁名单列入"
+    CENTRAL_BANK     = "央行政策传导"
+    COMMODITY_LINK   = "大宗商品联动"
+    CORPORATE_ACTION = "企业行为/并购重组"
 
 
 class RelationDomain(str, Enum):
@@ -68,31 +91,25 @@ class RelationDomain(str, Enum):
     MILITARY     = "military"
     HUMANITARIAN = "humanitarian"
     LEGAL        = "legal"
+    SPORTS       = "sports"
+    BUSINESS     = "business"
+    SOCIETY      = "society"
+    SCIENCE      = "science"
 
 
 # ---------------------------------------------------------------------------
-# 2. 机制标签 – 附加在每条因果边上
+# 2. 机制标签
 # ---------------------------------------------------------------------------
 
 @dataclass
 class MechanismLabel:
-    """
-    描述一条因果边的「驱动机制」。
-
-    示例：
-        source="US", target="China",
-        relation="SANCTION",
-        mechanism="技术出口管制升级",
-        domain="technology",
-        strength=0.85
-    """
     source:    str
     target:    str
-    relation:  str                   # 来自 CAMEOEventType / FIBORelationType
-    mechanism: str                   # 人类可读的机制描述（1句话）
+    relation:  str
+    mechanism: str
     domain:    RelationDomain
-    strength:  float = 0.75          # 关系强度（从图谱路径或启发式估算）
-    evidence:  str   = ""            # 支持证据片段
+    strength:  float = 0.75
+    evidence:  str   = ""
 
     def to_prompt_line(self) -> str:
         return (
@@ -106,49 +123,41 @@ class MechanismLabel:
 # ---------------------------------------------------------------------------
 
 class DrivingFactorAggregator:
-    """
-    从已提取的 MechanismLabel 列表中，归纳「结构性驱动力」。
-
-    逻辑：
-    - 统计出现最多的 domain 和 relation 组合
-    - 将同方向的多条边聚合成一个 driving_factor 陈述
-    - 例如：3条 US→China SANCTION/SUPPLY_CHAIN 边 →
-        "美国对华制裁升级与供应链脱钩构成本轮事件的技术-地缘双重驱动力"
-    """
 
     AGGREGATION_TEMPLATES: Dict[str, str] = {
-        "SANCTION":        "{source}对{target}的制裁升级，导致{domain}领域脱钩加速",
-        "MILITARY_ACTION": "{source}对{target}的军事行动，触发区域安全格局重组",
-        "SUPPLY_CHAIN":    "{source}对{target}的技术/供应链管控，强化战略竞争态势",
-        "AGREE":           "{source}与{target}达成协议，为{domain}领域合作提供制度框架",
-        "OPPOSE":          "{source}公开反对{target}立场，外交摩擦烈度上升",
-        "AID":             "{source}向{target}提供援助，改变{domain}领域力量对比",
-        "TRADE_FLOW":      "{source}与{target}贸易往来变化，引发{domain}联动效应",
-        "CENTRAL_BANK":    "{source}央行政策传导至{target}，{domain}市场流动性重分布",
-        "DEFAULT":         "{source}与{target}之间的{relation}关系，驱动{domain}领域结构性变化",
+        "制裁/经济封锁":      "{source}对{target}的制裁升级，导致{domain}领域脱钩加速",
+        "军事行动/武力威胁":   "{source}对{target}的军事行动，触发区域安全格局重组",
+        "供应链调整/技术管控": "{source}对{target}的技术/供应链管控，强化战略竞争态势",
+        "达成协议/条约":       "{source}与{target}达成协议，为{domain}领域合作提供制度框架",
+        "公开反对/谴责":       "{source}公开反对{target}立场，外交摩擦烈度上升",
+        "提供援助/资源转让":   "{source}向{target}提供援助，改变{domain}领域力量对比",
+        "贸易往来":            "{source}与{target}贸易往来变化，引发{domain}联动效应",
+        "央行政策传导":        "{source}央行政策传导至{target}，{domain}市场流动性重分布",
+        "企业行为/并购重组":   "{source}对{target}的并购/投资行为，重塑{domain}市场格局",
+        "体育竞技/赛事":       "{source}在{domain}领域的赛事表现，影响相关实体的战略定位",
+        "商业运营/市场行为":   "{source}的{domain}领域商业行为，驱动市场结构调整",
+        "社会事件/文化活动":   "{source}相关的{domain}领域社会事件，影响舆论与政策走向",
+        "科学技术/研究发现":   "{source}在{domain}领域的技术突破，推动相关生态重组",
+        "DEFAULT":             "{source}与{target}之间的{relation}关系，驱动{domain}领域结构性变化",
     }
 
     def aggregate(self, mechanisms: List[MechanismLabel]) -> str:
         if not mechanisms:
             return "无直接图谱路径，基于通用本体逻辑推演"
 
-        # 按 domain + relation 分组计数
         counter: Counter = Counter()
         for m in mechanisms:
             counter[(m.domain.value, m.relation)] += 1
 
-        # 取频率最高的组合
         (top_domain, top_relation), _ = counter.most_common(1)[0]
 
-        # 找该组合中强度最高的一条边
         best: MechanismLabel = max(
             (m for m in mechanisms if m.domain.value == top_domain and m.relation == top_relation),
             key=lambda x: x.strength,
         )
 
-        template = self.AGGREGATION_TEMPLATES.get(
-            top_relation, self.AGGREGATION_TEMPLATES["DEFAULT"]
-        )
+        template = self.AGGREGATION_TEMPLATES.get(top_relation,
+                   self.AGGREGATION_TEMPLATES["DEFAULT"])
         return template.format(
             source=best.source,
             target=best.target,
@@ -157,7 +166,6 @@ class DrivingFactorAggregator:
         )
 
     def build_mechanism_context_for_prompt(self, mechanisms: List[MechanismLabel]) -> str:
-        """将 MechanismLabel 列表转为结构化 prompt 片段。"""
         if not mechanisms:
             return "【无直接图谱机制路径，请基于通用本体逻辑推演】"
         lines = ["【已提取机制标签（用于锚定推演）】"]
@@ -167,37 +175,86 @@ class DrivingFactorAggregator:
 
 
 # ---------------------------------------------------------------------------
-# 4. 从图谱上下文字符串中提取 MechanismLabel
+# 4. 关键词映射 – 扩展领域（体育/商业/社会/科学优先匹配）
 # ---------------------------------------------------------------------------
 
-# 关键词 → (CAMEOEventType, RelationDomain)
-_KEYWORD_MECHANISM_MAP: List[Tuple[List[str], str, RelationDomain]] = [
-    (["sanction", "制裁", "embargo", "封锁", "ban"],
+_KEYWORD_MECHANISM_MAP: List[Tuple[List[str], Any, RelationDomain]] = [
+    # ── 体育（放在最前，防止被地缘政治关键词淹没）────────────────────
+    (["score", "cricket", "football", "soccer", "tennis", "basketball",
+      "match", "tournament", "championship", "league", "player", "team",
+      "goal", "wicket", "innings", "over", "run", "fifty", "century",
+      "ipl", "nba", "nfl", "fifa", "olympics", "athlete", "coach",
+      "stadium", "sport", "game", "win", "defeat", "beat", "bowling",
+      "batting", "batter", "bowler", "squad", "series", "test match",
+      "分", "进球", "比赛", "联赛", "球队", "运动员", "冠军", "得分"],
+     CAMEOEventType.SPORTS_EVENT, RelationDomain.SPORTS),
+
+    # ── 商业/企业 ─────────────────────────────────────────────────
+    (["revenue", "profit", "earnings", "ipo", "merger", "acquisition",
+      "startup", "ceo", "company", "corporation", "market share",
+      "quarterly", "fiscal", "dividend", "stock", "shares", "listing",
+      "投资", "营收", "上市", "并购", "企业", "股价", "财报", "利润"],
+     FIBORelationType.CORPORATE_ACTION, RelationDomain.BUSINESS),
+
+    # ── 科学/技术突破 ─────────────────────────────────────────────
+    (["discovery", "breakthrough", "research", "study", "published",
+      "scientists", "researchers", "laboratory", "experiment", "vaccine",
+      "drug", "clinical", "genome", "quantum", "astronomy", "space",
+      "rocket", "satellite", "probe",
+      "研究", "发现", "突破", "科学家", "实验", "疫苗", "药物", "卫星"],
+     CAMEOEventType.SCIENCE_TECH, RelationDomain.SCIENCE),
+
+    # ── 社会/文化/选举 ─────────────────────────────────────────────
+    (["election", "vote", "demonstration", "rally",
+      "festival", "culture", "entertainment", "celebrity", "music",
+      "film", "media", "social media", "viral",
+      "选举", "投票", "文化", "娱乐", "名人", "社交媒体"],
+     CAMEOEventType.SOCIAL_EVENT, RelationDomain.SOCIETY),
+
+    # ── 地缘政治 ─────────────────────────────────────────────────
+    (["sanction", "制裁", "embargo", "封锁"],
      CAMEOEventType.SANCTION, RelationDomain.GEOPOLITICS),
-    (["export control", "出口管制", "供应链", "supply chain", "chip", "半导体", "技术封锁"],
+    (["export control", "出口管制", "供应链", "supply chain",
+      "chip", "半导体", "技术封锁"],
      CAMEOEventType.SUPPLY_CHAIN, RelationDomain.TECHNOLOGY),
-    (["military", "军事", "strike", "attack", "missile", "troops"],
+    (["military", "军事", "strike", "missile", "troops",
+      "warplane", "airstrike", "navy", "army", "airspace"],
      CAMEOEventType.MILITARY_ACTION, RelationDomain.MILITARY),
     (["aid", "援助", "humanitarian", "人道"],
      CAMEOEventType.AID, RelationDomain.HUMANITARIAN),
-    (["agree", "treaty", "协议", "deal", "协定", "accord"],
+    (["agree", "treaty", "协议", "deal", "协定", "accord", "agreement"],
      CAMEOEventType.AGREE, RelationDomain.GEOPOLITICS),
     (["oppose", "反对", "condemn", "谴责", "protest"],
      CAMEOEventType.OPPOSE, RelationDomain.GEOPOLITICS),
-    (["trade", "贸易", "tariff", "关税", "import", "export"],
+
+    # ── 经济/金融 ─────────────────────────────────────────────────
+    (["trade", "贸易", "tariff", "关税"],
      FIBORelationType.TRADE_FLOW, RelationDomain.ECONOMICS),
-    (["rate", "利率", "inflation", "通胀", "central bank", "央行", "fed", "ecb"],
+    (["rate", "利率", "inflation", "通胀", "central bank", "央行",
+      "fed", "ecb", "interest"],
      FIBORelationType.CENTRAL_BANK, RelationDomain.ECONOMICS),
     (["debt", "债务", "bond", "bonds", "credit"],
      FIBORelationType.HOLDS_DEBT, RelationDomain.ECONOMICS),
 ]
 
-# 实体对提取正则：匹配 "EntityA -> rel -> EntityB" 或 "EntityA CAUSES EntityB" 形式
 _ENTITY_PAIR_PATTERN = re.compile(
     r"([A-Za-z\u4e00-\u9fff][A-Za-z\u4e00-\u9fff\s]{1,30}?)"
     r"\s*(?:->|→|--\(?\w*\)?-->|CAUSES|AFFECTS|OPPOSES|SUPPORTS|INVOLVES)\s*"
     r"([A-Za-z\u4e00-\u9fff][A-Za-z\u4e00-\u9fff\s]{1,30})"
 )
+
+
+def _infer_domain_from_text(text: str) -> Optional[Tuple[Any, RelationDomain]]:
+    """
+    从文本推断领域，返回 (relation_type, domain) 或 None。
+    修复：原版在没有命中时返回硬编码的 OPPOSE + GEOPOLITICS，
+    现在改为返回 None，调用者负责跳过。
+    """
+    text_lower = text.lower()
+    for keywords, relation, domain in _KEYWORD_MECHANISM_MAP:
+        if any(kw in text_lower for kw in keywords):
+            return (relation, domain)
+    return None
 
 
 def extract_mechanism_labels(
@@ -206,29 +263,29 @@ def extract_mechanism_labels(
     seed_entities: Optional[List[str]] = None,
 ) -> List[MechanismLabel]:
     """
-    从图谱上下文（字符串格式）中提取 MechanismLabel 列表。
+    从图谱上下文和新闻文本中提取 MechanismLabel 列表。
 
-    策略：
-    1. 在 graph_context + news_text 中扫描实体对
-    2. 对每个句子做关键词匹配，分配 relation + domain
-    3. 如果有 seed_entities，优先保留与之相关的边
+    修复核心：
+    - 没有关键词命中时跳过该行，不再默认注入 OPPOSE + GEOPOLITICS。
+    - 先对整个 news_text 做全局领域推断，用于没有实体对的行的领域 fallback。
     """
     combined = (graph_context or "") + "\n" + (news_text or "")
     seeds = set(e.lower() for e in (seed_entities or []))
     labels: List[MechanismLabel] = []
+
+    # 全局领域推断（基于完整新闻文本，比单行更稳定）
+    global_domain_result = _infer_domain_from_text(news_text or "")
 
     for line in combined.splitlines():
         line = line.strip()
         if not line:
             continue
 
-        # 尝试提取实体对
         pair_match = _ENTITY_PAIR_PATTERN.search(line)
         if pair_match:
             src = pair_match.group(1).strip()
             tgt = pair_match.group(2).strip()
         elif seeds:
-            # 没有匹配到箭头，尝试从 seed 实体 + 行内容构造单向边
             matched_seed = next((s for s in seeds if s in line.lower()), None)
             if not matched_seed:
                 continue
@@ -237,33 +294,30 @@ def extract_mechanism_labels(
         else:
             continue
 
-        # 跳过非常短的"实体"（可能是误匹配）
         if len(src) < 2 or len(tgt) < 2:
             continue
 
-        # 关键词匹配确定 relation + domain
-        line_lower = line.lower()
-        matched_relation, matched_domain = CAMEOEventType.OPPOSE, RelationDomain.GEOPOLITICS
-        for keywords, relation, domain in _KEYWORD_MECHANISM_MAP:
-            if any(kw in line_lower for kw in keywords):
-                matched_relation = relation
-                matched_domain = domain
-                break
+        # 行级领域推断 → 全局 fallback → 跳过（不再硬写 OPPOSE）
+        domain_result = _infer_domain_from_text(line)
+        if domain_result is None:
+            domain_result = global_domain_result
+        if domain_result is None:
+            logger.debug("No domain match for line, skipping: %s", line[:80])
+            continue
 
-        # 估算强度（暂用固定值；可接入 KuzuDB 权重字段）
+        matched_relation, matched_domain = domain_result
         strength = 0.80 if any(s in line.lower() for s in seeds) else 0.65
 
         labels.append(MechanismLabel(
             source=src,
             target=tgt,
             relation=matched_relation if isinstance(matched_relation, str) else matched_relation.value,
-            mechanism=line[:100],   # 原始行作为机制描述
+            mechanism=line[:100],
             domain=matched_domain,
             strength=strength,
             evidence=line[:200],
         ))
 
-    # 去重（source+target+relation 相同则保留强度最高的）
     deduped: Dict[Tuple[str, str, str], MechanismLabel] = {}
     for lbl in labels:
         key = (lbl.source.lower(), lbl.target.lower(), lbl.relation)
@@ -285,19 +339,12 @@ class ScenarioType(Enum):
 
 @dataclass
 class CausalChain:
-    """
-    严格四步因果链：source_fact → mechanism → intermediate_effect → final_outcome
-
-    对应推演逻辑：
-        "由于 [source_fact]，通过 [mechanism] 机制，
-         首先导致 [intermediate_effect]，最终引发 [final_outcome]"
-    """
-    source_fact:          str
-    mechanism:            str   # 驱动机制（对应 MechanismLabel.mechanism）
-    intermediate_effect:  str   # 中间效应
-    final_outcome:        str   # 最终结果
-    entities_involved:    List[str] = field(default_factory=list)
-    confidence:           float = 0.8
+    source_fact:         str
+    mechanism:           str
+    intermediate_effect: str
+    final_outcome:       str
+    entities_involved:   List[str] = field(default_factory=list)
+    confidence:          float = 0.8
 
     def to_text(self) -> str:
         return (
@@ -310,38 +357,38 @@ class CausalChain:
 
 @dataclass
 class Scenario:
-    name:                    str
-    scenario_type:           ScenarioType
-    causal_chain:            CausalChain
-    probability:             float
-    description:             str = ""
-    grounding_paths:         List[str] = field(default_factory=list)
+    name:                      str
+    scenario_type:             ScenarioType
+    causal_chain:              CausalChain
+    probability:               float
+    description:               str = ""
+    grounding_paths:           List[str] = field(default_factory=list)
     verification_requirements: List[str] = field(default_factory=list)
-    mechanism_labels:        List[MechanismLabel] = field(default_factory=list)
+    mechanism_labels:          List[MechanismLabel] = field(default_factory=list)
 
 
 @dataclass
 class DeductionResult:
-    driving_factor:      str
-    scenario_alpha:      Scenario
-    scenario_beta:       Scenario
-    verification_gap:    str
+    driving_factor:       str
+    scenario_alpha:       Scenario
+    scenario_beta:        Scenario
+    verification_gap:     str
     deduction_confidence: float
-    graph_evidence:      str = ""
-    mechanism_summary:   str = ""   # 聚合后的机制摘要（供前端展示）
+    graph_evidence:       str = ""
+    mechanism_summary:    str = ""
 
     def to_strict_json(self) -> Dict[str, Any]:
         return {
             "driving_factor":    self.driving_factor,
             "mechanism_summary": self.mechanism_summary,
             "scenario_alpha": {
-                "name":           self.scenario_alpha.name,
-                "description":    self.scenario_alpha.description,
-                "causal_chain":   self.scenario_alpha.causal_chain.to_text(),
-                "mechanism":      self.scenario_alpha.causal_chain.mechanism,
-                "entities":       self.scenario_alpha.causal_chain.entities_involved,
+                "name":            self.scenario_alpha.name,
+                "description":     self.scenario_alpha.description,
+                "causal_chain":    self.scenario_alpha.causal_chain.to_text(),
+                "mechanism":       self.scenario_alpha.causal_chain.mechanism,
+                "entities":        self.scenario_alpha.causal_chain.entities_involved,
                 "grounding_paths": self.scenario_alpha.grounding_paths,
-                "probability":    self.scenario_alpha.probability,
+                "probability":     self.scenario_alpha.probability,
             },
             "scenario_beta": {
                 "name":              self.scenario_beta.name,
@@ -361,50 +408,50 @@ class DeductionResult:
 
 
 # ---------------------------------------------------------------------------
-# 6. 推演灵魂 System Prompt（v2 – 强制锚定机制标签）
+# 6. System Prompt v3 – 域自适应推演
 # ---------------------------------------------------------------------------
 
-DEDUCTION_SOUL_SYSTEM_PROMPT_V2 = """\
+DEDUCTION_SOUL_SYSTEM_PROMPT_V3 = """\
 你是 EL'druin，一台极度严谨的"本体论情报推演机"。
 
 【核心约束】
-1. 你的推演必须锚定到【已提取机制标签】中的具体 relation/mechanism，绝不允许脱离这些标签说废话。
-2. 若机制标签为空，可基于通用本体逻辑（CAMEO/FIBO），但必须在 graph_evidence 中注明"无直接KG路径"。
-3. causal_chain 必须是4步结构：source_fact → mechanism → intermediate_effect → final_outcome。
-4. driving_factor 必须引用至少一个机制标签的 source/target/relation 三元组。
-5. 严禁输出"可能"、"局势将持续演变"、"黑天鹅事件"等空洞短语。
+1. 首先判断新闻事件的领域（体育/商业/地缘政治/经济/科技/社会），
+   然后在该领域的本体框架内推演，严禁跨领域套用模板。
+   - 体育新闻 → 赛事结果/运动员表现/联赛影响 框架
+   - 商业新闻 → 市场/竞争/盈利/投资 框架
+   - 地缘政治 → 国家/联盟/制裁/军事 框架
+   - 科学技术 → 研究影响/产业应用/标准竞争 框架
+2. 你的推演必须锚定到【已提取机制标签】中的具体 relation/mechanism。
+3. 若机制标签为空或与新闻内容不符，基于新闻文本本身推演，
+   在 graph_evidence 中注明"无直接KG路径，基于文本推演"。
+4. causal_chain 必须是4步结构：source_fact → mechanism → intermediate_effect → final_outcome。
+5. 严禁输出"可能"、"局势将持续演变"等空洞短语。
 6. 严格输出 JSON，不加任何 markdown、说明文字或前言。
+7. confidence 字段必须诚实反映证据强度：
+   - 有多条KG路径支撑 → 0.65-0.85
+   - 仅新闻文本，无KG路径 → 0.35-0.60
+   - 完全猜测 → 低于0.35
+   禁止返回 0.9 以上的置信度，除非有多条KG路径证据。
 
 【推演步骤】
-Step 1: 从机制标签中找出强度最高、出现最多的关系类型 → 这是 driving_factor 的来源。
-Step 2: 沿 driving_factor 的主要机制，推演"如果该机制继续强化"的路径 → scenario_alpha。
-Step 3: 找出 scenario_alpha 的关键依赖节点，推演"如果该节点失效/逆转"的路径 → scenario_beta。
-Step 4: 指出当前推演中最大的数据空白 → verification_gap。
+Step 1: 识别新闻的核心领域和主要参与实体。
+Step 2: 从机制标签中找出与新闻领域最匹配的关系类型 → 这是 driving_factor 的来源。
+Step 3: 沿 driving_factor 推演"如果该机制继续强化"的路径 → scenario_alpha。
+Step 4: 推演关键节点失效时的路径 → scenario_beta。
+Step 5: 指出当前推演中最大的数据空白 → verification_gap。
 """
 
 
 # ---------------------------------------------------------------------------
-# 7. DeductionEngine v2
+# 7. DeductionEngine v3
 # ---------------------------------------------------------------------------
 
 class DeductionEngine:
-    """
-    推演灵魂核心引擎 v2
-
-    新增能力：
-    - 在调用 LLM 前，先通过 extract_mechanism_labels + DrivingFactorAggregator
-      从图谱上下文中归纳结构性驱动力，将其作为强约束注入 prompt。
-    - LLM 被强制从机制标签中选取锚点，而非自由发挥。
-    """
 
     def __init__(self, llm_service: Any) -> None:
-        self.llm = llm_service
+        self.llm        = llm_service
         self.aggregator = DrivingFactorAggregator()
-        self.logger = logger
-
-    # ------------------------------------------------------------------
-    # Public entry point
-    # ------------------------------------------------------------------
+        self.logger     = logger
 
     def deduce_from_ontological_paths(
         self,
@@ -412,102 +459,90 @@ class DeductionEngine:
         ontological_context: str,
         seed_entities: List[str],
     ) -> DeductionResult:
-        """【CORE METHOD】推演灵魂激活 v2"""
-        # ── Pre-LLM: 从图谱上下文中提取机制标签 ──────────────────────
+        """推演灵魂激活 v3"""
         mechanisms = extract_mechanism_labels(
             graph_context=ontological_context,
             news_text=news_summary,
             seed_entities=seed_entities,
         )
-        mechanisms = enrich_mechanism_labels_with_patterns(mechanisms)
-        pattern_context = build_pattern_context_for_prompt(mechanisms)
+        try:
+            mechanisms = enrich_mechanism_labels_with_patterns(mechanisms)
+            pattern_context = build_pattern_context_for_prompt(mechanisms)
+        except Exception:
+            pattern_context = ""
+
         self.logger.info(
             "Extracted %d mechanism labels: %s",
             len(mechanisms),
             [m.relation for m in mechanisms[:5]],
         )
 
-        # 归纳驱动因素（不依赖 LLM）
+        # 记录是否有图谱证据，用于 confidence 惩罚
+        has_graph_evidence = (
+            len(mechanisms) > 0
+            and bool(ontological_context.strip())
+            and "0 1-hop + 0 2-hop" not in ontological_context
+        )
+
         pre_driving_factor = self.aggregator.aggregate(mechanisms)
         mechanism_context  = self.aggregator.build_mechanism_context_for_prompt(mechanisms)
         self.logger.info("Pre-LLM driving factor: %s", pre_driving_factor)
 
-        # ── Build & call LLM ──────────────────────────────────────────
         prompt = self._build_deduction_prompt(
             news_text=news_summary,
             ontological_context=ontological_context,
             mechanism_context=mechanism_context,
             pre_driving_factor=pre_driving_factor,
-            pattern_context=pattern_context, 
+            pattern_context=pattern_context,
         )
-        self.logger.info("Activating Deduction Soul v2...")
-        self.logger.info("Analyzing event: %s...", news_summary[:100])
-        self.logger.info("Ontological context length: %d", len(ontological_context))
+        self.logger.info("Activating Deduction Soul v3...")
 
         response: Any = None
         try:
             response = self.llm.call(
                 prompt=prompt,
-                system=DEDUCTION_SOUL_SYSTEM_PROMPT_V2,
+                system=DEDUCTION_SOUL_SYSTEM_PROMPT_V3,
                 temperature=0.15,
                 max_tokens=1800,
                 response_format="json",
-            )
-
-            self.logger.debug(
-                "Raw LLM response (type=%s): %r",
-                type(response), response,
             )
 
             if isinstance(response, dict):
                 deduction_json = response
             else:
                 text = self._clean_json_text(str(response))
-                self.logger.debug("Cleaned LLM JSON: %r", text)
                 deduction_json = json.loads(text)
-
-            self.logger.debug(
-                "Parsed JSON: %s",
-                json.dumps(deduction_json, ensure_ascii=False),
-            )
 
             result = self._validate_and_structure_deduction(
                 deduction_json,
                 mechanisms=mechanisms,
                 pre_driving_factor=pre_driving_factor,
+                has_graph_evidence=has_graph_evidence,
             )
-            self.logger.info(
-                "Deduction complete. Confidence: %.2f", result.deduction_confidence
-            )
+            self.logger.info("Deduction complete. Confidence: %.2f", result.deduction_confidence)
             return result
 
         except (json.JSONDecodeError, ValueError) as exc:
             self.logger.error("LLM returned invalid JSON: %s", exc)
-            self.logger.error("Raw response: %r", response)
             try:
                 fixed = self._heuristic_json_fix(str(response))
                 deduction_json = json.loads(fixed)
-                self.logger.info("Heuristic JSON fix succeeded.")
                 return self._validate_and_structure_deduction(
                     deduction_json,
                     mechanisms=mechanisms,
                     pre_driving_factor=pre_driving_factor,
+                    has_graph_evidence=has_graph_evidence,
                 )
-            except Exception as fix_exc:
-                self.logger.error("Heuristic fix failed: %s", fix_exc)
+            except Exception:
                 return self._fallback_deduction(
                     news_summary, ontological_context,
-                    mechanisms=mechanisms,
-                    pre_driving_factor=pre_driving_factor,
+                    mechanisms=mechanisms, pre_driving_factor=pre_driving_factor,
                 )
-
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.logger.error("Deduction Soul failed unexpectedly: %s", exc)
-            self.logger.error("Raw response: %r", response)
             return self._fallback_deduction(
                 news_summary, ontological_context,
-                mechanisms=mechanisms,
-                pre_driving_factor=pre_driving_factor,
+                mechanisms=mechanisms, pre_driving_factor=pre_driving_factor,
             )
 
     # ------------------------------------------------------------------
@@ -520,8 +555,13 @@ class DeductionEngine:
         ontological_context: str,
         mechanism_context: str,
         pre_driving_factor: str,
-        pattern_context: str, 
+        pattern_context: str,
     ) -> str:
+        kg_section = (
+            ontological_context.strip()
+            if ontological_context.strip() and "0 1-hop + 0 2-hop" not in ontological_context
+            else "（当前无图谱路径数据，请基于新闻文本推演，confidence 不得超过 0.60）"
+        )
         return f"""\
 你正在执行本体论因果推演任务。
 
@@ -529,41 +569,39 @@ class DeductionEngine:
 {news_text}
 
 【知识图谱本体路径（1-hop & 2-hop）】
-{ontological_context}
+{kg_section}
 
 {mechanism_context}
+
+{pattern_context if pattern_context else ""}
 
 【预提取驱动因素（基于图谱统计归纳，供你参考和细化）】
 {pre_driving_factor}
 
-【任务要求】
-1. 基于以上【已提取机制标签】中的具体 relation/mechanism，细化 driving_factor（引用具体实体三元组）。
-2. 生成 scenario_alpha：现状延续路径（最高概率）。
-   - causal_chain 必须是4步结构，用 " --> " 分隔，格式：
-     "source_fact --> [mechanism机制] --> intermediate_effect --> final_outcome"
-3. 生成 scenario_beta：关键节点失效路径（低概率但高冲击）。
-4. 指出最大的推演数据空白。
-5. 只输出 JSON，不加任何说明。
+【重要提醒】
+- 先判断新闻领域（体育/商业/地缘政治/经济/科技/社会），在该领域框架内推演。
+- 如果上方图谱路径为空，confidence 不得超过 0.60。
+- 只输出 JSON，不加任何说明。
 
-JSON schema（必须严格遵守）：
+JSON schema:
 {{
-  "driving_factor": "引用具体实体三元组的驱动力陈述",
+  "driving_factor": "...",
   "scenario_alpha": {{
-    "name": "路径名称",
+    "name": "...",
     "probability": 0.0-1.0,
     "causal_chain": "A --> [机制] --> B --> C",
-    "description": "一句话描述"
+    "description": "..."
   }},
   "scenario_beta": {{
-    "name": "路径名称",
+    "name": "...",
     "probability": 0.0-1.0,
     "causal_chain": "A --> [机制] --> B --> C",
-    "trigger_condition": "触发条件",
-    "description": "一句话描述"
+    "trigger_condition": "...",
+    "description": "..."
   }},
   "confidence": 0.0-1.0,
-  "graph_evidence": "引用了哪些图谱路径/机制标签",
-  "verification_gap": "最关键的数据空白"
+  "graph_evidence": "...",
+  "verification_gap": "..."
 }}
 """
 
@@ -576,8 +614,8 @@ JSON schema（必须严格遵守）：
         json_response: Dict[str, Any],
         mechanisms: List[MechanismLabel],
         pre_driving_factor: str,
+        has_graph_evidence: bool = False,
     ) -> DeductionResult:
-        # driving_factor: 优先用 LLM 的细化结果，若为空则用预提取的
         driving_factor = json_response.get("driving_factor", "").strip()
         if not driving_factor or driving_factor.lower() in ("unknown", "unable to determine"):
             driving_factor = pre_driving_factor
@@ -591,14 +629,14 @@ JSON schema（必须严格遵守）：
             name=alpha_data.get("name", "现状延续路径"),
             scenario_type=ScenarioType.CONTINUATION,
             causal_chain=alpha_chain,
-            probability=float(alpha_data.get("probability", 0.72)),
+            probability=float(alpha_data.get("probability", 0.65)),
             description=alpha_data.get("description", ""),
             grounding_paths=alpha_data.get("grounding_paths") or [],
             mechanism_labels=mechanisms,
         )
 
-        beta_data   = json_response.get("scenario_beta") or {}
-        beta_chain  = self._parse_causal_chain_v2(
+        beta_data  = json_response.get("scenario_beta") or {}
+        beta_chain = self._parse_causal_chain_v2(
             beta_data.get("causal_chain", ""),
             [],
         )
@@ -607,16 +645,30 @@ JSON schema（必须严格遵守）：
             name=beta_data.get("name", "结构性断裂路径"),
             scenario_type=ScenarioType.STRUCTURAL_BREAK,
             causal_chain=beta_chain,
-            probability=float(beta_data.get("probability", 0.28)),
+            probability=float(beta_data.get("probability", 0.35)),
             description=beta_data.get("description", ""),
             grounding_paths=[trigger] if trigger else [],
             mechanism_labels=mechanisms,
         )
 
         verification_gap = json_response.get("verification_gap", "未指定数据空白")
-        confidence       = float(json_response.get("confidence", 0.6))
 
-        self.logger.info("Deduction validated. Confidence: %s", confidence)
+        # ── 修复：诚实 confidence 约束 ─────────────────────────────────
+        raw_conf = float(json_response.get("confidence", 0.5))
+        if not has_graph_evidence:
+            confidence = min(raw_conf, 0.60)
+            if raw_conf > 0.60:
+                self.logger.warning(
+                    "Confidence hallucination: LLM returned %.2f but graph evidence is empty. "
+                    "Capping at 0.60.", raw_conf,
+                )
+        else:
+            confidence = min(raw_conf, 0.90)
+
+        self.logger.info(
+            "Deduction validated. Confidence: %.2f (raw=%.2f, has_graph=%s)",
+            confidence, raw_conf, has_graph_evidence,
+        )
         return DeductionResult(
             driving_factor=driving_factor,
             scenario_alpha=alpha,
@@ -630,10 +682,7 @@ JSON schema（必须严格遵守）：
     def _parse_causal_chain_v2(
         self, chain_text: str, entities: List[str]
     ) -> CausalChain:
-        """解析4步因果链：A --> [mechanism] --> B --> C"""
         parts = [p.strip() for p in chain_text.split("-->")]
-
-        # 提取机制标签（方括号内）
         mechanism = ""
         cleaned_parts: List[str] = []
         for p in parts:
@@ -643,7 +692,6 @@ JSON schema（必须严格遵守）：
                 cleaned_parts.append(re.sub(r"\[.+?\]", "", p).strip())
             else:
                 cleaned_parts.append(p)
-
         return CausalChain(
             source_fact=cleaned_parts[0] if len(cleaned_parts) > 0 else chain_text,
             mechanism=mechanism or (cleaned_parts[1] if len(cleaned_parts) > 1 else ""),
@@ -654,10 +702,6 @@ JSON schema（必须严格遵守）：
             entities_involved=list(entities),
             confidence=0.8,
         )
-
-    # ------------------------------------------------------------------
-    # JSON helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _clean_json_text(text: str) -> str:
@@ -675,7 +719,7 @@ JSON schema（必须严格遵守）：
     def _heuristic_json_fix(raw_text: str) -> str:
         fixed = re.sub(
             r'"confidence"\s*:\s*([\'"])?\s*$',
-            '"confidence": 0.6',
+            '"confidence": 0.5',
             raw_text,
             flags=re.MULTILINE,
         )
@@ -698,10 +742,8 @@ JSON schema（必须严格遵守）：
         self.logger.warning("Falling back to structured deduction...")
         mechanisms = mechanisms or []
         snippet = news_summary[:_FALLBACK_SNIPPET_LENGTH].strip() if news_summary else "当前新闻事件"
-
         driving_factor = pre_driving_factor or f"基于新闻摘要推演：{snippet}"
 
-        # 如果有机制标签，用最强的那条构造因果链
         if mechanisms:
             best = max(mechanisms, key=lambda m: m.strength)
             alpha_chain = CausalChain(
@@ -714,7 +756,7 @@ JSON schema（必须严格遵守）：
                 source_fact=f"{best.source}对{best.target}的{best.relation}升级",
                 mechanism=f"{best.mechanism[:60]}（极端情景）",
                 intermediate_effect="关键节点断裂，第三方被迫选边站队",
-                final_outcome="现有联盟/供应链格局加速重组，出现系统性断裂",
+                final_outcome="现有格局加速重组，出现系统性断裂",
             )
         else:
             alpha_chain = CausalChain(
@@ -750,8 +792,8 @@ JSON schema（必须严格遵守）：
                 grounding_paths=[],
                 mechanism_labels=mechanisms,
             ),
-            verification_gap="LLM 回应格式错误；推演基于图谱机制标签兜底逻辑，建议补充 KuzuDB 数据后重新分析",
-            deduction_confidence=0.45,
+            verification_gap="LLM 回应格式错误；推演基于兜底逻辑，建议补充 KuzuDB 数据后重新分析",
+            deduction_confidence=0.40,
             graph_evidence="通用本体逻辑推演（无直接KG路径）",
             mechanism_summary=self.aggregator.aggregate(mechanisms),
         )
