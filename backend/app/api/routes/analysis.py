@@ -593,7 +593,22 @@ def analyze_with_deduction_soul(
                 except Exception as exc:
                     logger.exception("EntityExtractionEngine failed: %s", exc)
 
-        # 最后兜底：若仍为空，使用通用大写词提取
+        # 兜底 A：EntityRelationExtractor（规则 + LLM，文本校验）
+        if not effective_entities:
+            logger.warning("领域感知/EntityExtractionEngine 均失败，尝试 EntityRelationExtractor")
+            try:
+                from app.knowledge.entity_extractor import EntityRelationExtractor
+                er_result = EntityRelationExtractor().extract(request.news_fragment)
+                raw_er = [e.get("name", "") for e in er_result.get("entities", []) if e.get("name")]
+                effective_entities = _validate_entities_against_text(raw_er, request.news_fragment)
+                logger.info(
+                    "EntityRelationExtractor fallback → validated %d entities: %s",
+                    len(effective_entities), effective_entities,
+                )
+            except Exception as exc:
+                logger.warning("EntityRelationExtractor fallback failed: %s", exc)
+
+        # 兜底 B：通用大写词（最后防线）
         if not effective_entities:
             logger.warning("所有提取方式均失败，使用通用大写词兜底")
             for m in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b", request.news_fragment):
@@ -604,13 +619,16 @@ def analyze_with_deduction_soul(
 
         # ── Step 2：查询图谱路径（不再写入任何实体）─────────────────────
         # 修复：移除之前的 auto-write 逻辑（写入应由 extractor_agent 完成）
-        from ontology.kuzu_context_extractor import get_ontological_context
-
+        # 若 kuzu/ontology 模块不可用，跳过图谱查询直接进入 CoT 兜底
         extracted_graph_context: List[str] = []
-        for entity in effective_entities:
-            ctx = get_ontological_context(kuzu_conn, entity)
-            if ctx:
-                extracted_graph_context.append(ctx)
+        try:
+            from ontology.kuzu_context_extractor import get_ontological_context
+            for entity in effective_entities:
+                ctx = get_ontological_context(kuzu_conn, entity)
+                if ctx:
+                    extracted_graph_context.append(ctx)
+        except Exception as exc:
+            logger.warning("图谱路径查询失败，将直接进入 CoT 兜底: %s", exc)
 
         # ── Step 3：判断图谱路径质量 ─────────────────────────────────────
         non_empty_contexts = [
@@ -637,7 +655,8 @@ def analyze_with_deduction_soul(
                 domain=news_domain,
             )
             return {
-                "status": "success_cot_fallback",
+                "status": "success",
+                "mode": "cot_fallback",
                 "ontological_grounding": {
                     "seed_entities":         effective_entities,
                     "graph_evidence":        extracted_graph_context,
