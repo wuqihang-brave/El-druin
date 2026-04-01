@@ -85,8 +85,10 @@ class _KuzuStore:
     def __init__(self, db_path: str) -> None:
         import kuzu  # type: ignore
 
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._db   = kuzu.Database(db_path)
+        abs_path = os.path.abspath(db_path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        logger.info("GraphStore (_KuzuStore) opening DB at physical path: %s", abs_path)
+        self._db   = kuzu.Database(abs_path)
         self._conn = kuzu.Connection(self._db)
         self._init_schema()
 
@@ -687,3 +689,11 @@ class GraphStore:
 
     def stats(self) -> Dict[str, Any]:
         return self._impl.stats()
+
+    def get_kuzu_connection(self) -> Optional[Any]:
+        """Return the underlying KuzuDB connection, or None if using NetworkX backend.
+
+        Use this to reuse the same connection for KuzuContextExtractor queries
+        without opening a second concurrent Kuzu connection.
+        """
+        return getattr(self._impl, "_conn", None)

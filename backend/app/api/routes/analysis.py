@@ -72,41 +72,53 @@ def _get_analyzer():
 
 
 def _get_kuzu_connection() -> Any:
-    """Return a KuzuDB connection aligned with kuzu_graph.DEFAULT_DB_PATH.
+    """Return a KuzuDB connection resolved to an absolute physical path.
 
-    修复：统一使用 kuzu_graph.DEFAULT_DB_PATH，避免写入和读取在不同文件上进行。
-    Priority: KUZU_DB_PATH env > kuzu_graph.DEFAULT_DB_PATH > settings > fallback
+    Priority: KUZU_DB_PATH env > settings.kuzu_db_path > project-root fallback.
+    Always resolves to an absolute path so that scripts and the server share
+    the same physical file regardless of working directory.
     """
     _ensure_intelligence_importable()
 
-    db_path = os.getenv("KUZU_DB_PATH")
+    # Step 1: env var (may be relative – resolve it)
+    db_path: Optional[str] = os.getenv("KUZU_DB_PATH")
 
-    if not db_path:
-        try:
-            from app.knowledge.kuzu_graph import DEFAULT_DB_PATH as _KG_PATH  # type: ignore
-            db_path = _KG_PATH
-        except ImportError:
-            pass
-
+    # Step 2: settings (already absolute after config.py fix)
     if not db_path:
         try:
             from app.core.config import get_settings
             db_path = getattr(get_settings(), "kuzu_db_path", None)
         except (ImportError, AttributeError) as exc:
-            logger.debug("kuzu_db_path from settings: %s", exc)
+            logger.debug("kuzu_db_path from settings failed: %s", exc)
 
+    # Step 3: derive from this file's location (backend/app/api/routes/analysis.py)
     if not db_path:
-        db_path = "./data/el_druin.kuzu"
+        _here = os.path.abspath(__file__)
+        # 5 dirname calls: file → routes/ → api/ → app/ → backend/ → project root
+        _project_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.dirname(_here))
+        )))
+        db_path = os.path.join(_project_root, "data", "el_druin.kuzu")
+
+    # Always resolve to an absolute path so CWD does not affect which file is opened
+    db_path = os.path.abspath(db_path)
+
+    logger.info("KuzuDB physical path resolved to: %s", db_path)
 
     if not os.path.exists(db_path):
-        logger.warning("KuzuDB path not found: %s – running without graph context", db_path)
+        logger.warning(
+            "KuzuDB path does not exist: %s – "
+            "run checkg.py or kg_init_tools.py to initialise the graph store",
+            db_path,
+        )
         return None
 
     try:
         import kuzu
-        logger.debug("Opening KuzuDB at: %s", db_path)
         db = kuzu.Database(db_path)
-        return kuzu.Connection(db)
+        conn = kuzu.Connection(db)
+        logger.info("KuzuDB connection opened at: %s", db_path)
+        return conn
     except Exception as exc:
         logger.warning("KuzuDB connect failed (path=%s): %s", db_path, exc)
         return None
@@ -276,6 +288,32 @@ def _get_llm_service() -> Any:
         return _StubLLM()
 
 
+def _write_extracted_entities_to_kg(entity_names: List[str]) -> int:
+    """Write extracted entities into the shared KG so future queries find them.
+
+    Returns the number of entities successfully written.
+    Each entity is written as type "Entity" (generic) so the context extractor
+    can find them with MATCH (a:Entity {name: ...}).
+    """
+    if not entity_names:
+        return 0
+    try:
+        from app.knowledge.graph_store import GraphStore
+        from app.core.config import get_settings
+        settings = get_settings()
+        db_path = settings.kuzu_db_path
+        logger.info("Auto-writing %d extracted entities to KG at: %s", len(entity_names), db_path)
+        store = GraphStore()
+        count = 0
+        for name in entity_names:
+            if name:
+                store.add_entity(name, "Entity")
+                count += 1
+        logger.info("Auto-write complete: %d entities written to KG", count)
+        return count
+    except Exception as exc:
+        logger.warning("Auto-write entities to KG failed: %s", exc)
+        return 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -421,10 +459,26 @@ def analyze_with_deduction_soul(
             except Exception as exc:
                 logger.exception(f"自动实体抽取失败，无法兜底: {exc}")
 
+        # ===== Step 1b: 自动将抽取实体写入KG（保证下次查询可找到）=====
+        if effective_entities:
+            written = _write_extracted_entities_to_kg(effective_entities)
+            logger.info("Auto-wrote %d entities to KG before context extraction", written)
+
         # ===== Step 2: 获取本体路径 =====
-        from ontology.kuzu_context_extractor import get_ontological_context
+        from ontology.kuzu_context_extractor import KuzuContextExtractor, get_ontological_context
         extracted_graph_context = []
+        if kuzu_conn is None:
+            logger.warning(
+                "⚠️ KuzuDB connection is None – all entities will return 0 paths. "
+                "Check that the DB file exists (run kg_init_tools.py to initialise)."
+            )
         for entity in effective_entities:
+            if kuzu_conn is None:
+                extracted_graph_context.append(
+                    f"\n【本体路径上下文】\n中心实体: {entity} (UNKNOWN)\n"
+                    "⚠️ 数据库连接不可用，无法查询路径\n"
+                )
+                continue
             ctx = get_ontological_context(kuzu_conn, entity)
             if ctx:
                 extracted_graph_context.append(ctx)
