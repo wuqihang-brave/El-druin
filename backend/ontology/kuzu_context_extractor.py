@@ -109,7 +109,28 @@ class KuzuContextExtractor:
         limit_per_hop: int = 10,
     ) -> OntologicalContext:
         """Extract 1-hop and 2-hop ontological paths for a seed entity."""
+        if self.conn is None:
+            logger.warning(
+                "KuzuDB connection is None for entity '%s' – returning empty context",
+                seed_entity_name,
+            )
+            return OntologicalContext(
+                seed_entity=seed_entity_name,
+                seed_type=entity_type or "UNKNOWN",
+                extraction_time=datetime.now().isoformat(),
+            )
+
         try:
+            # ── Diagnostic: check whether the entity exists at all ──────────
+            entity_exists = self._check_entity_exists(seed_entity_name)
+            if not entity_exists:
+                logger.warning(
+                    "KG diagnostic – entity NOT FOUND in DB: '%s' "
+                    "(hint: run kg_init_tools.py or checkg.py to populate the graph)",
+                    seed_entity_name,
+                )
+            # ────────────────────────────────────────────────────────────────
+
             one_hop = self._get_one_hop_paths(seed_entity_name, entity_type, limit_per_hop)
             two_hop: List[RelationshipPath] = []
             if max_depth >= 2:
@@ -123,6 +144,14 @@ class KuzuContextExtractor:
                 two_hop_paths=two_hop,
                 total_paths=len(one_hop) + len(two_hop),
             )
+
+            if entity_exists and context.total_paths == 0:
+                logger.warning(
+                    "KG diagnostic – entity EXISTS but has NO edges: '%s' "
+                    "(entity is in DB but no relations were written for it)",
+                    seed_entity_name,
+                )
+
             logger.info(
                 "Extracted ontological context for %s: %d 1-hop + %d 2-hop paths",
                 seed_entity_name, len(one_hop), len(two_hop),
@@ -140,6 +169,20 @@ class KuzuContextExtractor:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _check_entity_exists(self, entity_name: str) -> bool:
+        """Return True if entity_name exists in the Entity node table."""
+        try:
+            esc = self._escape_cypher(entity_name)
+            result = self.conn.execute(
+                f"MATCH (e:Entity) WHERE e.name = '{esc}' RETURN COUNT(e) LIMIT 1"
+            )
+            if result.has_next():
+                row = result.get_next()
+                return int(row[0]) > 0
+        except Exception as exc:
+            logger.debug("_check_entity_exists(%s): %s", entity_name, exc)
+        return False
 
     # All relation tables defined in kuzu_graph.py / graph_store.py
     _ENTITY_REL_TABLES = (

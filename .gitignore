@@ -24,6 +24,8 @@ __pycache__/
 # backend/data/kuzu_db.db
 el_druin_db/
 data/raw/
+data/*.kuzu
+data/*.db
 
 # 6. IDE 配置文件
 .vscode/

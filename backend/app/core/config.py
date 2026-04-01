@@ -24,16 +24,6 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 class Settings:
     """Central configuration object populated from environment variables."""
-    # ── Graph database ────────────────────────────────────────────────────────
-    # 【核心修改】強行使用絕對路徑，並統一名稱為 el_druin.kuzu
-    # 這樣無論你在哪裡啟動，路徑永遠是 /Users/qihang/.../El-druin/data/el_druin.kuzu
-    graph_backend: str = os.getenv("GRAPH_BACKEND", "kuzu")
-    
-    _default_db_path = str(BASE_DIR / "data" / "el_druin.kuzu")
-    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", _default_db_path)
-    
-    # 兼容舊變量名 (如果你其他文件引用了這個名)
-    kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", _default_db_path)
     # ── LLM ──────────────────────────────────────────────────────────────────
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
     groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
@@ -44,10 +34,13 @@ class Settings:
 
     # ── Graph database ────────────────────────────────────────────────────────
     # "kuzu" (default, embedded) | "neo4j" | "networkx" (in-memory fallback)
+    # Always resolve to an absolute path based on the project root so that
+    # all entry points (server, scripts, tests) share the same physical file.
     graph_backend: str = os.getenv("GRAPH_BACKEND", "kuzu")
-    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", "./data/el_druin.kuzu")
+    _default_db_path: str = str(BASE_DIR / "data" / "el_druin.kuzu")
+    kuzu_db_path: str = os.getenv("KUZU_DB_PATH", str(BASE_DIR / "data" / "el_druin.kuzu"))
     # Path for the embedded Kuzu knowledge-graph file (KuzuKnowledgeGraph)
-    kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", "./data/el_druin.kuzu")
+    kuzu_kg_path: str = os.getenv("KUZU_KG_PATH", str(BASE_DIR / "data" / "el_druin.kuzu"))
     neo4j_uri: Optional[str] = os.getenv("NEO4J_URI")
     neo4j_user: Optional[str] = os.getenv("NEO4J_USER", "neo4j")
     neo4j_password: Optional[str] = os.getenv("NEO4J_PASSWORD")
