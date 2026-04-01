@@ -9,13 +9,15 @@ Validates that the endpoint:
 3. Returns all required deduction_result sub-keys.
 4. Handles kuzu_conn=None gracefully (no 500 error).
 5. Returns HTTP 422 for invalid request bodies.
+6. CoT fallback path returns status="success" and mode="cot_fallback".
 """
 
 from __future__ import annotations
 
 import json
-import sys
 import os
+import sys
+from types import ModuleType
 from typing import Any
 from unittest.mock import patch
 
@@ -59,6 +61,18 @@ class _FakeLLM:
         return _VALID_DEDUCTION_JSON
 
 
+def _fake_get_ontological_context(conn: Any, entity: str) -> str:
+    """Stub that always returns an empty context string (0-path indicator)."""
+    return f"Entity: {entity} | 1-hop: 0 1-hop + 0 2-hop"
+
+
+def _make_fake_kuzu_context_module() -> ModuleType:
+    """Build a fake ontology.kuzu_context_extractor module."""
+    mod = ModuleType("ontology.kuzu_context_extractor")
+    mod.get_ontological_context = _fake_get_ontological_context  # type: ignore[attr-defined]
+    return mod
+
+
 # ---------------------------------------------------------------------------
 # App fixture
 # ---------------------------------------------------------------------------
@@ -71,6 +85,10 @@ def client():
 
     app = FastAPI()
     app.include_router(analysis_module.router, prefix="/api/v1")
+
+    fake_kuzu_ctx = _make_fake_kuzu_context_module()
+    sys.modules.setdefault("ontology", ModuleType("ontology"))
+    sys.modules["ontology.kuzu_context_extractor"] = fake_kuzu_ctx
 
     with (
         patch.object(analysis_module, "_get_llm_service", return_value=_FakeLLM()),
@@ -106,7 +124,7 @@ class TestDeduceEndpointStatus:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Response shape
+# Tests: Response shape (CoT fallback path – graph paths = 0)
 # ---------------------------------------------------------------------------
 
 class TestDeduceEndpointResponseShape:
@@ -121,6 +139,10 @@ class TestDeduceEndpointResponseShape:
 
     def test_top_level_status_value(self) -> None:
         assert self.data["status"] == "success"
+
+    def test_top_level_mode_is_cot_fallback(self) -> None:
+        # When graph paths are 0 the endpoint signals CoT mode
+        assert self.data.get("mode") == "cot_fallback"
 
     def test_top_level_ontological_grounding_key(self) -> None:
         assert "ontological_grounding" in self.data
@@ -147,9 +169,17 @@ class TestDeduceEndpointResponseShape:
         dr = self.data["deduction_result"]
         assert "scenario_alpha" in dr
 
+    def test_deduction_result_scenario_alpha_causal_chain(self) -> None:
+        dr = self.data["deduction_result"]
+        assert "causal_chain" in dr["scenario_alpha"]
+
     def test_deduction_result_scenario_beta(self) -> None:
         dr = self.data["deduction_result"]
         assert "scenario_beta" in dr
+
+    def test_deduction_result_scenario_beta_trigger_condition(self) -> None:
+        dr = self.data["deduction_result"]
+        assert "trigger_condition" in dr["scenario_beta"]
 
     def test_deduction_result_verification_gap(self) -> None:
         dr = self.data["deduction_result"]
@@ -189,7 +219,7 @@ class TestDeduceEndpointWithoutKuzu:
 
 class TestDeduceEndpointLLMFailure:
     def test_llm_exception_returns_fallback_not_500(self) -> None:
-        """If the LLM raises, the endpoint should still return 200 via fallback."""
+        """If the LLM raises, the endpoint should still return 200 via CoT fallback."""
         from fastapi import FastAPI
         from app.api.routes import analysis as analysis_module
 
@@ -199,6 +229,10 @@ class TestDeduceEndpointLLMFailure:
 
         app = FastAPI()
         app.include_router(analysis_module.router, prefix="/api/v1")
+
+        fake_kuzu_ctx = _make_fake_kuzu_context_module()
+        sys.modules.setdefault("ontology", ModuleType("ontology"))
+        sys.modules["ontology.kuzu_context_extractor"] = fake_kuzu_ctx
 
         with (
             patch.object(analysis_module, "_get_llm_service", return_value=_BrokenLLM()),
@@ -210,5 +244,54 @@ class TestDeduceEndpointLLMFailure:
         assert resp.status_code == 200
         data = resp.json()
         assert "deduction_result" in data
-        # Fallback sets confidence to 0.0
-        assert data["deduction_result"]["confidence"] == 0.0
+        dr = data["deduction_result"]
+        # When LLM fails, _cot_deduction_from_text returns the hard-coded fallback
+        assert "driving_factor" in dr
+        assert "scenario_alpha" in dr
+        assert "scenario_beta" in dr
+        assert "verification_gap" in dr
+        assert "confidence" in dr
+        assert float(dr["confidence"]) <= 0.55
+
+
+# ---------------------------------------------------------------------------
+# Tests: CoT fallback – empty seed_entities still yields complete schema
+# ---------------------------------------------------------------------------
+
+class TestDeduceEndpointEmptySeedEntities:
+    """Endpoint must return a full deduction_result even when seed_entities=[]."""
+
+    def test_empty_seed_entities_returns_success(self) -> None:
+        from fastapi import FastAPI
+        from app.api.routes import analysis as analysis_module
+
+        app = FastAPI()
+        app.include_router(analysis_module.router, prefix="/api/v1")
+
+        body = {
+            "news_fragment": "Israel launched airstrikes on Gaza.",
+            "seed_entities": [],
+            "claim": "What will happen next?",
+        }
+
+        fake_kuzu_ctx = _make_fake_kuzu_context_module()
+        sys.modules.setdefault("ontology", ModuleType("ontology"))
+        sys.modules["ontology.kuzu_context_extractor"] = fake_kuzu_ctx
+
+        with (
+            patch.object(analysis_module, "_get_llm_service", return_value=_FakeLLM()),
+            patch.object(analysis_module, "_get_kuzu_connection", return_value=None),
+            patch.object(analysis_module, "_ensure_intelligence_importable", return_value=None),
+        ):
+            with TestClient(app) as c:
+                resp = c.post("/api/v1/analysis/grounded/deduce", json=body)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        dr = data["deduction_result"]
+        for field in ("driving_factor", "scenario_alpha", "scenario_beta",
+                      "verification_gap", "confidence", "graph_evidence"):
+            assert field in dr, f"Missing field in deduction_result: {field}"
+        assert "causal_chain" in dr["scenario_alpha"]
+        assert "trigger_condition" in dr["scenario_beta"]

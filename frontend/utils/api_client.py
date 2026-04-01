@@ -542,8 +542,16 @@ class APIClient:
             ``scenario_alpha``, ``scenario_beta``, ``verification_gap``,
             ``confidence``, ``graph_evidence``), and ``"ontological_grounding"``.
         """
-        news_text = news.get("summary") or news.get("description") or ""
-        title = news.get("title", "this event")
+        news_body = news.get("summary") or news.get("description") or ""
+        title = news.get("title", "")
+        # Combine title and body so the backend has richer text for domain
+        # detection and entity extraction.  Fall back to title alone if the
+        # body is empty.
+        if news_body:
+            news_fragment = f"{title}\n\n{news_body}".strip() if title else news_body
+        else:
+            news_fragment = title
+        claim_title = title or "this event"
         raw_entities = news.get("entities", [])
         # Accept either a list of strings or a list of entity dicts.
         # The `and len(raw_entities) > 0` guard makes the non-empty check explicit
@@ -556,9 +564,9 @@ class APIClient:
         return self._post(
             "/analysis/grounded/deduce",
             json={
-                "news_fragment": news_text,
+                "news_fragment": news_fragment,
                 "seed_entities": seed_entities,
-                "claim": f"What will be the impact of {title}?",
+                "claim": f"What will be the impact of {claim_title}?",
             },
         )
 
