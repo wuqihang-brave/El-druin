@@ -1,0 +1,72 @@
+[
+  {
+    "name": "KnowledgeGraphTool",
+    "responsibility": "Query and update the knowledge graph via the /knowledge API",
+    "source_hint": "app.api.routes.knowledge"
+  },
+  {
+    "name": "EntityExtractorTool",
+    "responsibility": "Extract named entities and relations from raw text",
+    "source_hint": "app.knowledge.entity_extractor"
+  },
+  {
+    "name": "CypherQueryTool",
+    "responsibility": "Execute Cypher queries against the KuzuDB graph backend",
+    "source_hint": "app.knowledge.kuzu_graph"
+  },
+  {
+    "name": "IntelligenceAuditTool",
+    "responsibility": "Run the full Bayesian audit pipeline on a news report",
+    "source_hint": "app.api.routes.intelligence"
+  },
+  {
+    "name": "ProbabilityTreeTool",
+    "responsibility": "Build and retrieve probability trees for alternative interpretations",
+    "source_hint": "intelligence.probability_tree"
+  },
+  {
+    "name": "ReasoningPathTool",
+    "responsibility": "Record, finalize and retrieve causal reasoning paths",
+    "source_hint": "intelligence.logic_auditor"
+  },
+  {
+    "name": "OrderCriticTool",
+    "responsibility": "Score and filter knowledge triples by civilizational significance",
+    "source_hint": "knowledge_layer.order_critic"
+  },
+  {
+    "name": "IncrementalExtractorTool",
+    "responsibility": "Delta-update the KG with conflict detection and entity disambiguation",
+    "source_hint": "knowledge_layer.incremental_extractor"
+  },
+  {
+    "name": "CausalChainTool",
+    "responsibility": "Extract multi-step causal chains from news text",
+    "source_hint": "knowledge_layer.causal_chain_extractor"
+  },
+  {
+    "name": "EntityResolverTool",
+    "responsibility": "Deduplicate and canonicalize entities using fuzzy matching",
+    "source_hint": "knowledge_layer.entity_resolver"
+  },
+  {
+    "name": "OntologyContextTool",
+    "responsibility": "Extract ontology-grounded context from KuzuDB for reasoning",
+    "source_hint": "ontology.kuzu_context_extractor"
+  },
+  {
+    "name": "SacredSwordTool",
+    "responsibility": "Run the 4-step sacred-sword ontological reasoning analysis",
+    "source_hint": "intelligence.sacred_sword_analyzer"
+  },
+  {
+    "name": "ProvenanceTool",
+    "responsibility": "Retrieve relationship and entity provenance audit trails",
+    "source_hint": "app.api.routes.provenance"
+  },
+  {
+    "name": "HierarchicalGraphTool",
+    "responsibility": "Return degree-filtered hierarchical graph for visualization",
+    "source_hint": "app.api.routes.knowledge"
+  }
+]

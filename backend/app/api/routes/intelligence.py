@@ -6,6 +6,8 @@ Endpoints:
   GET  /intelligence/reasoning-path/{path_id}  – retrieve a recorded reasoning path
   GET  /intelligence/probability-tree/{report_id}  – retrieve a stored probability tree
   GET  /intelligence/audit-log           – list recent reasoning paths
+  GET  /intelligence/tool-registry       – list registered CLAW tools
+  POST /intelligence/dispatch-tool       – execute a registered CLAW tool by name
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 import logging
 import sys
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -276,3 +278,110 @@ def list_audit_log(
         "paths": [p.model_dump() for p in paths],
         "total": len(paths),
     }
+
+
+# ---------------------------------------------------------------------------
+# CLAW Integration – Tool registry and dispatch
+# ---------------------------------------------------------------------------
+
+class ToolDispatchRequest(BaseModel):
+    """Request body for dispatching a single registered CLAW tool."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        description="Name of the registered tool to invoke (case-insensitive)",
+    )
+    payload: str = Field(
+        default="",
+        description="Optional string payload forwarded to the tool",
+    )
+
+
+@router.get("/tool-registry")
+def list_tool_registry(
+    query: Optional[str] = Query(
+        default=None,
+        description="Optional search string to filter tools by name or source hint",
+    ),
+    limit: int = Query(default=50, ge=1, le=100, description="Maximum tools to return"),
+) -> Dict[str, Any]:
+    """List tools registered in the CLAW tool registry.
+
+    Returns the tool surface loaded from ``claw_integration/reference_data/tools_snapshot.json``.
+    Optionally filter by a search *query* (matched against name and source_hint).
+
+    Returns:
+        Dict with ``tools`` list and ``total`` count.
+    """
+    try:
+        from app.claw_integration.tools import find_tools, tool_names, PORTED_TOOLS
+
+        if query:
+            modules = find_tools(query, limit=limit)
+        else:
+            modules = list(PORTED_TOOLS[:limit])
+
+        return {
+            "tools": [
+                {
+                    "name": m.name,
+                    "responsibility": m.responsibility,
+                    "source_hint": m.source_hint,
+                    "status": m.status,
+                }
+                for m in modules
+            ],
+            "total": len(modules),
+            "registry_size": len(PORTED_TOOLS),
+        }
+    except Exception as exc:
+        logger.error("Tool registry listing error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/dispatch-tool")
+def dispatch_tool(request: ToolDispatchRequest) -> Dict[str, Any]:
+    """Execute a registered CLAW tool by name.
+
+    Looks up the tool in the CLAW registry and returns a
+    :class:`~app.claw_integration.tools.ToolExecution` result.
+    The tool is *mirrored* – it records the invocation and returns metadata;
+    actual backend operations should be performed through the dedicated API
+    endpoints.
+
+    Request body::
+
+        {"name": "KnowledgeGraphTool", "payload": "list entities"}
+
+    Returns:
+        Dict with ``name``, ``source_hint``, ``handled``, and ``message``.
+    """
+    try:
+        from app.claw_integration.tools import execute_tool
+        from app.claw_integration.task import PortingTask
+
+        task = PortingTask(
+            name=f"dispatch:{request.name}",
+            description=f"Dispatch tool '{request.name}' with payload: {request.payload!r}",
+        )
+        task.start()
+
+        result = execute_tool(name=request.name, payload=request.payload)
+
+        if result.handled:
+            task.complete()
+        else:
+            task.fail(reason=result.message)
+
+        return {
+            "name": result.name,
+            "source_hint": result.source_hint,
+            "payload": result.payload,
+            "handled": result.handled,
+            "message": result.message,
+            "task_status": task.status,
+        }
+    except Exception as exc:
+        logger.error("Tool dispatch error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -454,6 +454,73 @@ class APIClient:
             },
         )
 
+    def seed_knowledge_graph(self) -> Dict[str, Any]:
+        """Populate the knowledge graph with baseline example triples.
+
+        Useful when the graph is empty and the user wants to explore the
+        visualisation features with representative data.
+
+        Returns:
+            Dict with ``"status"``, ``"triples_added"``, and ``"message"`` keys.
+        """
+        return self._post("/knowledge/seed-triples")
+
+    def dispatch_query_engine(
+        self,
+        prompt: str,
+        session_id: Optional[str] = None,
+        matched_commands: Optional[List[str]] = None,
+        matched_tools: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Dispatch a prompt through the CLAW QueryEnginePort.
+
+        Args:
+            prompt: Natural-language prompt or command string.
+            session_id: Optional session UUID to resume an existing session.
+            matched_commands: Pre-matched command names to attach to the turn.
+            matched_tools: Pre-matched tool names to attach to the turn.
+
+        Returns:
+            Dict with ``"session_id"``, ``"output"``, ``"stop_reason"``,
+            ``"usage"``, and ``"turns_used"`` keys.
+        """
+        body: Dict[str, Any] = {
+            "prompt": prompt,
+            "matched_commands": matched_commands or [],
+            "matched_tools": matched_tools or [],
+        }
+        if session_id:
+            body["session_id"] = session_id
+        return self._post("/knowledge/query-engine", json=body)
+
+    def get_tool_registry(self, query: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
+        """List tools registered in the CLAW tool registry.
+
+        Args:
+            query: Optional search string to filter tools by name or source hint.
+            limit: Maximum number of tools to return.
+
+        Returns:
+            Dict with ``"tools"`` list, ``"total"``, and ``"registry_size"`` keys.
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if query:
+            params["query"] = query
+        return self._get("/intelligence/tool-registry", params=params)
+
+    def dispatch_tool(self, name: str, payload: str = "") -> Dict[str, Any]:
+        """Execute a registered CLAW tool by name.
+
+        Args:
+            name: Name of the registered tool (case-insensitive).
+            payload: Optional string payload forwarded to the tool.
+
+        Returns:
+            Dict with ``"name"``, ``"source_hint"``, ``"handled"``,
+            ``"message"``, and ``"task_status"`` keys.
+        """
+        return self._post("/intelligence/dispatch-tool", json={"name": name, "payload": payload})
+
     def grounded_deduce(self, news: Dict[str, Any]) -> Dict[str, Any]:
         """Call the graph-grounded deduction endpoint for a news item.
 
