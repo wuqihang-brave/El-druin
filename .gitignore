@@ -30,3 +30,6 @@ data/*.db
 # 6. IDE 配置文件
 .vscode/
 .idea/
+
+# 7. CLAW integration runtime sessions (generated at request time)
+backend/app/claw_integration/sessions/

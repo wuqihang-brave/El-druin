@@ -453,7 +453,18 @@ with tab_viz:
 
     elif data_source == "从图数据库加载":
         if "error" not in _api.get_kg_stats():
-            st.info("📭 图谱中暂无数据。请先通过「更新图谱」进行数据摄入。")
+            st.info(
+                "📭 **图谱中暂无数据。**\n\n"
+                "请先通过「📝 文本提取」标签添加知识，或点击下方按钮注入示例数据。"
+            )
+            if st.button("🌱 注入示例三元组", key="btn_seed_viz", type="primary"):
+                with st.spinner("正在注入示例数据…"):
+                    seed_resp = _api.seed_knowledge_graph()
+                if seed_resp.get("status") == "ok":
+                    st.success(seed_resp.get("message", "示例数据注入成功。"))
+                    st.rerun()
+                else:
+                    st.error(f"注入失败：{seed_resp.get('error', seed_resp)}")
 
 # ===========================================================================
 # Tab 3 – 🌈 Ontology Graph (3-column layout with color-coded nodes)
@@ -478,6 +489,27 @@ with tab_onto:
 
     og_entities_all = _load_og_entities()
     og_relations_all = _load_og_relations()
+
+    # ── Show friendly message when no data is available ───────────────────
+    if not og_entities_all:
+        st.info(
+            "📭 **No entities found in the knowledge graph.**\n\n"
+            "The ontology graph requires data in the database before it can be "
+            "displayed. You can:\n"
+            "- Extract knowledge from a text in the **📝 文本提取** tab\n"
+            "- Seed the graph with example data using the button below"
+        )
+        if st.button("🌱 Seed Example Data", key="btn_seed_onto", type="primary"):
+            with st.spinner("Seeding knowledge graph with example triples…"):
+                seed_resp = _api.seed_knowledge_graph()
+            if seed_resp.get("status") == "ok":
+                st.success(seed_resp.get("message", "Seed triples added."))
+                _load_og_entities.clear()
+                _load_og_relations.clear()
+                st.rerun()
+            else:
+                st.error(f"Seeding failed: {seed_resp.get('error', seed_resp)}")
+        st.stop()
 
     # ── 3-column layout ────────────────────────────────────────────────────
     og_left, og_mid, og_right = st.columns([1, 3, 2])
@@ -577,33 +609,40 @@ with tab_onto:
             unsafe_allow_html=True,
         )
 
-        og_selected_name = (
-            st.session_state.og_selected_entity.get("name", "")
-            if st.session_state.og_selected_entity
-            else ""
-        )
+        if not og_entities_filtered:
+            st.info(
+                "🔍 No entities match the current filters. "
+                "Try widening the ontology class selection, lowering the minimum "
+                "confidence, or clearing the search term."
+            )
+        else:
+            og_selected_name = (
+                st.session_state.og_selected_entity.get("name", "")
+                if st.session_state.og_selected_entity
+                else ""
+            )
 
-        clicked_og_node = render_graph_with_colors(
-            graph_data={
-                "entities": og_entities_filtered,
-                "relations": og_relations_filtered,
-            },
-            selected_name=og_selected_name,
-            height=600,
-        )
+            clicked_og_node = render_graph_with_colors(
+                graph_data={
+                    "entities": og_entities_filtered,
+                    "relations": og_relations_filtered,
+                },
+                selected_name=og_selected_name,
+                height=600,
+            )
 
-        if clicked_og_node:
-            # Find the entity dict for the clicked node
-            for ent in og_entities_all:
-                if ent.get("name") == clicked_og_node:
-                    if st.session_state.og_selected_entity != ent:
-                        st.session_state.og_selected_entity = ent
-                        # Clear cached explanation when new entity selected
-                        cache_key = f"onto_expl_{ent.get('name', '')}_{0}"
-                        if cache_key in st.session_state:
-                            del st.session_state[cache_key]
-                        st.rerun()
-                    break
+            if clicked_og_node:
+                # Find the entity dict for the clicked node
+                for ent in og_entities_all:
+                    if ent.get("name") == clicked_og_node:
+                        if st.session_state.og_selected_entity != ent:
+                            st.session_state.og_selected_entity = ent
+                            # Clear cached explanation when new entity selected
+                            cache_key = f"onto_expl_{ent.get('name', '')}_{0}"
+                            if cache_key in st.session_state:
+                                del st.session_state[cache_key]
+                            st.rerun()
+                        break
 
     # ------------------------------------------------------------------
     # RIGHT: Entity Info Panel + Ontological Significance
@@ -775,76 +814,101 @@ with tab_hierarchy:
             edges_raw = hg_data.get("edges", [])
             degree_map: Dict[str, int] = hg_data.get("degree_map", {})
 
-            # ── Build agraph nodes ────────────────────────────────────────
-            if _AGRAPH_AVAILABLE:
-                hg_ag_nodes: List[Node] = []
-                for node in nodes_raw:
-                    node_id = node["id"]
-                    node_degree = degree_map.get(node_id, 0)
-                    tier, color, size = _node_visual(node_degree)
-
-                    hg_ag_nodes.append(
-                        Node(
-                            id=node_id,
-                            label=node_id,
-                            size=size,
-                            color=color,
-                            title=f"{node_id}\nType: {node['type']}\nDegree: {node_degree}\nTier: {tier}",
-                        )
+            # ── Empty state ───────────────────────────────────────────────
+            if not nodes_raw:
+                total_nodes = hg_data.get("total_nodes", 0)
+                if total_nodes == 0 and st.session_state.hg_min_degree == 0:
+                    st.info(
+                        "📭 **The knowledge graph is empty.**\n\n"
+                        "Add data by extracting knowledge in the **📝 文本提取** tab "
+                        "or seed the graph with example triples:"
                     )
-
-                # ── Build agraph edges ────────────────────────────────────
-                hg_ag_edges: List[Edge] = []
-                for edge in edges_raw:
-                    from_deg = degree_map.get(edge["from"], 0)
-                    to_deg = degree_map.get(edge["to"], 0)
-
-                    if from_deg >= 10 and to_deg >= 10:
-                        edge_color, width = "#FFD700", 3
-                    elif from_deg >= 5 or to_deg >= 5:
-                        edge_color, width = "#4A90E2", 2
-                    else:
-                        edge_color, width = "#888888", 1
-
-                    hg_ag_edges.append(
-                        Edge(
-                            source=edge["from"],
-                            target=edge["to"],
-                            label=edge.get("type", ""),
-                            color=edge_color,
-                            width=width,
-                        )
+                    if st.button("🌱 Seed Example Data", key="btn_seed_hg", type="primary"):
+                        with st.spinner("Seeding knowledge graph with example triples…"):
+                            seed_resp = _api.seed_knowledge_graph()
+                        if seed_resp.get("status") == "ok":
+                            st.success(seed_resp.get("message", "Seed triples added."))
+                            st.rerun()
+                        else:
+                            st.error(f"Seeding failed: {seed_resp.get('error', seed_resp)}")
+                else:
+                    st.info(
+                        "🔍 No nodes match the current degree filter "
+                        f"(min={st.session_state.hg_min_degree}, "
+                        f"max={st.session_state.hg_max_degree}). "
+                        "Try clicking **📊 All Nodes** to reset the filter."
                     )
-
-                # ── Render graph ──────────────────────────────────────────
-                hg_config = Config(
-                    width="100%",
-                    height=800,
-                    directed=True,
-                    physics=True,
-                    hierarchical=False,
-                    nodeHighlightBehavior=True,
-                    highlightColor="#FFD700",
-                    collapsible=False,
-                )
-
-                st.markdown("#### 📊 Graph Visualization")
-                try:
-                    clicked_node = agraph(
-                        nodes=hg_ag_nodes,
-                        edges=hg_ag_edges,
-                        config=hg_config,
-                    )
-                    if clicked_node:
-                        st.session_state.hg_selected_node = clicked_node
-                except Exception as render_err:
-                    st.error(f"Graph rendering error: {render_err}")
-
             else:
-                st.warning(
-                    "⚠️ `streamlit-agraph` is not installed. "
-                    "Install it with `pip install streamlit-agraph` to enable interactive graph rendering."
-                )
+                # ── Build agraph nodes ────────────────────────────────────
+                if _AGRAPH_AVAILABLE:
+                    hg_ag_nodes: List[Node] = []
+                    for node in nodes_raw:
+                        node_id = node["id"]
+                        node_degree = degree_map.get(node_id, 0)
+                        tier, color, size = _node_visual(node_degree)
+
+                        hg_ag_nodes.append(
+                            Node(
+                                id=node_id,
+                                label=node_id,
+                                size=size,
+                                color=color,
+                                title=f"{node_id}\nType: {node['type']}\nDegree: {node_degree}\nTier: {tier}",
+                            )
+                        )
+
+                    # ── Build agraph edges ────────────────────────────────
+                    hg_ag_edges: List[Edge] = []
+                    for edge in edges_raw:
+                        from_deg = degree_map.get(edge["from"], 0)
+                        to_deg = degree_map.get(edge["to"], 0)
+
+                        if from_deg >= 10 and to_deg >= 10:
+                            edge_color, width = "#FFD700", 3
+                        elif from_deg >= 5 or to_deg >= 5:
+                            edge_color, width = "#4A90E2", 2
+                        else:
+                            edge_color, width = "#888888", 1
+
+                        hg_ag_edges.append(
+                            Edge(
+                                source=edge["from"],
+                                target=edge["to"],
+                                label=edge.get("type", ""),
+                                color=edge_color,
+                                width=width,
+                            )
+                        )
+
+                    # ── Render graph ──────────────────────────────────────
+                    hg_config = Config(
+                        width="100%",
+                        height=800,
+                        directed=True,
+                        physics=True,
+                        hierarchical=False,
+                        nodeHighlightBehavior=True,
+                        highlightColor="#FFD700",
+                        collapsible=False,
+                    )
+
+                    st.markdown("#### 📊 Graph Visualization")
+                    try:
+                        clicked_node = agraph(
+                            nodes=hg_ag_nodes,
+                            edges=hg_ag_edges,
+                            config=hg_config,
+                        )
+                        if clicked_node:
+                            st.session_state.hg_selected_node = clicked_node
+                    except Exception as render_err:
+                        st.error(f"Graph rendering error: {render_err}")
+
+                else:
+                    st.warning(
+                        "⚠️ `streamlit-agraph` is not installed. "
+                        "Install it with `pip install streamlit-agraph` to enable interactive graph rendering."
+                    )
 
             # ── Statistics panel ──────────────────────────────────────────
             st.markdown("---")

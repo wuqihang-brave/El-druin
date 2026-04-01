@@ -761,3 +761,151 @@ def get_node_order_narrative(node_name: str) -> Dict[str, Any]:
         "global_role": global_role,
         "betweenness_centrality": 0.0,  # placeholder for future centrality computation
     }
+
+
+# ---------------------------------------------------------------------------
+# CLAW Integration – Query Engine endpoint
+# ---------------------------------------------------------------------------
+
+class QueryEngineRequest(BaseModel):
+    """Request body for the CLAW query-engine endpoint."""
+
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Natural-language prompt or command to dispatch through the query engine",
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Resume an existing session by its UUID hex (omit to start a new session)",
+    )
+    matched_commands: List[str] = Field(
+        default_factory=list,
+        description="Pre-matched command names to attach to this turn",
+    )
+    matched_tools: List[str] = Field(
+        default_factory=list,
+        description="Pre-matched tool names to attach to this turn",
+    )
+
+
+@router.post("/query-engine")
+def dispatch_query_engine(request: QueryEngineRequest) -> Dict[str, Any]:
+    """Dispatch a prompt through the CLAW QueryEnginePort.
+
+    The query engine tracks session state, token budgets, matched commands,
+    and tool invocations.  Use this endpoint to route structured queries
+    through the registered command and tool surface without calling raw
+    API endpoints directly.
+
+    Request body::
+
+        {
+            "prompt": "list all entities related to Federal Reserve",
+            "matched_commands": ["list_entities"],
+            "matched_tools":    ["KnowledgeGraphTool"]
+        }
+
+    Returns the engine's :class:`TurnResult` serialised as a JSON object,
+    including the generated output, stop reason, and cumulative token usage.
+    """
+    try:
+        from app.claw_integration.query_engine import QueryEnginePort
+        from app.claw_integration.session_store import load_session
+
+        if request.session_id:
+            try:
+                engine = QueryEnginePort.from_saved_session(request.session_id)
+            except FileNotFoundError:
+                logger.warning(
+                    "Session %r not found; starting a new session.", request.session_id
+                )
+                engine = QueryEnginePort.from_workspace()
+        else:
+            engine = QueryEnginePort.from_workspace()
+
+        result = engine.submit_message(
+            prompt=request.prompt,
+            matched_commands=tuple(request.matched_commands),
+            matched_tools=tuple(request.matched_tools),
+        )
+
+        return {
+            "session_id": engine.session_id,
+            "prompt": result.prompt,
+            "output": result.output,
+            "matched_commands": list(result.matched_commands),
+            "matched_tools": list(result.matched_tools),
+            "stop_reason": result.stop_reason,
+            "usage": {
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+            },
+            "turns_used": len(engine.mutable_messages),
+        }
+    except Exception as exc:
+        logger.error("Query engine error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Seed triples endpoint – populate the KG with example data when empty
+# ---------------------------------------------------------------------------
+
+_SEED_TRIPLES: List[Dict[str, Any]] = [
+    {"subject": "Federal Reserve", "predicate": "raises", "object": "interest rates", "subject_type": "ORG", "object_type": "MISC"},
+    {"subject": "Federal Reserve", "predicate": "controls", "object": "monetary policy", "subject_type": "ORG", "object_type": "MISC"},
+    {"subject": "interest rates", "predicate": "affects", "object": "inflation", "subject_type": "MISC", "object_type": "MISC"},
+    {"subject": "inflation", "predicate": "impacts", "object": "consumer spending", "subject_type": "MISC", "object_type": "MISC"},
+    {"subject": "United States", "predicate": "imposes", "object": "trade sanctions", "subject_type": "GPE", "object_type": "MISC"},
+    {"subject": "trade sanctions", "predicate": "affects", "object": "global supply chains", "subject_type": "MISC", "object_type": "MISC"},
+    {"subject": "global supply chains", "predicate": "influences", "object": "technology sector", "subject_type": "MISC", "object_type": "ORG"},
+]
+
+
+@router.post("/seed-triples")
+def seed_knowledge_graph() -> Dict[str, Any]:
+    """Populate the knowledge graph with baseline example triples.
+
+    This endpoint is intended for use when the graph is empty and the user
+    wants a quick dataset to explore the visualisation features.  Calling it
+    on a non-empty graph is safe – duplicate entities are silently skipped by
+    the underlying store.
+
+    Returns a summary of triples added.
+    """
+    try:
+        kg = get_knowledge_graph()
+
+        added = 0
+        for triple in _SEED_TRIPLES:
+            subj = triple["subject"]
+            obj = triple["object"]
+            pred = triple["predicate"]
+            subj_type = triple.get("subject_type", _DEFAULT_ENTITY_TYPE)
+            obj_type = triple.get("object_type", _DEFAULT_ENTITY_TYPE)
+
+            kg.add_entity(subj, subj_type)
+            kg.add_entity(obj, obj_type)
+            kg.add_relation(
+                from_name=subj,
+                from_type=subj_type,
+                to_name=obj,
+                to_type=obj_type,
+                relation_type=pred,
+                weight=0.8,
+            )
+            added += 1
+
+        return {
+            "status": "ok",
+            "triples_added": added,
+            "message": (
+                f"Seeded {added} baseline triples into the knowledge graph. "
+                "Use the visualisation tabs to explore the data."
+            ),
+        }
+    except Exception as exc:
+        logger.error("Seed triples error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
