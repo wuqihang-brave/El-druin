@@ -707,7 +707,75 @@ def analyze_with_deduction_soul(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Endpoint 4: Get Ontological Context
+# Endpoint 4: Evented Reasoning Pipeline  (three-stage)
+# POST /api/v1/analysis/evented/deduce
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/evented/deduce")
+def analyze_with_evented_pipeline(
+    request: OntologyGroundedAnalysisRequest,
+) -> Dict[str, Any]:
+    """
+    Evented reasoning pipeline – three-stage verifiable deduction.
+
+    Reuses the same request model as ``POST /analysis/grounded/deduce``
+    for API compatibility.  The ``news_fragment`` field is used as the
+    primary text input; ``claim`` and ``seed_entities`` are recorded but
+    not required for the evented pipeline.
+
+    Response structure
+    ------------------
+    ::
+
+        {
+          "status": "success",
+          "events": [...],           # Stage 1 – extracted event nodes
+          "active_patterns": [...],  # Stage 2a – deterministic event→pattern
+          "derived_patterns": [...], # Stage 2b – composition_table derivation
+          "conclusion": {...},       # Stage 3a – LLM-constrained or fallback
+          "credibility": {...},      # Stage 3b – verifiability + KG consistency
+          "timestamp": "..."
+        }
+    """
+    try:
+        _ensure_intelligence_importable()
+        llm_service = _get_llm_service()
+
+        # Combine title / claim context with the main news fragment
+        text = request.news_fragment
+        if request.claim and request.claim not in text:
+            text = f"{request.news_fragment}\n{request.claim}"
+
+        from intelligence.evented_pipeline import run_evented_pipeline
+
+        result = run_evented_pipeline(text=text, llm_service=llm_service)
+
+        return {
+            "status":           "success",
+            "events":           result.events,
+            "active_patterns":  result.active_patterns,
+            "derived_patterns": result.derived_patterns,
+            "conclusion":       result.conclusion,
+            "credibility":      result.credibility,
+            "timestamp":        datetime.now().isoformat(),
+            "meta": {
+                "seed_entities":   list(request.seed_entities),
+                "text_length":     len(text),
+                "event_count":     len(result.events),
+                "pattern_count":   len(result.active_patterns),
+                "derived_count":   len(result.derived_patterns),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Evented pipeline analysis failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Endpoint 5: Get Ontological Context
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/ontological-context/{entity_name}")
