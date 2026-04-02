@@ -113,6 +113,9 @@ def _init_knowledge_graph_db(db_path: str) -> None:
             "CREATE NODE TABLE IF NOT EXISTS Entity"
             "(name STRING, entity_type STRING, description STRING,"
             " confidence DOUBLE, PRIMARY KEY(name))",
+            # Schema.org type hierarchy tables (populated by import_schemaorg)
+            "CREATE NODE TABLE IF NOT EXISTS SchemaType"
+            "(name STRING, description STRING, schema_url STRING, PRIMARY KEY(name))",
             "CREATE REL TABLE IF NOT EXISTS RELATED_TO"
             "(FROM Entity TO Entity, relation_type STRING, confidence DOUBLE)",
             "CREATE REL TABLE IF NOT EXISTS LOCATED_IN"
@@ -123,6 +126,10 @@ def _init_knowledge_graph_db(db_path: str) -> None:
             "(FROM Entity TO Entity, confidence DOUBLE)",
             "CREATE REL TABLE IF NOT EXISTS MEMBER_OF"
             "(FROM Entity TO Entity, confidence DOUBLE)",
+            "CREATE REL TABLE IF NOT EXISTS SUBTYPE_OF"
+            "(FROM SchemaType TO SchemaType)",
+            "CREATE REL TABLE IF NOT EXISTS INSTANCE_OF"
+            "(FROM Entity TO SchemaType, confidence DOUBLE)",
         ]
 
         for ddl in _DDL:

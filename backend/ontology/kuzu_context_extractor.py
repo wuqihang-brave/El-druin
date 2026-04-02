@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import kuzu  # type: ignore
 
@@ -151,10 +151,51 @@ class KuzuContextExtractor:
                     "(entity is in DB but no relations were written for it)",
                     seed_entity_name,
                 )
+                # Fallback: try schema.org type-hierarchy context
+                schema_paths = self._get_schema_type_paths(seed_entity_name, entity_type)
+                if schema_paths:
+                    logger.info(
+                        "KG fallback – using schema.org type-hierarchy context for '%s': "
+                        "%d SUBTYPE_OF paths",
+                        seed_entity_name, len(schema_paths),
+                    )
+                    context = OntologicalContext(
+                        seed_entity=seed_entity_name,
+                        seed_type=entity_type or "UNKNOWN",
+                        extraction_time=datetime.now().isoformat(),
+                        one_hop_paths=schema_paths,
+                        two_hop_paths=[],
+                        total_paths=len(schema_paths),
+                    )
+                else:
+                    logger.warning(
+                        "KG diagnostic – no schema.org type fallback for '%s' "
+                        "(entity type cannot be inferred from name keywords; "
+                        "add direct relations via kg_init_tools.py populate or "
+                        "ensure import_schemaorg has been run)",
+                        seed_entity_name,
+                    )
+            elif not entity_exists and context.total_paths == 0:
+                # Entity not found at all – try schema type fallback too
+                schema_paths = self._get_schema_type_paths(seed_entity_name, entity_type)
+                if schema_paths:
+                    logger.info(
+                        "KG fallback – entity '%s' not in DB, using schema.org type context: "
+                        "%d paths",
+                        seed_entity_name, len(schema_paths),
+                    )
+                    context = OntologicalContext(
+                        seed_entity=seed_entity_name,
+                        seed_type=entity_type or "UNKNOWN",
+                        extraction_time=datetime.now().isoformat(),
+                        one_hop_paths=schema_paths,
+                        two_hop_paths=[],
+                        total_paths=len(schema_paths),
+                    )
 
             logger.info(
                 "Extracted ontological context for %s: %d 1-hop + %d 2-hop paths",
-                seed_entity_name, len(one_hop), len(two_hop),
+                seed_entity_name, len(context.one_hop_paths), len(context.two_hop_paths),
             )
             return context
 
@@ -193,6 +234,103 @@ class KuzuContextExtractor:
         "MEMBER_OF",
         "CONTRADICTS",
     )
+
+    # Mapping from entity_type strings to schema.org type names for fallback
+    _ENTITY_TYPE_TO_SCHEMA: Dict[str, str] = {
+        "person": "Person",
+        "state": "Country",
+        "alliance": "Organization",
+        "institution": "Organization",
+        "firm": "Corporation",
+        "financial_org": "FinancialService",
+        "resource": "Product",
+        "tech": "SoftwareApplication",
+        "media": "NewsMediaOrganization",
+        "conflict": "Event",
+        "norm": "CreativeWork",
+    }
+
+    def _infer_schema_type(self, entity_name: str, entity_type: Optional[str]) -> Optional[str]:
+        """Infer a schema.org type name from entity name and/or entity_type.
+
+        Uses the _ENTITY_TYPE_TO_SCHEMA mapping and general keyword heuristics.
+        Returns None when no mapping can be determined.
+        """
+        # Try direct entity_type → schema.org mapping
+        if entity_type:
+            schema_name = self._ENTITY_TYPE_TO_SCHEMA.get(entity_type.lower())
+            if schema_name:
+                return schema_name
+
+        # General keyword heuristics on entity name (no hardcoded proper names)
+        name_lower = entity_name.lower()
+        if any(k in name_lower for k in ("cup", "tournament", "championship", "league", "games", "open", "gp", "grand prix")):
+            return "SportsEvent"
+        if any(k in name_lower for k in ("corporation", "inc", "ltd", "co.", "company", "corp")):
+            return "Corporation"
+        if any(k in name_lower for k in ("university", "college", "school", "institute")):
+            return "EducationalOrganization"
+        if any(k in name_lower for k in ("hospital", "clinic", "medical center")):
+            return "Hospital"
+        if any(k in name_lower for k in ("government", "ministry", "department", "bureau", "agency")):
+            return "GovernmentOrganization"
+        if any(k in name_lower for k in ("act", "law", "bill", "treaty", "agreement", "accord")):
+            return "Legislation"
+        return None
+
+    def _get_schema_type_paths(
+        self,
+        seed_entity_name: str,
+        entity_type: Optional[str] = None,
+        limit: int = 5,
+    ) -> List[RelationshipPath]:
+        """Get schema.org type-hierarchy paths as fallback context.
+
+        When an entity has no edges in the main KG, this method looks up the
+        entity's inferred schema.org type and returns SUBTYPE_OF paths from
+        the SchemaType table.  This provides at least minimal type-level
+        ontological grounding even when instance-level edges are absent.
+
+        Returns an empty list if the SchemaType table is not populated
+        (i.e., import_schemaorg has not been run yet).
+        """
+        schema_type = self._infer_schema_type(seed_entity_name, entity_type)
+        if not schema_type:
+            return []
+
+        paths: List[RelationshipPath] = []
+        esc = self._escape_cypher(schema_type)
+
+        try:
+            # Check if SchemaType table exists and has the type
+            query = (
+                f"MATCH (c:SchemaType)-[r:SUBTYPE_OF]->(p:SchemaType)"
+                f" WHERE c.name = '{esc}'"
+                f" RETURN c.name, p.name"
+                f" LIMIT {limit}"
+            )
+            result = self.conn.execute(query)
+            while result.has_next():
+                row = result.get_next()
+                child_name = row[0] or schema_type
+                parent_name = row[1] or ""
+                if parent_name:
+                    paths.append(RelationshipPath(
+                        hop=1,
+                        source_entity=f"{seed_entity_name} [{child_name}]",
+                        source_type=child_name,
+                        relation_type="SUBTYPE_OF",
+                        target_entity=parent_name,
+                        target_type="SchemaType",
+                        strength=0.9,
+                    ))
+        except Exception as exc:
+            logger.debug(
+                "_get_schema_type_paths(%s→%s): %s",
+                seed_entity_name, schema_type, exc,
+            )
+
+        return paths
 
     def _get_one_hop_paths(
         self,

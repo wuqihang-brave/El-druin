@@ -146,6 +146,69 @@ Inserted 157 nodes and 331 relationships
 
 ---
 
+## 📚 导入 Schema.org 本体类型层次 / Import Schema.org Ontology
+
+为了让知识图谱的上下文提取在实体边数为零时仍能提供类型级别的语义背景，
+本项目内置了 schema.org 完整类型层次（`backend/ontology/resources/schemaorg_nodes.json`，约 1466 个类型）。
+
+### 一次性导入
+
+```bash
+# 从项目根目录执行（确保已安装 kuzu）：
+python -m backend.ontology.tools.import_schemaorg
+
+# 指定自定义 DB 路径：
+python -m backend.ontology.tools.import_schemaorg --db ./data/el_druin.kuzu
+
+# 仅导入前 100 个类型（测试用）：
+python -m backend.ontology.tools.import_schemaorg --limit 100
+
+# 重置后重新导入（删除旧表再写入）：
+python -m backend.ontology.tools.import_schemaorg --reset
+```
+
+导入后效果：
+- Kuzu DB 中新增 `SchemaType` 节点表（~1466 个类型节点）和 `SUBTYPE_OF` 关系表（~996 条边）
+- 当实体（如 "Ryder Cup", "Tiger Woods"）在 KG 中无直接关系时，上下文提取器自动回退到 schema.org 类型层次，提供最小可用的类型级背景
+- 日志将显示 `KG fallback – using schema.org type-hierarchy context` 而非 `0 1-hop + 0 2-hop`
+
+### 重新生成 schemaorg_nodes.json
+
+如果需要从最新的 schema.org CSV 重新生成 JSON：
+
+```bash
+# 下载最新 CSV 并放置到：
+# backend/ontology/resources/schemaorg-current-https-types.csv
+# 然后运行：
+python tools/generate_schemaorg_ontology.py
+```
+
+---
+
+## 🔬 本体代数验证 / Ontology Algebra Validation
+
+`backend/ontology/relation_schema.py` 实现了基于群论的关系代数验证：
+
+- **逆元一致性**：若模式 A 的逆是 B，则 B 的逆必须是 A。通过 `validate_inverses()` 静态检查。
+- **组合闭包**：`composition_table` 定义了两个模式合成后的高阶效应（Cayley Table），通过 `validate_composition_closure()` 验证引用完整性。
+- **未知实体类型短路**：当实体类型无法推断（返回 `"unknown"`）时，笛卡尔积匹配自动跳过，避免污染推演结果。
+
+应用启动时自动在非严格模式下运行验证（仅记录警告）。在开发环境中启用严格模式：
+
+```bash
+DEBUG=true uvicorn app.main:app --reload --port 8001
+```
+
+手动运行验证：
+
+```python
+from ontology.relation_schema import run_ontology_validation
+run_ontology_validation(strict=False)  # 生产模式：只警告
+run_ontology_validation(strict=True)   # 开发模式：有错误时抛出 ValueError
+```
+
+---
+
 ## 🤝 参与贡献 / Contributing
 
 1. Fork 本仓库

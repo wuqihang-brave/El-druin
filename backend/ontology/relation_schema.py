@@ -28,9 +28,12 @@ EL-DRUIN Ontological Relation Schema
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, FrozenSet, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 # ===========================================================================
@@ -71,6 +74,8 @@ class EntityType(str, Enum):
     # 事件主體（可作為三元組的一端）
     CONFLICT        = "conflict"        # 戰爭 / 武裝衝突事件
     NORM            = "norm"            # 國際規範 / 法律 / 條約
+    # 未知 / 無法分類
+    UNKNOWN         = "unknown"         # 無法推斷類型（不參與笛卡爾積匹配）
 
 
 # ===========================================================================
@@ -644,15 +649,40 @@ def generate_diagnostic_report(
     生成完整笛卡爾積診斷報告。
 
     這是供前端「診斷視圖」調用的核心函數。
+    當 e_src 或 e_tgt 為 "unknown" 時短路返回無匹配報告，
+    避免以 unknown 污染笛卡爾積空間。
     """
+    # UNKNOWN 短路：entity type 未能推斷時直接返回無匹配報告
+    if e_src == "unknown" or e_tgt == "unknown":
+        unknown_side = "e_src" if e_src == "unknown" else "e_tgt"
+        return CartesianDiagnosticReport(
+            input_triple=(e_src, r, e_tgt),
+            matched_pattern=None,
+            fuzzy_matches=[],
+            typical_outcomes=["structural_realignment", "third_party_opportunity", "uncertainty_premium"],
+            mechanism_class="unknown",
+            domain="unknown",
+            confidence_prior=0.5,
+            composition_chain=[],
+            inverse_pattern=None,
+            diagnostic_note=(
+                f"[UNKNOWN_ENTITY_TYPE] {unknown_side}='{e_src if e_src == 'unknown' else e_tgt}' "
+                f"無法推斷實體類型，笛卡爾積匹配已跳過。"
+                f"請確認實體名稱是否在 _ENTITY_NAME_HINTS 覆蓋範圍內。"
+            ),
+        )
+
     exact = lookup_pattern_by_strings(e_src, r, e_tgt)
     fuzzy = fuzzy_lookup_pattern(e_src, r, e_tgt)
 
     if exact:
+        inv = get_inverse_pattern(exact.pattern_name)
+        inv_note = f" 逆模式：「{inv}」。" if inv else ""
         note = (
             f"精確匹配：三元組 ({e_src} × {r} × {e_tgt}) "
             f"對應「{exact.pattern_name}」。"
             f"先驗置信度 {exact.confidence_prior:.0%}。"
+            f"{inv_note}"
         )
         return CartesianDiagnosticReport(
             input_triple=(e_src, r, e_tgt),
@@ -772,6 +802,10 @@ def build_pattern_context_for_prompt(
         src_type = _infer_entity_type(src)
         tgt_type = _infer_entity_type(tgt)
 
+        # UNKNOWN 短路：無法推斷類型時跳過笛卡爾積匹配
+        if src_type == "unknown" or tgt_type == "unknown":
+            continue
+
         diag = generate_diagnostic_report(src_type, rel, tgt_type)
         key  = (src_type, rel, tgt_type)
         if key in seen:
@@ -824,4 +858,171 @@ def _infer_entity_type(name: str) -> str:
     for hints, entity_type in _ENTITY_NAME_HINTS:
         if any(h in name_lower for h in hints):
             return entity_type
-    return "state"  # 默認視為國家級主體
+    return "unknown"  # 無法推斷時返回 unknown，避免污染笛卡爾積匹配
+
+
+# ===========================================================================
+# 8. 逆元表 & 組合表（群論代數結構）
+# ===========================================================================
+
+def _build_inverse_table() -> Dict[str, str]:
+    """從 CARTESIAN_PATTERN_REGISTRY 構建逆元表（模式名 → 逆模式名）。"""
+    table: Dict[str, str] = {}
+    for _, pattern in CARTESIAN_PATTERN_REGISTRY.items():
+        if pattern.inverse_pattern:
+            table[pattern.pattern_name] = pattern.inverse_pattern
+    return table
+
+
+# 逆元表：pattern_name → inverse_pattern_name
+# 在模式注冊完成後由 _build_inverse_table() 初始化
+inverse_table: Dict[str, str] = {}
+
+# 組合表（Cayley Table）：(pattern_A, pattern_B) → 合成結果模式名
+# 顯式定義兩個動力模式連續作用的高階效應，供 DeductionEngine 查詢
+composition_table: Dict[Tuple[str, str], str] = {
+    # 制裁 + 同盟 → 多邊制裁
+    ("霸權制裁模式", "正式軍事同盟模式"):   "多邊聯盟制裁模式",
+    # 軍事同盟 + 軍事打擊 → 代理衝突
+    ("正式軍事同盟模式", "國家間武力衝突模式"): "非國家武裝代理衝突模式",
+    # 制裁 + 技術封鎖 → 科技脫鉤
+    ("霸權制裁模式", "實體清單技術封鎖模式"):  "科技脫鉤 / 技術鐵幕模式",
+    # 信息戰 + 大國脅迫 → 代理衝突升級
+    ("信息戰 / 敘事操控模式", "大國脅迫 / 威懾模式"): "非國家武裝代理衝突模式",
+    # 金融孤立 + 制裁 → 主權债务危机（通用後果）
+    ("金融孤立 / SWIFT 切斷模式", "霸權制裁模式"): "霸權制裁模式",
+}
+
+
+def get_inverse_pattern(pattern_name: str) -> Optional[str]:
+    """查詢模式的逆元。
+
+    Args:
+        pattern_name: 動力模式名稱（中文）
+
+    Returns:
+        逆元模式名稱，若無逆元則返回 None。
+    """
+    return inverse_table.get(pattern_name)
+
+
+def compose_patterns(pattern_a: str, pattern_b: str) -> Optional[str]:
+    """查詢兩個模式合成的結果（Cayley Table 查詢）。
+
+    Args:
+        pattern_a: 第一個動力模式名稱
+        pattern_b: 第二個動力模式名稱
+
+    Returns:
+        合成後的模式名稱，若無明確定義則返回 None。
+    """
+    return composition_table.get((pattern_a, pattern_b))
+
+
+# ===========================================================================
+# 9. 本體代數驗證
+# ===========================================================================
+
+def validate_inverses() -> List[str]:
+    """驗證逆元表的一致性：若 A.inverse=B，則必須 B.inverse=A。
+
+    Returns:
+        驗證錯誤列表（空列表表示通過）。
+    """
+    errors: List[str] = []
+    all_pattern_names = {p.pattern_name for p in CARTESIAN_PATTERN_REGISTRY.values()}
+
+    for pattern in CARTESIAN_PATTERN_REGISTRY.values():
+        inv = pattern.inverse_pattern
+        if inv is None:
+            continue
+
+        # 逆模式名必須存在於模式庫中
+        if inv not in all_pattern_names:
+            errors.append(
+                f"[MISSING_INVERSE] '{pattern.pattern_name}'.inverse = '{inv}'"
+                f" but '{inv}' is not registered in CARTESIAN_PATTERN_REGISTRY"
+            )
+            continue
+
+        # 逆模式的逆應指回原模式
+        inv_pattern = next(
+            (p for p in CARTESIAN_PATTERN_REGISTRY.values() if p.pattern_name == inv),
+            None,
+        )
+        if inv_pattern and inv_pattern.inverse_pattern != pattern.pattern_name:
+            errors.append(
+                f"[ASYMMETRIC_INVERSE] '{pattern.pattern_name}'.inverse = '{inv}'"
+                f" but '{inv}'.inverse = '{inv_pattern.inverse_pattern}'"
+                f" (expected '{pattern.pattern_name}')"
+            )
+
+    return errors
+
+
+def validate_composition_closure() -> List[str]:
+    """驗證組合表中所有引用的模式名均已注冊。
+
+    Returns:
+        驗證錯誤列表（空列表表示通過）。
+    """
+    errors: List[str] = []
+    all_pattern_names = {p.pattern_name for p in CARTESIAN_PATTERN_REGISTRY.values()}
+
+    for (pa, pb), result in composition_table.items():
+        for name in (pa, pb, result):
+            if name not in all_pattern_names:
+                errors.append(
+                    f"[MISSING_PATTERN] composition_table references unknown"
+                    f" pattern: '{name}'"
+                )
+
+    return errors
+
+
+def run_ontology_validation(strict: bool = False) -> bool:
+    """執行完整的本體代數驗證，並記錄結果。
+
+    Args:
+        strict: 若為 True，驗證失敗時拋出 ValueError；
+                否則僅記錄警告（適合生產環境）。
+
+    Returns:
+        True 表示驗證通過，False 表示有錯誤（非 strict 模式）。
+
+    Raises:
+        ValueError: 僅在 strict=True 且驗證有誤時拋出。
+    """
+    inv_errors = validate_inverses()
+    comp_errors = validate_composition_closure()
+    all_errors = inv_errors + comp_errors
+
+    if not all_errors:
+        logger.info(
+            "✅ Ontology algebra validation passed: %d patterns, %d inverses, %d compositions",
+            len(CARTESIAN_PATTERN_REGISTRY),
+            sum(1 for p in CARTESIAN_PATTERN_REGISTRY.values() if p.inverse_pattern),
+            len(composition_table),
+        )
+        return True
+
+    for err in all_errors:
+        logger.warning("Ontology validation error: %s", err)
+
+    if strict:
+        raise ValueError(
+            f"Ontology algebra validation failed with {len(all_errors)} error(s):\n"
+            + "\n".join(all_errors)
+        )
+
+    logger.warning(
+        "⚠️ Ontology algebra validation: %d error(s) found (non-strict mode – continuing)",
+        len(all_errors),
+    )
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Initialize inverse_table after all patterns are registered
+# ---------------------------------------------------------------------------
+inverse_table.update(_build_inverse_table())
