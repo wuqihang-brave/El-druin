@@ -545,8 +545,9 @@ class TestPostProcessingReject:
         assert postprocess_events([candidate]) == []
 
     def test_rejects_event_that_falls_below_threshold_after_folding(self):
-        # inferred actor+target: * 0.7 * 0.8 = 0.56; plus no trigger keyword: * 0.7 = 0.392
-        # Start at 0.22 → 0.22 * 0.7 * 0.8 * 0.7 ≈ 0.086 < 0.2 → rejected
+        # Folding chain: * 0.7 (any inferred_fields) * 0.8 (actor+target in _ACTOR_TARGET_KEYS)
+        #                * 0.7 (quote has no sanction trigger keyword)
+        # 0.22 * 0.7 * 0.8 * 0.7 ≈ 0.086 < 0.2 → rejected (T0)
         candidate = _make_event(
             confidence=0.22,
             inferred_fields=["actor", "target"],
@@ -658,8 +659,7 @@ class TestPostProcessingConfidenceFolding:
         candidate = _make_event(confidence=base_conf, inferred_fields=["actor"])
         result = postprocess_events([candidate])
         assert len(result) == 1
-        # * 0.7 from inferred_fields (no actor/target key penalty since actor IS actor/target)
-        # actor IS in _ACTOR_TARGET_KEYS → also * 0.8
+        # Folding: * 0.7 (any inferred_fields) * 0.8 (actor in _ACTOR_TARGET_KEYS) = * 0.56
         expected = round(base_conf * 0.7 * 0.8, 4)
         assert result[0]["confidence"] == pytest.approx(expected, abs=0.001)
 

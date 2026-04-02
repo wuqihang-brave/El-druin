@@ -859,7 +859,7 @@ def _deterministic_conclusion(
     for evt in events:
         all_gaps.extend(evt.get("verification_gap", []))
     if not all_gaps:
-        all_gaps = ["additional_source_confirmation_required"]
+        all_gaps = ["Additional source confirmation required"]
     hypothesis_selected = [
         {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
         for ap in t1_active[:2]
