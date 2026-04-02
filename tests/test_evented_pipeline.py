@@ -34,7 +34,11 @@ from intelligence.evented_pipeline import (
     generate_conclusion,
     compute_credibility,
     run_evented_pipeline,
+    postprocess_events,
     _stable_id,
+    _T0_CONF_THRESHOLD,
+    _T2_CONF_THRESHOLD,
+    _MIN_QUOTE_LEN,
 )
 from ontology.relation_schema import (
     validate_inverses,
@@ -478,3 +482,414 @@ class TestFullPipeline:
             # Verify that at minimum a sanction event was detected from the text
             assert EventType.SANCTION_IMPOSED in [e["type"] for e in result.events] or \
                    len(result.events) > 0, "Expected at least one event from alliance/sanction text"
+
+
+# ===========================================================================
+# I. Post-processing: reject, tier, normalize, confidence folding
+# ===========================================================================
+
+def _make_event(
+    event_type: str = EventType.SANCTION_IMPOSED,
+    confidence: float = 0.85,
+    quote: str = "The US imposed sanctions on the target country.",
+    inferred_fields: list | None = None,
+    inference_rationale: str = "",
+    verification_gap: list | None = None,
+    args: dict | None = None,
+    eid: str | None = None,
+) -> dict:
+    """Helper to create a minimal candidate event dict."""
+    evt: dict = {
+        "type":       event_type,
+        "args":       args or {},
+        "evidence":   {"quote": quote},
+        "confidence": confidence,
+    }
+    if inferred_fields is not None:
+        evt["inferred_fields"] = inferred_fields
+    if inference_rationale:
+        evt["inference_rationale"] = inference_rationale
+    if verification_gap is not None:
+        evt["verification_gap"] = verification_gap
+    if eid:
+        evt["id"] = eid
+    return evt
+
+
+class TestPostProcessingReject:
+    """Post-processor must reject T0 events unconditionally."""
+
+    def test_rejects_zero_confidence(self):
+        candidate = _make_event(confidence=0.0)
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_negative_confidence(self):
+        candidate = _make_event(confidence=-0.1)
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_empty_quote(self):
+        candidate = _make_event(quote="")
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_whitespace_only_quote(self):
+        candidate = _make_event(quote="   ")
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_short_quote_below_min_len(self):
+        short_q = "x" * (_MIN_QUOTE_LEN - 1)
+        candidate = _make_event(quote=short_q)
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_confidence_below_t0_threshold(self):
+        candidate = _make_event(confidence=_T0_CONF_THRESHOLD - 0.01)
+        assert postprocess_events([candidate]) == []
+
+    def test_rejects_event_that_falls_below_threshold_after_folding(self):
+        # inferred actor+target: * 0.7 * 0.8 = 0.56; plus no trigger keyword: * 0.7 = 0.392
+        # Start at 0.22 → 0.22 * 0.7 * 0.8 * 0.7 ≈ 0.086 < 0.2 → rejected
+        candidate = _make_event(
+            confidence=0.22,
+            inferred_fields=["actor", "target"],
+            quote="The deal was announced at a press conference today in the capital.",
+        )
+        result = postprocess_events([candidate])
+        assert result == [], (
+            f"Expected T0 rejection after confidence folding, got {result}"
+        )
+
+    def test_valid_event_passes_through(self):
+        candidate = _make_event(confidence=0.85)
+        result = postprocess_events([candidate])
+        assert len(result) == 1
+
+
+class TestPostProcessingTiering:
+    """Tiering boundary tests: T0 < 0.2, T1 in [0.2, 0.7), T2 >= 0.7."""
+
+    def test_exactly_t0_boundary_rejected(self):
+        candidate = _make_event(confidence=_T0_CONF_THRESHOLD - 0.001)
+        assert postprocess_events([candidate]) == []
+
+    def test_exactly_t0_boundary_passes(self):
+        candidate = _make_event(confidence=_T0_CONF_THRESHOLD)
+        result = postprocess_events([candidate])
+        assert len(result) == 1
+        assert result[0]["tier"] == "T1"
+
+    def test_t1_tier_at_lower_bound(self):
+        candidate = _make_event(confidence=_T0_CONF_THRESHOLD)
+        result = postprocess_events([candidate])
+        assert result[0]["tier"] == "T1"
+
+    def test_t1_tier_mid_range(self):
+        candidate = _make_event(confidence=0.50)
+        result = postprocess_events([candidate])
+        assert result[0]["tier"] == "T1"
+
+    def test_t2_boundary_exactly(self):
+        candidate = _make_event(confidence=_T2_CONF_THRESHOLD)
+        result = postprocess_events([candidate])
+        assert result[0]["tier"] == "T2"
+
+    def test_t2_high_confidence(self):
+        candidate = _make_event(confidence=0.95)
+        result = postprocess_events([candidate])
+        assert result[0]["tier"] == "T2"
+
+    def test_inferred_fields_forces_t1_even_at_high_base_confidence(self):
+        # confidence = 0.90, but inferred_fields present → T1 regardless
+        candidate = _make_event(
+            confidence=0.90,
+            inferred_fields=["actor"],
+        )
+        result = postprocess_events([candidate])
+        assert len(result) == 1
+        assert result[0]["tier"] == "T1"
+
+    def test_tier_field_present_in_output(self):
+        candidate = _make_event(confidence=0.85)
+        result = postprocess_events([candidate])
+        assert "tier" in result[0]
+
+
+class TestPostProcessingNormalization:
+    """Normalization: strip whitespace in pattern names (via args) and de-dup."""
+
+    def test_strips_whitespace_from_args_strings(self):
+        candidate = _make_event(args={"actor": "  United States  ", "target": " China "})
+        result = postprocess_events([candidate])
+        assert result[0]["args"]["actor"] == "United States"
+        assert result[0]["args"]["target"] == "China"
+
+    def test_strips_whitespace_from_quote(self):
+        q = "  The US imposed sanctions on the target country.  "
+        candidate = _make_event(quote=q)
+        result = postprocess_events([candidate])
+        assert not result[0]["evidence"]["quote"].startswith(" ")
+        assert not result[0]["evidence"]["quote"].endswith(" ")
+
+    def test_strips_whitespace_from_event_type(self):
+        # Note: EventType constants have no spaces, but user-supplied types might
+        candidate = _make_event(event_type="  sanction_imposed  ")
+        result = postprocess_events([candidate])
+        assert result[0]["type"] == "sanction_imposed"
+
+    def test_deduplicates_events_with_same_id(self):
+        evt1 = _make_event(confidence=0.85, eid="dup001")
+        evt2 = _make_event(confidence=0.90, eid="dup001")
+        result = postprocess_events([evt1, evt2])
+        assert len(result) == 1
+        assert result[0]["id"] == "dup001"
+
+    def test_deduplicates_events_with_same_type_and_quote(self):
+        # Without explicit IDs – stable ID is derived from type + quote
+        quote = "The US imposed sanctions on the target country."
+        evt1 = _make_event(confidence=0.85, quote=quote)
+        evt2 = _make_event(confidence=0.88, quote=quote)
+        result = postprocess_events([evt1, evt2])
+        assert len(result) == 1
+
+
+class TestPostProcessingConfidenceFolding:
+    """Confidence folding rules for inferred fields and trigger keywords."""
+
+    def test_inferred_fields_reduce_confidence(self):
+        base_conf = 0.80
+        candidate = _make_event(confidence=base_conf, inferred_fields=["actor"])
+        result = postprocess_events([candidate])
+        assert len(result) == 1
+        # * 0.7 from inferred_fields (no actor/target key penalty since actor IS actor/target)
+        # actor IS in _ACTOR_TARGET_KEYS → also * 0.8
+        expected = round(base_conf * 0.7 * 0.8, 4)
+        assert result[0]["confidence"] == pytest.approx(expected, abs=0.001)
+
+    def test_inferred_actor_target_gets_additional_penalty(self):
+        base_conf = 0.90
+        candidate_actor  = _make_event(confidence=base_conf, inferred_fields=["actor"])
+        candidate_item   = _make_event(
+            confidence=base_conf, inferred_fields=["item"],
+            quote="The US imposed sanctions on the target country. Item X was restricted.",
+            eid="item_evt",
+        )
+        result_actor = postprocess_events([candidate_actor])
+        result_item  = postprocess_events([candidate_item])
+        # actor should be lower than item because actor/target get extra *0.8
+        assert result_actor[0]["confidence"] < result_item[0]["confidence"]
+
+    def test_missing_trigger_keyword_reduces_confidence(self):
+        # Quote about a ceasefire but event type is MILITARY_STRIKE (no trigger words)
+        candidate = _make_event(
+            event_type=EventType.MILITARY_STRIKE,
+            confidence=0.80,
+            quote="The ceasefire agreement was reached between the two parties today.",
+        )
+        result = postprocess_events([candidate])
+        if result:
+            assert result[0]["confidence"] < 0.80
+
+    def test_present_trigger_keyword_no_extra_penalty(self):
+        candidate = _make_event(
+            event_type=EventType.SANCTION_IMPOSED,
+            confidence=0.80,
+            quote="The US imposed sanctions on the target country.",
+        )
+        result = postprocess_events([candidate])
+        assert len(result) == 1
+        # No inferred_fields, quote has "sanctions" → no penalty → confidence stays 0.80
+        assert result[0]["confidence"] == pytest.approx(0.80, abs=0.001)
+
+
+class TestActivePatternsProvenance:
+    """derive_active_patterns must include tier, inferred, confidence fields."""
+
+    def test_output_has_tier_field(self):
+        events = [_make_event(confidence=0.85, eid="e1")]
+        events[0]["id"] = "e1"
+        active = derive_active_patterns(events)
+        assert len(active) > 0
+        assert "tier" in active[0]
+
+    def test_output_has_inferred_field(self):
+        events = [_make_event(confidence=0.85, eid="e1")]
+        events[0]["id"] = "e1"
+        active = derive_active_patterns(events)
+        assert "inferred" in active[0]
+        assert active[0]["inferred"] is False
+
+    def test_output_has_confidence_field(self):
+        events = [_make_event(confidence=0.85, eid="e1")]
+        events[0]["id"] = "e1"
+        active = derive_active_patterns(events)
+        assert "confidence" in active[0]
+
+    def test_t1_event_maps_to_weak_pattern(self):
+        evt = _make_event(confidence=0.40, eid="e_t1")
+        evt["id"] = "e_t1"
+        # Force T1 tier
+        evt["tier"] = "T1"
+        active = derive_active_patterns([evt])
+        pattern_names = [ap["pattern"] for ap in active]
+        # Should map to a weak pattern, not the strong 霸權制裁模式
+        assert "政策性貿易限制模式" in pattern_names
+        assert "霸權制裁模式" not in pattern_names
+
+    def test_t2_event_maps_to_strong_pattern(self):
+        evt = _make_event(confidence=0.85, eid="e_t2")
+        evt["id"] = "e_t2"
+        evt["tier"] = "T2"
+        active = derive_active_patterns([evt])
+        pattern_names = [ap["pattern"] for ap in active]
+        assert "霸權制裁模式" in pattern_names
+
+
+class TestDerivedPatternConfidence:
+    """derive_composed_patterns must attach derived_tier, derived_inferred, derived_confidence."""
+
+    def test_derived_confidence_formula(self):
+        active = [
+            {"pattern": "霸權制裁模式",    "from_event": "ev1",
+             "tier": "T2", "inferred": False, "confidence": 0.80},
+            {"pattern": "正式軍事同盟模式", "from_event": "ev2",
+             "tier": "T2", "inferred": False, "confidence": 0.75},
+        ]
+        derived = derive_composed_patterns(active)
+        derived_map = {d["derived"]: d for d in derived}
+        if "多邊聯盟制裁模式" in derived_map:
+            entry = derived_map["多邊聯盟制裁模式"]
+            expected_conf = round(min(0.80, 0.75) * 0.9, 4)
+            assert entry["derived_confidence"] == pytest.approx(expected_conf, abs=0.001)
+            # min(0.80, 0.75) * 0.9 = 0.675 < 0.7 → T1
+            assert entry["derived_tier"] == "T1"
+            assert entry["derived_inferred"] is False
+
+    def test_derived_confidence_penalised_when_inferred(self):
+        active = [
+            {"pattern": "霸權制裁模式",    "from_event": "ev1",
+             "tier": "T1", "inferred": True, "confidence": 0.80},
+            {"pattern": "正式軍事同盟模式", "from_event": "ev2",
+             "tier": "T2", "inferred": False, "confidence": 0.75},
+        ]
+        derived = derive_composed_patterns(active)
+        derived_map = {d["derived"]: d for d in derived}
+        if "多邊聯盟制裁模式" in derived_map:
+            entry = derived_map["多邊聯盟制裁模式"]
+            expected_conf = round(min(0.80, 0.75) * 0.9 * 0.8, 4)
+            assert entry["derived_confidence"] == pytest.approx(expected_conf, abs=0.001)
+            assert entry["derived_inferred"] is True
+
+    def test_derived_tier_propagates_from_t1_inputs(self):
+        active = [
+            {"pattern": "霸權制裁模式",    "from_event": "ev1",
+             "tier": "T1", "inferred": False, "confidence": 0.50},
+            {"pattern": "正式軍事同盟模式", "from_event": "ev2",
+             "tier": "T2", "inferred": False, "confidence": 0.75},
+        ]
+        derived = derive_composed_patterns(active)
+        derived_map = {d["derived"]: d for d in derived}
+        if "多邊聯盟制裁模式" in derived_map:
+            assert derived_map["多邊聯盟制裁模式"]["derived_tier"] == "T1"
+
+    def test_derived_patterns_have_required_keys(self):
+        active = [
+            {"pattern": "霸權制裁模式",    "from_event": "ev1",
+             "tier": "T2", "inferred": False, "confidence": 0.80},
+            {"pattern": "正式軍事同盟模式", "from_event": "ev2",
+             "tier": "T2", "inferred": False, "confidence": 0.75},
+        ]
+        derived = derive_composed_patterns(active)
+        for entry in derived:
+            for key in ("derived", "rule", "inputs",
+                        "derived_tier", "derived_inferred", "derived_confidence"):
+                assert key in entry, f"Missing key '{key}' in derived entry: {entry}"
+
+
+class TestCredibilityHypothesisRatio:
+    """compute_credibility must return hypothesis_ratio and overall_score."""
+
+    def test_hypothesis_ratio_zero_when_all_t2(self):
+        active = [{"pattern": "霸權制裁模式", "tier": "T2"}]
+        cred = compute_credibility("text", active, [])
+        assert cred["hypothesis_ratio"] == pytest.approx(0.0, abs=0.001)
+
+    def test_hypothesis_ratio_one_when_all_t1(self):
+        active = [{"pattern": "政策性貿易限制模式", "tier": "T1"}]
+        cred = compute_credibility("text", active, [])
+        assert cred["hypothesis_ratio"] == pytest.approx(1.0, abs=0.001)
+
+    def test_hypothesis_ratio_mixed(self):
+        active = [
+            {"pattern": "霸權制裁模式",       "tier": "T2"},
+            {"pattern": "政策性貿易限制模式",   "tier": "T1"},
+        ]
+        cred = compute_credibility("text", active, [])
+        assert cred["hypothesis_ratio"] == pytest.approx(0.5, abs=0.001)
+
+    def test_overall_score_present(self):
+        cred = compute_credibility("text", [], [])
+        assert "overall_score" in cred
+        assert 0.0 <= cred["overall_score"] <= 1.0
+
+    def test_overall_score_reduced_by_high_hypothesis_ratio(self):
+        active_pure_t2 = [{"pattern": "霸權制裁模式", "tier": "T2"}]
+        active_pure_t1 = [{"pattern": "政策性貿易限制模式", "tier": "T1"}]
+        text = "On 15 March 2024 OFAC imposed sanctions."
+        cred_t2 = compute_credibility(text, active_pure_t2, [])
+        cred_t1 = compute_credibility(text, active_pure_t1, [])
+        assert cred_t2["overall_score"] > cred_t1["overall_score"], (
+            "All-T2 patterns should yield a higher overall_score than all-T1"
+        )
+
+    def test_result_has_all_new_keys(self):
+        cred = compute_credibility("text", [], [])
+        for key in ("verifiability_score", "missing_evidence",
+                    "kg_consistency_score", "contradictions", "supporting_paths",
+                    "hypothesis_ratio", "overall_score"):
+            assert key in cred
+
+
+class TestEndToEndEventFiltering:
+    """End-to-end: zero-confidence and empty-quote events never appear in pipeline output."""
+
+    def test_pipeline_has_no_zero_confidence_events(self):
+        result = run_evented_pipeline(
+            "The United States imposed sanctions following the military strike.",
+            llm_service=None,
+        )
+        for evt in result.events:
+            assert evt["confidence"] > 0, (
+                f"Event with confidence=0 survived post-processing: {evt}"
+            )
+
+    def test_pipeline_has_no_empty_quote_events(self):
+        result = run_evented_pipeline(
+            "Ceasefire declared after months of fighting.",
+            llm_service=None,
+        )
+        for evt in result.events:
+            assert evt["evidence"]["quote"], (
+                f"Event with empty quote survived post-processing: {evt}"
+            )
+
+    def test_pipeline_events_all_have_tier_field(self):
+        result = run_evented_pipeline(
+            "Export controls were imposed on semiconductor chips.",
+            llm_service=None,
+        )
+        for evt in result.events:
+            assert "tier" in evt
+            assert evt["tier"] in ("T1", "T2")
+
+    def test_conclusion_has_evidence_and_hypothesis_paths(self):
+        result = run_evented_pipeline(
+            "The United States imposed sanctions following the military strike.",
+            llm_service=None,
+        )
+        assert "evidence_path" in result.conclusion
+        assert "hypothesis_path" in result.conclusion
+
+    def test_credibility_has_overall_score(self):
+        result = run_evented_pipeline(
+            "Sanctions imposed by the US Treasury Department.",
+            llm_service=None,
+        )
+        assert "overall_score" in result.credibility

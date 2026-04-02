@@ -570,6 +570,46 @@ class APIClient:
             },
         )
 
+    def evented_deduce(self, news: Dict[str, Any]) -> Dict[str, Any]:
+        """Call the evented reasoning pipeline endpoint for a news item.
+
+        Sends the news summary to ``POST /analysis/evented/deduce`` and returns
+        the three-stage result: events → active/derived patterns → conclusion +
+        credibility.
+
+        Args:
+            news: News item dict.  Recognised keys:
+                * ``"summary"`` / ``"description"`` – news body text
+                * ``"title"``                       – news headline
+                * ``"entities"``                    – list of entity name strings
+
+        Returns:
+            Full response dict from the backend, containing ``"status"``,
+            ``"events"``, ``"active_patterns"``, ``"derived_patterns"``,
+            ``"conclusion"``, and ``"credibility"``.
+        """
+        news_body = news.get("summary") or news.get("description") or ""
+        title = news.get("title", "")
+        if news_body:
+            news_fragment = f"{title}\n\n{news_body}".strip() if title else news_body
+        else:
+            news_fragment = title
+        claim_title = title or "this event"
+        raw_entities = news.get("entities", [])
+        if raw_entities and len(raw_entities) > 0 and isinstance(raw_entities[0], dict):
+            seed_entities = [e.get("name", "") for e in raw_entities if e.get("name")]
+        else:
+            seed_entities = [str(e) for e in raw_entities if e]
+
+        return self._post(
+            "/analysis/evented/deduce",
+            json={
+                "news_fragment": news_fragment,
+                "seed_entities": seed_entities,
+                "claim": f"What will be the impact of {claim_title}?",
+            },
+        )
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()
