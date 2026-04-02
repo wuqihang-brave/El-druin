@@ -201,6 +201,170 @@ _COMPILED_RULES: List[Dict[str, Any]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Event post-processing constants and helpers
+# ---------------------------------------------------------------------------
+
+_MIN_QUOTE_LEN    = 10     # minimum meaningful evidence quote length (chars)
+_T0_CONF_THRESHOLD = 0.2   # below this (after folding) → reject (T0)
+_T2_CONF_THRESHOLD = 0.7   # at or above this (+ no inferred_fields) → T2
+_ACTOR_TARGET_KEYS = frozenset(["actor", "target"])
+
+# Trigger keywords per event type – used to validate evidence quotes.
+# If the quote contains none of these keywords the confidence is penalised.
+_EVENT_TRIGGER_KEYWORDS: Dict[str, List[str]] = {
+    EventType.SANCTION_IMPOSED:  ["sanction", "blacklist", "embargo", "restrict", "penalt"],
+    EventType.SANCTION_LIFTED:   ["lift", "ease", "remov", "relief", "normaliz", "sanction"],
+    EventType.EXPORT_CONTROL:    ["export", "control", "restrict", "ban", "chip", "entity list"],
+    EventType.ASSET_FREEZE:      ["asset", "frozen", "freeze", "seize"],
+    EventType.LEGAL_REGULATORY:  ["legal", "regulat", "fine", "prosecution", "compliance", "indictment"],
+    EventType.COERCIVE_WARNING:  ["threat", "warn", "ultimatum", "coercive", "deadline", "line"],
+    EventType.MILITARY_STRIKE:   ["strike", "bombing", "missile", "attack", "shell", "drone", "air"],
+    EventType.CLASHES:           ["clash", "fight", "battle", "gunfire", "offensive", "skirmish"],
+    EventType.CEASEFIRE:         ["ceasefire", "truce", "peace", "armistice", "cease"],
+    EventType.MOBILIZATION:      ["mobiliz", "troop", "buildup", "deployment", "conscription"],
+    EventType.WITHDRAWAL:        ["withdraw", "retreat", "pull"],
+}
+
+# T1 weak / generic pattern overrides – used when an event is tiered T1 to
+# avoid activating strong (kinetic) patterns on low-confidence evidence.
+_T1_WEAK_PATTERNS: Dict[str, str] = {
+    EventType.SANCTION_IMPOSED:  "政策性貿易限制模式",
+    EventType.SANCTION_LIFTED:   "政策性貿易限制模式",
+    EventType.EXPORT_CONTROL:    "政策性貿易限制模式",
+    EventType.ASSET_FREEZE:      "潛在強制信號模式",
+    EventType.LEGAL_REGULATORY:  "潛在強制信號模式",
+    EventType.COERCIVE_WARNING:  "潛在強制信號模式",
+    EventType.MILITARY_STRIKE:   "潛在強制信號模式",
+    EventType.CLASHES:           "潛在強制信號模式",
+    EventType.CEASEFIRE:         "政策性貿易限制模式",
+    EventType.MOBILIZATION:      "潛在強制信號模式",
+    EventType.WITHDRAWAL:        "政策性貿易限制模式",
+}
+
+
+def _quote_has_trigger(quote: str, event_type: str) -> bool:
+    """Return True if the evidence quote contains a trigger keyword for *event_type*.
+
+    If the event type is unknown (no keywords defined) we return True to avoid
+    penalising events whose type is outside our fixed vocabulary.
+    """
+    keywords = _EVENT_TRIGGER_KEYWORDS.get(event_type, [])
+    if not keywords:
+        return True
+    q_lower = quote.lower()
+    return any(kw in q_lower for kw in keywords)
+
+
+def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Post-process candidate events: filter (T0), normalise, tier, fold confidence.
+
+    Filtering (T0 – rejected, dropped)
+    ------------------------------------
+    An event is rejected (T0) if ANY of the following hold:
+      - ``confidence <= 0``
+      - ``evidence.quote`` is missing or empty
+      - ``evidence.quote`` length < ``_MIN_QUOTE_LEN``
+      - ``confidence < _T0_CONF_THRESHOLD`` (before *or* after folding)
+
+    Normalisation
+    -------------
+    - Strip whitespace from ``type`` and all string values in ``args``.
+    - De-duplicate: the first occurrence with a given stable ID is kept.
+
+    Confidence folding
+    ------------------
+    Applied in order *after* the initial T0 check:
+      1. ``inferred_fields`` non-empty → multiply by 0.7
+      2. ``actor`` or ``target`` among inferred_fields → additional × 0.8
+      3. Evidence quote lacks trigger keywords for the event type → × 0.7
+
+    After folding, events whose confidence drops below ``_T0_CONF_THRESHOLD``
+    are also rejected.
+
+    Tiering
+    -------
+    - T2 (grounded): ``confidence >= _T2_CONF_THRESHOLD`` **and** ``inferred_fields`` empty.
+    - T1 (hypothesis): everything else that survives the T0 filter.
+
+    New fields added to each surviving event
+    ----------------------------------------
+    ``tier``                "T1" | "T2"
+    ``inferred_fields``     list[str]  (may be empty)
+    ``inference_rationale`` str        (<= 200 chars)
+    ``verification_gap``    list[str]
+    """
+    result: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+
+    for _evt in candidates:
+        evt = dict(_evt)  # shallow copy to avoid mutating caller's data
+
+        # --- Normalisation: strip whitespace ---
+        evt["type"] = (evt.get("type") or "").strip()
+        evidence = evt.get("evidence")
+        if isinstance(evidence, dict):
+            q = (evidence.get("quote") or "").strip()
+            evt["evidence"] = dict(evidence)
+            evt["evidence"]["quote"] = q
+        else:
+            evt["evidence"] = {"quote": ""}
+            q = ""
+        args = evt.get("args", {})
+        if isinstance(args, dict):
+            evt["args"] = {
+                k: (v.strip() if isinstance(v, str) else v)
+                for k, v in args.items()
+            }
+
+        confidence = float(evt.get("confidence", 0.0))
+
+        # --- Initial T0 check ---
+        if confidence <= 0 or not q or len(q) < _MIN_QUOTE_LEN:
+            continue
+        if confidence < _T0_CONF_THRESHOLD:
+            continue
+
+        # --- Inference metadata ---
+        inferred_fields: List[str] = list(evt.get("inferred_fields") or [])
+        inference_rationale: str = str(evt.get("inference_rationale") or "")[:200]
+        verification_gap: List[str] = list(evt.get("verification_gap") or [])
+
+        # --- Confidence folding ---
+        if inferred_fields:
+            confidence *= 0.7
+            if any(k in _ACTOR_TARGET_KEYS for k in inferred_fields):
+                confidence *= 0.8
+        if not _quote_has_trigger(q, evt["type"]):
+            confidence *= 0.7
+
+        confidence = round(min(1.0, max(0.0, confidence)), 4)
+
+        # --- Post-folding T0 check ---
+        if confidence < _T0_CONF_THRESHOLD:
+            continue
+
+        # --- Tiering ---
+        tier = "T2" if (confidence >= _T2_CONF_THRESHOLD and not inferred_fields) else "T1"
+
+        evt["confidence"] = confidence
+        evt["tier"] = tier
+        evt["inferred_fields"] = inferred_fields
+        evt["inference_rationale"] = inference_rationale
+        evt["verification_gap"] = verification_gap
+
+        # --- De-duplication ---
+        eid = evt.get("id") or _stable_id(evt["type"], q)
+        if eid in seen_ids:
+            continue
+        seen_ids.add(eid)
+        evt["id"] = eid
+
+        result.append(evt)
+
+    return result
+
+
 def _extract_quote(text: str, match: re.Match, window: int = 80) -> str:
     """Return a short quote centred on the match."""
     start = max(0, match.start() - window // 2)
@@ -311,14 +475,16 @@ def extract_events(
 ) -> List[Dict[str, Any]]:
     """
     Primary event extraction entry-point.
+
     Tries rule-based first; if nothing found and llm_service is available,
-    falls back to LLM.
+    falls back to LLM.  Candidate events are always post-processed (tiered,
+    filtered, normalised) before being returned.
     """
-    events = extract_events_rule_based(text)
-    if not events and llm_service is not None:
+    candidates = extract_events_rule_based(text)
+    if not candidates and llm_service is not None:
         logger.info("Rule-based extraction yielded 0 events; trying LLM fallback")
-        events = extract_events_llm(text, llm_service)
-    return events
+        candidates = extract_events_llm(text, llm_service)
+    return postprocess_events(candidates)
 
 
 # ---------------------------------------------------------------------------
@@ -436,15 +602,44 @@ def derive_active_patterns(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     """
     Deterministically map extracted events to relation_schema pattern names.
 
-    Returns list of {"pattern": str, "from_event": str}.
+    Events tiered T1 are mapped to generic/weak placeholder patterns to avoid
+    activating strong kinetic patterns on low-confidence or inferred evidence.
+
+    If an event has no ``tier`` field (e.g. raw rule-based output passed
+    directly in tests), the tier is inferred from ``confidence``.
+
+    Returns a list of dicts with keys:
+        pattern, from_event, tier, inferred, confidence
     """
     active: List[Dict[str, Any]] = []
     seen: set = set()
     for evt in events:
-        pattern = _EVENT_TYPE_TO_PATTERN.get(evt["type"])
-        if pattern and pattern not in seen:
-            seen.add(pattern)
-            active.append({"pattern": pattern, "from_event": evt["id"]})
+        confidence = float(evt.get("confidence", 0.5))
+        evt_tier = evt.get("tier")
+        # Backward-compat: infer tier when not set
+        if evt_tier is None:
+            evt_tier = "T2" if confidence >= _T2_CONF_THRESHOLD else "T1"
+        inferred = bool(evt.get("inferred_fields"))
+
+        if evt_tier == "T1":
+            pattern = (
+                _T1_WEAK_PATTERNS.get(evt["type"])
+                or _EVENT_TYPE_TO_PATTERN.get(evt["type"])
+            )
+        else:
+            pattern = _EVENT_TYPE_TO_PATTERN.get(evt["type"])
+
+        if pattern:
+            pattern = pattern.strip()
+            if pattern not in seen:
+                seen.add(pattern)
+                active.append({
+                    "pattern":    pattern,
+                    "from_event": evt["id"],
+                    "tier":       evt_tier,
+                    "inferred":   inferred,
+                    "confidence": round(confidence, 4),
+                })
     return active
 
 
@@ -459,7 +654,10 @@ def derive_composed_patterns(
     Apply composition_table to derive higher-order patterns.
 
     S_next = S ∪ {compose(a, b)} for all a, b in S.
-    Returns list of {"derived": str, "rule": str, "inputs": [str, str]}.
+
+    Returns list of dicts with keys:
+        derived, rule, inputs,
+        derived_tier, derived_inferred, derived_confidence
     """
     try:
         from ontology.relation_schema import composition_table
@@ -467,19 +665,53 @@ def derive_composed_patterns(
         logger.warning("relation_schema not importable; skipping composition")
         return []
 
-    active_names = [ap["pattern"] for ap in active_patterns]
+    # Build per-pattern metadata lookup
+    pattern_meta: Dict[str, Dict[str, Any]] = {}
+    for ap in active_patterns:
+        name = ap["pattern"].strip()
+        pattern_meta[name] = {
+            "tier":       ap.get("tier", "T2"),
+            "inferred":   bool(ap.get("inferred", False)),
+            "confidence": float(ap.get("confidence", 0.5)),
+        }
+
+    active_names = list(pattern_meta.keys())
     derived: List[Dict[str, Any]] = []
     seen: set = set(active_names)
 
     for a in active_names:
         for b in active_names:
-            result = composition_table.get((a, b))
-            if result and result not in seen:
-                seen.add(result)
+            comp_result = composition_table.get((a, b))
+            if comp_result and comp_result not in seen:
+                seen.add(comp_result)
+                meta_a = pattern_meta.get(a, {})
+                meta_b = pattern_meta.get(b, {})
+                conf_a = float(meta_a.get("confidence", 0.5))
+                conf_b = float(meta_b.get("confidence", 0.5))
+                derived_inferred = (
+                    meta_a.get("inferred", False) or meta_b.get("inferred", False)
+                )
+                # Confidence composition: min(A, B) * 0.9; penalty if any input inferred
+                derived_conf = min(conf_a, conf_b) * 0.9
+                if derived_inferred:
+                    derived_conf *= 0.8
+                derived_conf = round(derived_conf, 4)
+                # Derived tier: T1 if either input is T1 or confidence < threshold
+                input_t1 = (
+                    meta_a.get("tier") == "T1" or meta_b.get("tier") == "T1"
+                )
+                derived_tier = (
+                    "T1"
+                    if (input_t1 or derived_conf < _T2_CONF_THRESHOLD or derived_inferred)
+                    else "T2"
+                )
                 derived.append({
-                    "derived": result,
-                    "rule":    f"compose({a},{b})->{result}",
-                    "inputs":  [a, b],
+                    "derived":            comp_result,
+                    "rule":               f"compose({a},{b})->{comp_result}",
+                    "inputs":             [a, b],
+                    "derived_tier":       derived_tier,
+                    "derived_inferred":   derived_inferred,
+                    "derived_confidence": derived_conf,
                 })
 
     return derived
@@ -497,9 +729,14 @@ def generate_conclusion(
     llm_service: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
-    Stage 3a: Conclusion generation.
+    Stage 3a: Conclusion generation with forced dual-path output.
 
-    LLM receives the event list and candidate patterns (active + derived)
+    Dual-path structure
+    -------------------
+    ``evidence_path``   – based only on T2 patterns/events (grounded).
+    ``hypothesis_path`` – may draw on T1 evidence; must list verification gaps.
+
+    The LLM receives the event list and candidate patterns (active + derived)
     and must cite event evidence.  If LLM is disabled, returns a deterministic
     fallback summary.
     """
@@ -511,16 +748,22 @@ def generate_conclusion(
     if not llm_service or not all_candidates:
         return _deterministic_conclusion(events, active_patterns, derived_patterns)
 
-    # Build prompt (no template engine – manually construct the string)
-    events_block = json.dumps(events, ensure_ascii=False, indent=2)
-    patterns_block = json.dumps(
-        {
-            "active_patterns":  active_patterns,
-            "derived_patterns": derived_patterns,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+    # Separate T2 (grounded) from T1 (hypothesis) patterns for the dual-path prompt
+    t2_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
+    t1_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T1"]
+    t2_derived  = [dp for dp in derived_patterns if dp.get("derived_tier", "T2") == "T2"]
+    t1_derived  = [dp for dp in derived_patterns if dp.get("derived_tier", "T2") == "T1"]
+
+    # Aggregate verification gaps from all events
+    all_gaps: List[str] = []
+    for evt in events:
+        all_gaps.extend(evt.get("verification_gap", []))
+
+    events_block   = json.dumps(events, ensure_ascii=False, indent=2)
+    t2_block       = json.dumps({"t2_active": t2_patterns, "t2_derived": t2_derived},
+                                ensure_ascii=False, indent=2)
+    t1_block       = json.dumps({"t1_active": t1_patterns, "t1_derived": t1_derived},
+                                ensure_ascii=False, indent=2)
     candidates_list = "\n".join(f"  - {c}" for c in all_candidates)
 
     prompt = (
@@ -528,19 +771,28 @@ def generate_conclusion(
         "reasoning system.\n\n"
         "NEWS TEXT:\n"
         f"{text}\n\n"
-        "EXTRACTED EVENTS (with evidence quotes):\n"
+        "EXTRACTED EVENTS (with evidence quotes and tiers):\n"
         f"{events_block}\n\n"
-        "CANDIDATE PATTERNS (active + derived):\n"
-        f"{patterns_block}\n\n"
-        "CANDIDATE PATTERN NAMES:\n"
+        "T2 GROUNDED PATTERNS (high-confidence, no inferred args):\n"
+        f"{t2_block}\n\n"
+        "T1 HYPOTHESIS PATTERNS (lower-confidence or inferred args):\n"
+        f"{t1_block}\n\n"
+        "CANDIDATE PATTERN NAMES (for reference):\n"
         f"{candidates_list}\n\n"
         "TASK:\n"
-        "1. Select the most plausible 1-3 patterns from the candidates above.\n"
-        "2. For each selected pattern, cite the specific event ID that supports it.\n"
-        "3. Write a 2-3 sentence conclusion explaining the geopolitical dynamic.\n"
+        "Produce a dual-path analysis:\n"
+        "1. evidence_path: Use ONLY T2 grounded patterns/events. "
+        "Select 1-3 patterns, cite specific event IDs.\n"
+        "2. hypothesis_path: May use T1 patterns and events. "
+        "Must list at least one verification_gap explaining what additional "
+        "evidence would upgrade this to grounded.\n"
+        "3. Write a 2-3 sentence conclusion synthesising both paths.\n"
         "4. Do NOT invent patterns outside the candidate list.\n\n"
         "Output strict JSON with keys:\n"
-        '  "selected_patterns": [{"pattern": str, "supporting_event_id": str}]\n'
+        '  "evidence_path": {"patterns": [{"pattern": str, "supporting_event_id": str}], '
+        '"summary": str}\n'
+        '  "hypothesis_path": {"patterns": [{"pattern": str, "supporting_event_id": str}], '
+        '"summary": str, "verification_gaps": [str]}\n'
         '  "conclusion": str\n'
         '  "confidence": float 0-1\n\n'
         "Output ONLY the JSON object."
@@ -555,7 +807,7 @@ def generate_conclusion(
                 "Cite event evidence. Output only JSON."
             ),
             temperature=0.15,
-            max_tokens=800,
+            max_tokens=1000,
         )
         text_resp = raw if isinstance(raw, str) else json.dumps(raw)
         start = text_resp.find("{")
@@ -563,11 +815,20 @@ def generate_conclusion(
         if start == -1 or end < start:
             raise ValueError("No JSON object found in LLM response")
         parsed = json.loads(text_resp[start : end + 1])
+        evidence_path   = parsed.get("evidence_path", {})
+        hypothesis_path = parsed.get("hypothesis_path", {})
+        conclusion_text = parsed.get("conclusion", "")
+        # Back-compat: selected_patterns = evidence_path patterns + hypothesis_path patterns
+        selected = (
+            evidence_path.get("patterns", []) + hypothesis_path.get("patterns", [])
+        )
         return {
-            "selected_patterns": parsed.get("selected_patterns", []),
-            "conclusion":        parsed.get("conclusion", ""),
+            "selected_patterns": selected,
+            "conclusion":        conclusion_text,
             "confidence":        float(parsed.get("confidence", 0.5)),
             "mode":              "llm_constrained",
+            "evidence_path":     evidence_path,
+            "hypothesis_path":   hypothesis_path,
         }
     except Exception as exc:
         logger.warning("LLM conclusion generation failed: %s", exc)
@@ -580,30 +841,65 @@ def _deterministic_conclusion(
     derived_patterns: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Deterministic fallback when LLM is disabled or fails."""
-    selected = [{"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
-                for ap in active_patterns[:3]]
-    pattern_names = [ap["pattern"] for ap in active_patterns[:2]]
-    derived_names = [dp["derived"] for dp in derived_patterns[:1]]
+    t2_active = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
+    t1_active = [ap for ap in active_patterns if ap.get("tier", "T2") == "T1"]
 
-    if pattern_names:
-        conclusion = (
-            f"The text exhibits the following dynamics: {', '.join(pattern_names)}."
-        )
+    # Build evidence_path from T2 patterns
+    evidence_selected = [
+        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
+        for ap in t2_active[:3]
+    ]
+    evidence_summary = (
+        "Grounded evidence supports: " + ", ".join(ap["pattern"] for ap in t2_active[:2])
+        if t2_active else "No grounded (T2) patterns available."
+    )
+
+    # Build hypothesis_path from T1 patterns
+    all_gaps: List[str] = []
+    for evt in events:
+        all_gaps.extend(evt.get("verification_gap", []))
+    if not all_gaps:
+        all_gaps = ["Additional source confirmation required"]
+    hypothesis_selected = [
+        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
+        for ap in t1_active[:2]
+    ]
+    hypothesis_summary = (
+        "Hypothesis-level signals: " + ", ".join(ap["pattern"] for ap in t1_active[:2])
+        if t1_active else "No hypothesis (T1) patterns active."
+    )
+
+    # Overall conclusion text
+    all_names = [ap["pattern"] for ap in active_patterns[:2]]
+    derived_names = [dp["derived"] for dp in derived_patterns[:1]]
+    if all_names:
+        conclusion = f"The text exhibits the following dynamics: {', '.join(all_names)}."
         if derived_names:
-            conclusion += (
-                f" Compositional analysis further suggests: {', '.join(derived_names)}."
-            )
+            conclusion += f" Compositional analysis further suggests: {', '.join(derived_names)}."
     else:
         conclusion = (
             "No strong pattern signals detected. "
             "LLM analysis is disabled; deterministic fallback applied."
         )
 
+    selected = [
+        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
+        for ap in active_patterns[:3]
+    ]
     return {
         "selected_patterns": selected,
         "conclusion":        conclusion,
         "confidence":        0.40,
         "mode":              "deterministic_fallback",
+        "evidence_path": {
+            "patterns": evidence_selected,
+            "summary":  evidence_summary,
+        },
+        "hypothesis_path": {
+            "patterns":          hypothesis_selected,
+            "summary":           hypothesis_summary,
+            "verification_gaps": list(dict.fromkeys(all_gaps))[:5],
+        },
     }
 
 
@@ -650,12 +946,21 @@ def compute_credibility(
     text: str,
     active_patterns: List[Dict[str, Any]],
     derived_patterns: List[Dict[str, Any]],
+    events: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    Compute a minimal credibility report.
+    Compute a credibility report for the pipeline run.
 
-    verifiability_score: 0-1, rule-based on verifiable anchor presence.
-    kg_consistency_score: 0-1, based on absence of contradicting patterns.
+    Fields returned
+    ---------------
+    verifiability_score   float 0-1  rule-based on verifiable anchor presence
+    missing_evidence      list[str]  types of anchor that are absent
+    kg_consistency_score  float 0-1  based on absence of contradicting patterns
+    contradictions        list[str]  co-activated contradicting pattern pairs
+    supporting_paths      list       populated by KG infra when available
+    hypothesis_ratio      float 0-1  fraction of patterns that are T1 (hypothesis)
+    overall_score         float 0-1  composite: (0.6*verifiability + 0.4*kg_consistency)
+                                     * (1 - 0.5*hypothesis_ratio)
     """
     # --- Verifiability ---
     has_date        = bool(_DATE_RE.search(text))
@@ -685,12 +990,30 @@ def compute_credibility(
 
     kg_consistency_score = max(0.0, 1.0 - _CONTRADICTION_PENALTY * len(contradictions))
 
+    # --- Hypothesis ratio ---
+    all_tiers: List[str] = (
+        [ap.get("tier", "T2") for ap in active_patterns]
+        + [dp.get("derived_tier", "T2") for dp in derived_patterns]
+    )
+    if all_tiers:
+        t1_count = sum(1 for t in all_tiers if t == "T1")
+        hypothesis_ratio = t1_count / len(all_tiers)
+    else:
+        hypothesis_ratio = 0.0
+
+    overall_score = (
+        (0.6 * verifiability_score + 0.4 * kg_consistency_score)
+        * (1.0 - 0.5 * hypothesis_ratio)
+    )
+
     return {
         "verifiability_score":   round(verifiability_score, 3),
         "missing_evidence":      missing_evidence,
         "kg_consistency_score":  round(kg_consistency_score, 3),
         "contradictions":        contradictions,
         "supporting_paths":      [],   # populated by KG infra when available
+        "hypothesis_ratio":      round(hypothesis_ratio, 3),
+        "overall_score":         round(overall_score, 3),
     }
 
 

@@ -455,6 +455,25 @@ if page == "🏠 主页":
     with col_deduction:
         st.subheader("🧠 本体论预测分析")
 
+        # --- 分析模式选择器 ---
+        _prev_mode = st.session_state.get("analysis_mode", "Grounded")
+        _analysis_mode = st.radio(
+            "分析模式",
+            options=["Grounded（图谱接地推演）", "Evented（事件三段式推演）"],
+            index=0 if _prev_mode == "Grounded" else 1,
+            horizontal=True,
+            key="analysis_mode_radio",
+            help="Grounded 模式使用 KuzuDB 图谱路径；Evented 模式使用事件提取 → 模式映射 → 双路径结论三段流水线。",
+        )
+        _mode_key = "Grounded" if "Grounded" in _analysis_mode else "Evented"
+        # 切换模式时清除上次结果
+        if _mode_key != _prev_mode:
+            st.session_state.analysis_mode      = _mode_key
+            st.session_state.deduction_result   = None
+            st.session_state.evented_result     = None
+            st.rerun()
+        st.session_state.analysis_mode = _mode_key
+
         _selected: Optional[Dict[str, Any]] = st.session_state.get("selected_news")
 
         if not _selected:
@@ -465,7 +484,7 @@ if page == "🏠 主页":
                 <div style="font-size:13px;margin-top:8px;">系统将基于 KuzuDB 图谱 + 笛卡尔积模式库进行因果推演</div>
             </div>
             """, unsafe_allow_html=True)
-        else:
+        elif _mode_key == "Grounded":
             _sel_title = _selected.get("title", "（无标题）")
             _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
             st.markdown(f"**针对事件：** `{_sel_title}`")
@@ -666,6 +685,189 @@ if page == "🏠 主页":
             if st.button("🔄 重新选择情报", key="clear_selection"):
                 st.session_state.selected_news    = None
                 st.session_state.deduction_result = None
+                st.session_state.evented_result   = None
+                st.rerun()
+
+        elif _mode_key == "Evented":
+            # ─── Evented 三段式推演面板 ────────────────────────────────────
+            _sel_title = _selected.get("title", "（无标题）")
+            _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
+            st.markdown(f"**针对事件：** `{_sel_title}`")
+            st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+            _er: Optional[Dict[str, Any]] = st.session_state.get("evented_result")
+            _evented_err: Optional[str] = None
+
+            if _er is None:
+                with st.status("⚙️ 正在运行事件推演流水线（事件提取 → 模式映射 → 双路径结论）...",
+                               expanded=True) as _ev_status:
+                    try:
+                        st.write("📡 调用后端 evented_deduce 接口…")
+                        _ev_payload = {
+                            "title":       _sel_title,
+                            "summary":     _sel_desc or _sel_title,
+                            "description": _sel_desc,
+                            "source":      _selected.get("source"),
+                            "published":   str(_selected.get("published", "")),
+                            "entities":    _selected.get("entities", []),
+                        }
+                        _ev_resp = _api.evented_deduce(_ev_payload)
+                        if _ev_resp.get("status") == "success" or "events" in _ev_resp:
+                            _er = _ev_resp
+                            st.session_state.evented_result = _er
+                            st.write("✅ 三段式推演完成，正在渲染…")
+                            _ev_status.update(label="✅ 推演完成", state="complete")
+                        else:
+                            _evented_err = str(_ev_resp.get("error") or _ev_resp.get("detail", "未知错误"))
+                            _ev_status.update(label="⚠ 推演失败", state="error")
+                    except Exception as _exc:
+                        _evented_err = str(_exc)
+                        _ev_status.update(label="⚠ 连接失败", state="error")
+
+            if _evented_err:
+                st.error(f"Evented 推演失败：{_evented_err}")
+
+            elif _er is not None:
+                _ev_events   = _er.get("events", [])
+                _ev_active   = _er.get("active_patterns", [])
+                _ev_derived  = _er.get("derived_patterns", [])
+                _ev_concl    = _er.get("conclusion", {})
+                _ev_cred     = _er.get("credibility", {})
+
+                _tab_ev1, _tab_ev2, _tab_ev3 = st.tabs([
+                    f"① 事件节点 ({len(_ev_events)})",
+                    f"② 模式节点 ({len(_ev_active)}+{len(_ev_derived)})",
+                    "③ 结论与可信度",
+                ])
+
+                # ── Stage 1: Events ──────────────────────────────────────
+                with _tab_ev1:
+                    if not _ev_events:
+                        st.info("未从文本中提取到有效事件（所有候选事件已被 T0 过滤器拒绝）。")
+                    for _ev in _ev_events:
+                        _ev_tier = _ev.get("tier", "?")
+                        _ev_tier_color = "#2E7D32" if _ev_tier == "T2" else "#E65100"
+                        _ev_conf = _ev.get("confidence", 0)
+                        _ev_quote = (_ev.get("evidence") or {}).get("quote", "")
+                        _ev_inf  = ", ".join(_ev.get("inferred_fields") or []) or "—"
+                        _ev_type = _ev.get("type", "unknown")
+                        st.markdown(
+                            f'<div style="border-left:3px solid {_ev_tier_color};'
+                            f'padding:8px 12px;margin-bottom:8px;background:#FAFAFA;border-radius:4px;">'
+                            f'<span style="font-weight:700;font-size:13px">{_ev_type}</span>'
+                            f'&nbsp;&nbsp;<span style="background:{_ev_tier_color};color:#fff;'
+                            f'padding:1px 7px;border-radius:10px;font-size:11px">{_ev_tier}</span>'
+                            f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">置信度 {_ev_conf:.0%}</span>'
+                            f'<div style="font-size:12px;color:#555;margin-top:4px">📎 {_ev_quote}</div>'
+                            f'<div style="font-size:11px;color:#888;margin-top:2px">推断字段: {_ev_inf}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # ── Stage 2: Patterns ─────────────────────────────────────
+                with _tab_ev2:
+                    if _ev_active:
+                        st.markdown("**🔵 激活模式（Active Patterns）**")
+                        for _ap in _ev_active:
+                            _ap_tier  = _ap.get("tier", "T2")
+                            _ap_conf  = _ap.get("confidence", 0)
+                            _ap_inf   = _ap.get("inferred", False)
+                            _ap_color = "#2E7D32" if _ap_tier == "T2" else "#E65100"
+                            st.markdown(
+                                f'<div style="border-left:3px solid {_ap_color};'
+                                f'padding:6px 10px;margin-bottom:6px;background:#FAFAFA;">'
+                                f'<b>{_ap["pattern"]}</b>'
+                                f'&nbsp;<span style="background:{_ap_color};color:#fff;'
+                                f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
+                                f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
+                                f'{" · 推断" if _ap_inf else ""}</span>'
+                                f'&nbsp;<span style="color:#aaa;font-size:10px">← {_ap.get("from_event","")}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.info("无激活模式。")
+
+                    if _ev_derived:
+                        st.markdown("**🟣 衍生模式（Derived Patterns via Composition）**")
+                        for _dp in _ev_derived:
+                            _dp_tier  = _dp.get("derived_tier", "T1")
+                            _dp_conf  = _dp.get("derived_confidence", 0)
+                            _dp_inf   = _dp.get("derived_inferred", False)
+                            _dp_rule  = _dp.get("rule", "")
+                            _dp_color = "#2E7D32" if _dp_tier == "T2" else "#7B1FA2"
+                            st.markdown(
+                                f'<div style="border-left:3px solid {_dp_color};'
+                                f'padding:6px 10px;margin-bottom:6px;background:#F8F0FF;">'
+                                f'<b>{_dp["derived"]}</b>'
+                                f'&nbsp;<span style="background:{_dp_color};color:#fff;'
+                                f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
+                                f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}'
+                                f'{" · 推断" if _dp_inf else ""}</span>'
+                                f'<div style="font-size:10px;color:#aaa;margin-top:2px">规则: {_dp_rule}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.caption("无衍生模式（需要至少两个可组合的激活模式）。")
+
+                # ── Stage 3: Conclusion + Credibility ─────────────────────
+                with _tab_ev3:
+                    _ev_path  = _ev_concl.get("evidence_path", {})
+                    _hyp_path = _ev_concl.get("hypothesis_path", {})
+
+                    st.markdown("#### 🟢 证据路径（Evidence Path — T2 接地）")
+                    _ev_summary = _ev_path.get("summary") or "（无接地证据路径）"
+                    st.markdown(
+                        f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
+                        f'padding:10px 14px;border-radius:4px;font-size:14px">{_ev_summary}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _ep_pats = _ev_path.get("patterns", [])
+                    if _ep_pats:
+                        st.caption("支撑模式：" + "、".join(p["pattern"] for p in _ep_pats))
+
+                    st.markdown("#### 🟡 假设路径（Hypothesis Path — T1 推断）")
+                    _hyp_summary = _hyp_path.get("summary") or "（无假设路径）"
+                    st.markdown(
+                        f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
+                        f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _hyp_gaps = _hyp_path.get("verification_gaps", [])
+                    if _hyp_gaps:
+                        st.caption("验证缺口：" + " · ".join(_hyp_gaps))
+
+                    st.markdown("#### 📋 总结论")
+                    st.info(_ev_concl.get("conclusion", "（无结论）"))
+
+                    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                    st.markdown("#### 📊 可信度报告")
+                    _vc1, _vc2, _vc3 = st.columns(3)
+                    with _vc1:
+                        _vs = _ev_cred.get("verifiability_score", 0)
+                        st.metric("可验证性", f"{_vs:.0%}")
+                    with _vc2:
+                        _ks = _ev_cred.get("kg_consistency_score", 0)
+                        st.metric("图谱一致性", f"{_ks:.0%}")
+                    with _vc3:
+                        _os = _ev_cred.get("overall_score", 0)
+                        _hr = _ev_cred.get("hypothesis_ratio", 0)
+                        st.metric("综合评分", f"{_os:.0%}", delta=f"假设比 {_hr:.0%}")
+
+                    _missing = _ev_cred.get("missing_evidence", [])
+                    if _missing:
+                        st.warning("缺失证据锚点：" + "、".join(_missing))
+                    _contras = _ev_cred.get("contradictions", [])
+                    if _contras:
+                        st.error("检测到矛盾：" + " | ".join(_contras))
+
+                    with st.expander("🛠 原始 JSON（Evented 推演结果）", expanded=False):
+                        st.json(_er)
+
+            if st.button("🔄 重新选择情报", key="clear_selection_evented"):
+                st.session_state.selected_news  = None
+                st.session_state.evented_result = None
                 st.rerun()
 
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
