@@ -169,8 +169,10 @@ class KuzuContextExtractor:
                     )
                 else:
                     logger.warning(
-                        "KG diagnostic – no schema.org type fallback for '%s'. "
-                        "Run: python -m backend.ontology.tools.import_schemaorg",
+                        "KG diagnostic – no schema.org type fallback for '%s' "
+                        "(entity type cannot be inferred from name keywords; "
+                        "add direct relations via kg_init_tools.py populate or "
+                        "ensure import_schemaorg has been run)",
                         seed_entity_name,
                     )
             elif not entity_exists and context.total_paths == 0:
