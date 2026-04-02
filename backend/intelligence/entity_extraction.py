@@ -7,12 +7,30 @@ OntologicalEntity objects, each carrying:
   Layer 1 – Physical Type  (1 label)
   Layer 2 – Structural Role (1-2 labels)
   Layer 3 – Virtue / Vice  (1-3 labels)
+
+修复说明 (v2):
+  Bug: `Skipping unknown type: 'entities'`
+  根因：LLM 有时返回包裹对象而非裸数组：
+    {"entities": [...], "relations": [...]}  ← 包裹对象
+    [...]                                     ← 裸数组（期望格式）
+  原版 _parse_response 只处理裸数组，遇到包裹对象时返回整个 dict。
+  extract() 对这个 dict 做 `for raw in raw_entities`，
+  Python 迭代 dict 会得到 key 字符串 ("entities", "relations")，
+  导致 handle_raw_entity("entities") 落入 else 分支并打印 Skipping。
+
+  修复：_parse_response 改为 _extract_entity_list()，能识别：
+    1. 裸数组 [...]
+    2. 包裹对象 {"entities": [...]}
+    3. 嵌套包裹 {"data": {"entities": [...]}}
+    4. markdown 代码块
+    5. 最后兜底：正则找第一个 [...] 片段
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -24,6 +42,7 @@ from intelligence.entity_labels import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # LLM system prompt
@@ -62,12 +81,13 @@ You may assign 1-3 labels. Separate multiple labels with underscore: VIRTUE1_VIR
 
 ## RULES
 1. Every entity gets exactly 1 Layer 1, 1-2 Layer 2, and 1-3 Layer 3 labels
-2. Return ONLY valid JSON array (no markdown, no explanation)
-3. Focus on STRUCTURAL and PHILOSOPHICAL clarity, not sentiment
-4. If unsure about a label, use closest semantic match
-5. Do not return "UNKNOWN" – always make best assignment
+2. Return ONLY a valid JSON array — NO wrapper object, NO markdown, NO explanation
+3. The response MUST start with [ and end with ]
+4. Focus on STRUCTURAL and PHILOSOPHICAL clarity, not sentiment
+5. If unsure about a label, use closest semantic match
+6. Do not return "UNKNOWN" – always make best assignment
 
-## RESPONSE FORMAT (JSON ARRAY ONLY)
+## RESPONSE FORMAT (JSON ARRAY ONLY — must be a bare array, not wrapped in an object)
 [
   {
     "name": "Entity Name Here",
@@ -82,6 +102,96 @@ Extract entities from the following text:\
 
 
 # ---------------------------------------------------------------------------
+# Robust JSON / entity-list parser
+# ---------------------------------------------------------------------------
+
+def _extract_entity_list(response: Any) -> List[Dict]:
+    """
+    Robustly extract a list of entity dicts from an LLM response.
+
+    Handles all observed LLM output shapes:
+      1. Already a Python list   → return directly
+      2. Already a Python dict   → look for "entities" / "data" key
+      3. JSON string – bare array   [...] → parse
+      4. JSON string – wrapped object {"entities": [...]} → unwrap
+      5. Markdown code block    ```json [...] ``` → strip, parse
+      6. Last resort             → regex-find first [...] fragment
+
+    This fixes the `Skipping unknown type: 'entities'` error that occurs
+    when the LLM returns a dict and the caller iterates over its keys.
+    """
+    if not response:
+        return []
+
+    # ── Case 1: already a Python list ────────────────────────────────────
+    if isinstance(response, list):
+        return response
+
+    # ── Case 2: already a Python dict ────────────────────────────────────
+    if isinstance(response, dict):
+        return _unwrap_dict(response)
+
+    # ── String handling ──────────────────────────────────────────────────
+    text = str(response).strip()
+
+    # Strip markdown code fences
+    text = re.sub(r"^```[a-zA-Z0-9]*\n?", "", text)
+    text = re.sub(r"\n?```$", "", text.rstrip())
+    text = text.strip()
+
+    # Try direct JSON parse
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict):
+            return _unwrap_dict(parsed)
+    except json.JSONDecodeError:
+        pass
+
+    # Last resort: find the first complete [...] substring
+    start = text.find("[")
+    end   = text.rfind("]") + 1
+    if 0 <= start < end:
+        try:
+            parsed = json.loads(text[start:end])
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("EntityExtractionEngine: could not extract entity list from response")
+    return []
+
+
+def _unwrap_dict(d: Dict) -> List[Dict]:
+    """
+    Unwrap an LLM response dict to find the entity list.
+
+    Common patterns:
+      {"entities": [...]}
+      {"data": {"entities": [...]}}
+      {"result": [...]}
+    """
+    # Direct "entities" key (most common LLM misbehaviour)
+    if "entities" in d and isinstance(d["entities"], list):
+        return d["entities"]
+    # Other common wrappers
+    for key in ("data", "result", "items", "output"):
+        val = d.get(key)
+        if isinstance(val, list):
+            return val
+        if isinstance(val, dict) and "entities" in val:
+            return val["entities"]  # type: ignore[return-value]
+    # If the dict values contain a list, return the first one found
+    for val in d.values():
+        if isinstance(val, list):
+            return val  # type: ignore[return-value]
+    logger.warning("EntityExtractionEngine: dict response has no entity list: keys=%s", list(d.keys()))
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Extraction engine
 # ---------------------------------------------------------------------------
 
@@ -90,8 +200,8 @@ class EntityExtractionEngine:
 
     def __init__(self, llm_service: Any) -> None:
         self.llm = llm_service
-        self.layer1_types = LAYER1_PHYSICAL_TYPES
-        self.layer2_roles = LAYER2_STRUCTURAL_ROLES
+        self.layer1_types  = LAYER1_PHYSICAL_TYPES
+        self.layer2_roles  = LAYER2_STRUCTURAL_ROLES
         self.layer3_virtues = LAYER3_VIRTUE_VICE
 
     # ------------------------------------------------------------------
@@ -122,11 +232,12 @@ class EntityExtractionEngine:
             response_format="json",
         )
 
-        raw_entities = self._parse_response(response)
+        # ── v2 fix: use robust parser that handles dict-wrapped responses ──
+        raw_entities = _extract_entity_list(response)
+
         entities: List[OntologicalEntity] = []
 
-        def handle_raw_entity(raw_item):
-            # 只处理dict类型（实体），如是list递归展开
+        def handle_raw_entity(raw_item: Any) -> None:
             if isinstance(raw_item, dict):
                 entity = self._create_ontological_entity(
                     raw=raw_item,
@@ -139,47 +250,24 @@ class EntityExtractionEngine:
                 for sub in raw_item:
                     handle_raw_entity(sub)
             else:
-                # 其他类型（不明字符串、None等）忽略，可加debug日志
-                logger.warning("EntityExtractionEngine: Skipping unknown type: %r", raw_item)
+                # String/int/None — skip silently at DEBUG level
+                logger.debug(
+                    "EntityExtractionEngine: skipping non-dict item type=%s value=%r",
+                    type(raw_item).__name__, raw_item,
+                )
 
         for raw in raw_entities:
             handle_raw_entity(raw)
 
+        logger.info(
+            "EntityExtractionEngine: extracted %d entities (request_id=%s)",
+            len(entities), request_id,
+        )
         return entities
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _parse_response(self, response: str) -> List[Dict]:
-        """Parse the LLM JSON response into a list of raw entity dicts."""
-        if not response:
-            return []
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError:
-            pass
-
-        # Attempt to extract from markdown code blocks
-        for delimiter in ("```json", "```"):
-            if delimiter in response:
-                parts = response.split(delimiter)
-                if len(parts) >= 3:
-                    try:
-                        return json.loads(parts[1].strip())
-                    except json.JSONDecodeError:
-                        pass
-
-        # Last resort: find the first JSON array in the text
-        start = response.find("[")
-        end = response.rfind("]") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(response[start:end])
-            except json.JSONDecodeError:
-                pass
-
-        logger.warning("EntityExtractionEngine: could not parse LLM response")
-        return []
 
     def _create_ontological_entity(
         self,
@@ -189,7 +277,7 @@ class EntityExtractionEngine:
     ) -> Optional[OntologicalEntity]:
         """Convert a raw LLM dict to a validated OntologicalEntity."""
         try:
-            name = raw.get("name", "").strip()
+            name   = raw.get("name", "").strip()
             layer1 = raw.get("layer1", "").strip().upper()
             layer2 = raw.get("layer2", "").strip().upper()
             layer3 = raw.get("layer3", "").strip().upper()
@@ -230,7 +318,9 @@ class EntityExtractionEngine:
             )
 
         except Exception as exc:  # noqa: BLE001
-            logger.error("EntityExtractionEngine: error creating entity from %r: %s", raw, exc)
+            logger.error(
+                "EntityExtractionEngine: error creating entity from %r: %s", raw, exc
+            )
             return None
 
     def _parse_multiple_labels(
@@ -242,14 +332,10 @@ class EntityExtractionEngine:
         if not label_str:
             return []
 
-        # Normalise: treat underscores as separators only when they appear between words
-        # that are themselves valid labels; otherwise try comma split first.
         candidates_comma = [c.strip().upper() for c in label_str.split(",") if c.strip()]
-        # If any element after comma-split is valid, prefer comma splitting
         if any(c in valid_labels for c in candidates_comma):
             candidates = candidates_comma
         else:
-            # Fall back to underscore splitting
             candidates = [c.strip().upper() for c in label_str.split("_") if c.strip()]
 
         valid = [c for c in candidates if c in valid_labels]
@@ -268,11 +354,10 @@ class EntityExtractionEngine:
 
     def _calculate_confidence(
         self,
-        layer1: str,  # noqa: ARG002 – reserved for future use
+        layer1: str,
         layer2: List[str],
         layer3: List[str],
     ) -> float:
-        """Confidence score based on label validation quality."""
         base = 0.85
         if "OBSERVER" in layer2:
             base -= 0.05
