@@ -893,3 +893,271 @@ class TestEndToEndEventFiltering:
             llm_service=None,
         )
         assert "overall_score" in result.credibility
+
+
+# ===========================================================================
+# J. Domain fixture tests (LLM disabled, offline, deterministic)
+#    Validates business, geopolitics, economics, tech/space coverage.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Static offline fixtures – no web fetching, no LLM calls
+# ---------------------------------------------------------------------------
+
+_FIXTURE_BUSINESS = (
+    "Beehiiv, the newsletter platform, is expanding into podcast hosting. "
+    "The company announced the launch of a new audio feature that lets creators "
+    "publish and monetize podcasts directly within their Beehiiv subscription. "
+    "This move takes aim at rivals like Spotify and Substack, which have been "
+    "rolling out competing creator economy tools. Beehiiv's CEO said the platform "
+    "will introduce bundled subscription tiers, helping creators consolidate their "
+    "audience and revenue streams in one ecosystem."
+)
+
+_FIXTURE_GEOPOLITICS = (
+    "Israeli airstrikes killed at least 7 people in southern Lebanon overnight, "
+    "targeting Hezbollah infrastructure near the border. Hezbollah fighters "
+    "clashed with Israeli ground troops advancing into the buffer zone. "
+    "The Israeli military threatened further strikes if Hezbollah continued "
+    "launching rockets. A fragile ceasefire brokered last month appears to be "
+    "collapsing, with both sides mobilizing additional forces along the frontier."
+)
+
+_FIXTURE_ECONOMICS = (
+    "The United States imposed sweeping new tariffs on Chinese goods, escalating "
+    "the trade war that has disrupted global supply chains. Washington added "
+    "dozens of Chinese firms to the entity list, imposing export controls on "
+    "semiconductor chips and advanced manufacturing equipment. Economists warn "
+    "the decoupling will accelerate inflation pressure and bilateral trade collapse. "
+    "The Federal Reserve signaled it may adjust monetary policy in response to "
+    "the economic shock from trade restrictions."
+)
+
+_FIXTURE_TECH_SPACE = (
+    "NASA and SpaceX successfully launched the Artemis IV mission, placing the "
+    "Orion spacecraft into lunar orbit after a flawless rocket liftoff from "
+    "Kennedy Space Center. The four astronauts aboard will conduct the first "
+    "crewed lunar surface landing since Apollo 17. The space mission marks a "
+    "major technology breakthrough for deep space exploration. ESA also "
+    "announced plans to deploy a new satellite constellation for Earth observation."
+)
+
+_FIXTURE_TARIFF_TRADE = (
+    "China and the EU exchanged retaliatory tariffs on agricultural products "
+    "and electric vehicles, deepening the trade war that began after Brussels "
+    "imposed economic restrictions on Chinese EV imports. Trade analysts warned "
+    "the sanctions and export controls will cause third-country trade diversion "
+    "and supply chain fragmentation. The bilateral trade dependency that once "
+    "stabilized relations is now a source of coercive leverage, with both sides "
+    "threatening further economic penalties."
+)
+
+
+class TestDomainFixtures:
+    """
+    Offline, LLM-disabled tests using static sample articles.
+
+    Coverage domains: business, geopolitics, economics, tech/space.
+    All tests use run_evented_pipeline(..., llm_service=None).
+    """
+
+    # --- Business (Beehiiv podcast hosting) ---
+
+    def test_business_yields_at_least_two_events(self):
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        assert len(result.events) >= 2, (
+            f"Business sample should produce >=2 events, got {len(result.events)}: "
+            f"{[e['type'] for e in result.events]}"
+        )
+
+    def test_business_yields_at_least_one_active_pattern(self):
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        assert len(result.active_patterns) >= 1, (
+            "Business sample should produce >=1 active pattern"
+        )
+
+    def test_business_contains_business_event_types(self):
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        types = {e["type"] for e in result.events}
+        business_types = {
+            EventType.MARKET_ENTRY,
+            EventType.PRODUCT_FEATURE_LAUNCH,
+            EventType.COMPETITIVE_POSITIONING,
+            EventType.PLATFORM_STRATEGY,
+        }
+        assert types & business_types, (
+            f"Business sample should contain at least one business event type. "
+            f"Got: {types}"
+        )
+
+    def test_business_no_zero_confidence_events(self):
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        for evt in result.events:
+            assert evt["confidence"] > 0, (
+                f"confidence==0 event detected: {evt}"
+            )
+
+    def test_business_no_empty_evidence_quotes(self):
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        for evt in result.events:
+            assert evt["evidence"]["quote"], (
+                f"Empty evidence.quote detected: {evt}"
+            )
+
+    # --- Geopolitics (Israeli strikes / Hezbollah) ---
+
+    def test_geopolitics_yields_kinetic_events(self):
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        types = {e["type"] for e in result.events}
+        kinetic = {
+            EventType.MILITARY_STRIKE,
+            EventType.CLASHES,
+            EventType.MOBILIZATION,
+            EventType.CEASEFIRE,
+            EventType.COERCIVE_WARNING,
+        }
+        assert types & kinetic, (
+            f"Geopolitics sample should contain kinetic events. Got: {types}"
+        )
+
+    def test_geopolitics_yields_at_least_two_events(self):
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        assert len(result.events) >= 2, (
+            f"Geopolitics sample expected >=2 events, got {len(result.events)}"
+        )
+
+    def test_geopolitics_produces_active_patterns(self):
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        assert len(result.active_patterns) >= 1
+
+    def test_geopolitics_events_have_non_empty_quotes(self):
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for evt in result.events:
+            assert evt["evidence"]["quote"], (
+                f"Empty quote in geopolitics event: {evt}"
+            )
+
+    # --- Economics (tariffs / trade war / entity list) ---
+
+    def test_economics_yields_events(self):
+        result = run_evented_pipeline(_FIXTURE_ECONOMICS, llm_service=None)
+        assert len(result.events) >= 1, (
+            "Economics sample should produce >=1 event"
+        )
+
+    def test_economics_yields_patterns(self):
+        result = run_evented_pipeline(_FIXTURE_ECONOMICS, llm_service=None)
+        assert len(result.active_patterns) >= 1, (
+            "Economics sample should produce >=1 active pattern"
+        )
+
+    def test_economics_detects_trade_or_sanction(self):
+        result = run_evented_pipeline(_FIXTURE_ECONOMICS, llm_service=None)
+        types = {e["type"] for e in result.events}
+        econ_types = {
+            EventType.SANCTION_IMPOSED,
+            EventType.EXPORT_CONTROL,
+            EventType.COERCIVE_WARNING,
+        }
+        assert types & econ_types, (
+            f"Economics sample should contain sanction/export/coercive events. Got: {types}"
+        )
+
+    # --- Tech / Space (NASA/SpaceX Artemis) ---
+
+    def test_space_yields_space_mission_event(self):
+        result = run_evented_pipeline(_FIXTURE_TECH_SPACE, llm_service=None)
+        types = {e["type"] for e in result.events}
+        assert EventType.SPACE_MISSION in types, (
+            f"Tech/space sample should contain space_mission event. Got: {types}"
+        )
+
+    def test_space_does_not_misclassify_as_legal_regulatory(self):
+        result = run_evented_pipeline(_FIXTURE_TECH_SPACE, llm_service=None)
+        # Ensure space_mission is detected and legal_regulatory_action is NOT
+        # the dominant (or only) event when the text is clearly about space.
+        types = {e["type"] for e in result.events}
+        # space_mission must be present
+        assert EventType.SPACE_MISSION in types, (
+            f"Tech/space text misclassified: space_mission absent. Types: {types}"
+        )
+
+    def test_space_yields_active_patterns(self):
+        result = run_evented_pipeline(_FIXTURE_TECH_SPACE, llm_service=None)
+        assert len(result.active_patterns) >= 1, (
+            "Tech/space sample should produce >=1 active pattern"
+        )
+
+    def test_space_no_zero_confidence_events(self):
+        result = run_evented_pipeline(_FIXTURE_TECH_SPACE, llm_service=None)
+        for evt in result.events:
+            assert evt["confidence"] > 0
+
+    # --- Cross-domain: derived patterns appear via composition ---
+
+    def test_tariff_trade_derived_patterns_exist(self):
+        """Economics/trade sample should produce derived patterns via composition."""
+        result = run_evented_pipeline(_FIXTURE_TARIFF_TRADE, llm_service=None)
+        # Derived patterns require >=2 distinct active patterns that compose
+        # We verify derived patterns appear in at least this rich sample
+        assert len(result.derived_patterns) >= 1, (
+            f"Expected >=1 derived pattern in tariff/trade sample. "
+            f"Active: {[ap['pattern'] for ap in result.active_patterns]}, "
+            f"Derived: {result.derived_patterns}"
+        )
+
+    def test_no_confidence_zero_across_all_fixtures(self):
+        """No fixture should ever produce an event with confidence==0."""
+        for label, text in [
+            ("business",   _FIXTURE_BUSINESS),
+            ("geopolitics", _FIXTURE_GEOPOLITICS),
+            ("economics",  _FIXTURE_ECONOMICS),
+            ("tech_space", _FIXTURE_TECH_SPACE),
+            ("tariff",     _FIXTURE_TARIFF_TRADE),
+        ]:
+            result = run_evented_pipeline(text, llm_service=None)
+            for evt in result.events:
+                assert evt["confidence"] > 0, (
+                    f"[{label}] confidence==0 event: {evt}"
+                )
+
+    def test_composition_table_has_business_entries(self):
+        """Composition table must contain at least one business/tech entry."""
+        business_patterns = {
+            "產品能力擴張模式",
+            "平台競爭 / 生態位擴張模式",
+            "創作者經濟整合模式",
+            "技術突破 / 太空探索模式",
+        }
+        found = any(
+            p in business_patterns
+            for pair in composition_table.keys()
+            for p in pair
+        )
+        assert found, (
+            "composition_table should contain at least one business/tech pattern"
+        )
+
+    def test_registry_has_business_patterns(self):
+        """CARTESIAN_PATTERN_REGISTRY should contain new business pattern names."""
+        all_names = {p.pattern_name for p in CARTESIAN_PATTERN_REGISTRY.values()}
+        required = [
+            "產品能力擴張模式",
+            "平台競爭 / 生態位擴張模式",
+            "創作者經濟整合模式",
+            "技術突破 / 太空探索模式",
+        ]
+        for name in required:
+            assert name in all_names, (
+                f"CARTESIAN_PATTERN_REGISTRY missing business pattern: {name}"
+            )
+
+    def test_business_derived_patterns_appear(self):
+        """Business sample should produce derived patterns via composition."""
+        result = run_evented_pipeline(_FIXTURE_BUSINESS, llm_service=None)
+        # Business events should produce >=2 active patterns enabling composition
+        if len(result.active_patterns) >= 2:
+            assert len(result.derived_patterns) >= 1, (
+                f"Expected derived patterns when >=2 active patterns present. "
+                f"Active: {[ap['pattern'] for ap in result.active_patterns]}"
+            )

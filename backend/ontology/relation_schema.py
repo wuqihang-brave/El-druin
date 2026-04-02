@@ -754,6 +754,134 @@ _reg(
 )
 
 
+# ---------------------------------------------------------------------------
+# 4.6 商業 / 技術 / 產品戰略類
+# Business / Tech / Product Strategy patterns
+# ---------------------------------------------------------------------------
+
+_reg(
+    EntityType.FIRM, RelationType.INTEGRATE, EntityType.SUPPLY_CHAIN,
+    pattern_name="產品能力擴張模式",
+    domain="business",
+    typical_outcomes=[
+        "market_share_growth",          # 市場份額增長
+        "creator_monetization_unlock",  # 創作者變現通道開放
+        "platform_stickiness_increase", # 平台黏性提升
+        "competitor_revenue_threat",    # 對競爭者收入威脅
+    ],
+    mechanism_class="product_expansion",
+    inverse_pattern="產品能力收縮模式",
+    composition_hints=["平台競爭 / 生態位擴張模式", "創作者經濟整合模式"],
+    confidence_prior=0.72,
+)
+
+_reg(
+    EntityType.FIRM, RelationType.EXCLUDE, EntityType.FIRM,
+    pattern_name="平台競爭 / 生態位擴張模式",
+    domain="business",
+    typical_outcomes=[
+        "incumbent_market_share_erosion",# 現有者市場份額侵蝕
+        "pricing_war",                   # 價格戰
+        "feature_parity_race",           # 功能平等競賽
+        "user_switching_cost_shift",     # 用戶轉換成本轉移
+    ],
+    mechanism_class="competitive_disruption",
+    inverse_pattern="市場壟斷 / 競爭消解模式",
+    composition_hints=["產品能力擴張模式", "創作者經濟整合模式"],
+    confidence_prior=0.70,
+)
+
+_reg(
+    EntityType.FIRM, RelationType.INTEGRATE, EntityType.MEDIA,
+    pattern_name="創作者經濟整合模式",
+    domain="business",
+    typical_outcomes=[
+        "creator_platform_consolidation",# 創作者平台整合
+        "subscription_revenue_growth",   # 訂閱收入增長
+        "content_diversification",       # 內容多元化
+        "advertiser_dependency_reduction",# 廣告依賴降低
+    ],
+    mechanism_class="creator_economy",
+    inverse_pattern="創作者平台分散模式",
+    composition_hints=["平台競爭 / 生態位擴張模式", "產品能力擴張模式"],
+    confidence_prior=0.68,
+)
+
+_reg(
+    EntityType.TECH, RelationType.STANDARDIZE, EntityType.SUPPLY_CHAIN,
+    pattern_name="技術突破 / 太空探索模式",
+    domain="technology",
+    typical_outcomes=[
+        "space_economy_unlock",          # 太空經濟開放
+        "national_prestige_boost",       # 國家聲望提升
+        "satellite_infrastructure",      # 衛星基礎設施擴展
+        "dual_use_tech_spillover",       # 軍民兩用技術溢出
+    ],
+    mechanism_class="technology_frontier",
+    inverse_pattern="技術瓶頸 / 任務失敗模式",
+    composition_hints=["技術標準主導模式", "科技脫鉤 / 技術鐵幕模式"],
+    confidence_prior=0.72,
+)
+
+# --- Inverse placeholders for new business/tech patterns ---
+
+_reg(
+    EntityType.FIRM, RelationType.EXCLUDE, EntityType.SUPPLY_CHAIN,
+    pattern_name="產品能力收縮模式",
+    domain="business",
+    typical_outcomes=[
+        "market_share_decline",
+        "user_churn",
+        "revenue_contraction",
+    ],
+    mechanism_class="product_contraction",
+    inverse_pattern="產品能力擴張模式",
+    confidence_prior=0.55,
+)
+
+_reg(
+    EntityType.FIRM, RelationType.INTEGRATE, EntityType.FIRM,
+    pattern_name="市場壟斷 / 競爭消解模式",
+    domain="business",
+    typical_outcomes=[
+        "market_concentration",
+        "innovation_slowdown",
+        "consumer_price_increase",
+    ],
+    mechanism_class="market_monopoly",
+    inverse_pattern="平台競爭 / 生態位擴張模式",
+    confidence_prior=0.58,
+)
+
+_reg(
+    EntityType.MEDIA, RelationType.EXCLUDE, EntityType.FIRM,
+    pattern_name="創作者平台分散模式",
+    domain="business",
+    typical_outcomes=[
+        "creator_migration",
+        "platform_fragmentation",
+        "revenue_dilution",
+    ],
+    mechanism_class="creator_fragmentation",
+    inverse_pattern="創作者經濟整合模式",
+    confidence_prior=0.55,
+)
+
+_reg(
+    EntityType.TECH, RelationType.DELEGITIMIZE, EntityType.SUPPLY_CHAIN,
+    pattern_name="技術瓶頸 / 任務失敗模式",
+    domain="technology",
+    typical_outcomes=[
+        "mission_abort",
+        "program_delay",
+        "public_confidence_drop",
+    ],
+    mechanism_class="tech_failure",
+    inverse_pattern="技術突破 / 太空探索模式",
+    confidence_prior=0.52,
+)
+
+
 # ===========================================================================
 # 5. 查詢 API
 # ===========================================================================
@@ -1155,6 +1283,17 @@ composition_table: Dict[Tuple[str, str], str] = {
     ("信息戰 / 敘事操控模式", "大國脅迫 / 威懾模式"): "非國家武裝代理衝突模式",
     # 金融孤立 + 制裁 → 主權债务危机（通用後果）
     ("金融孤立 / SWIFT 切斷模式", "霸權制裁模式"): "霸權制裁模式",
+    # 貿易戰 + 制裁 → 科技脫鉤
+    ("貿易戰 / 脫鉤模式", "實體清單技術封鎖模式"): "科技脫鉤 / 技術鐵幕模式",
+    # Business/Tech compositions
+    # 產品擴張 + 平台競爭 → 創作者經濟整合
+    ("產品能力擴張模式", "平台競爭 / 生態位擴張模式"): "創作者經濟整合模式",
+    # 平台競爭 + 創作者整合 → 產品擴張升級
+    ("平台競爭 / 生態位擴張模式", "創作者經濟整合模式"): "產品能力擴張模式",
+    # 創作者整合 + 平台競爭 → 跨國監管壓力（平台壟斷引發監管關注）
+    ("創作者經濟整合模式", "平台競爭 / 生態位擴張模式"): "跨國監管 / 合規約束模式",
+    # 技術突破 + 技術封鎖 → 科技脫鉤
+    ("技術突破 / 太空探索模式", "實體清單技術封鎖模式"): "科技脫鉤 / 技術鐵幕模式",
 }
 
 

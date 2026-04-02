@@ -54,6 +54,13 @@ class EventType:
     CEASEFIRE            = "ceasefire"
     MOBILIZATION         = "mobilization"
     WITHDRAWAL           = "withdrawal"
+    # Business / Tech / Product Strategy
+    MARKET_ENTRY              = "market_entry"
+    PRODUCT_FEATURE_LAUNCH    = "product_feature_launch"
+    COMPETITIVE_POSITIONING   = "competitive_positioning"
+    PLATFORM_STRATEGY         = "platform_strategy"
+    # Space / Technology
+    SPACE_MISSION             = "space_mission"
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +195,86 @@ _RULES: List[Dict[str, Any]] = [
         ],
         "confidence": 0.78,
     },
+    # Business / Tech / Product Strategy
+    {
+        "type": EventType.MARKET_ENTRY,
+        "patterns": [
+            r"\bexpand(?:ing|s|ed)?\s+into\b",
+            r"\bentering?\s+(?:the\s+)?(?:new\s+)?market\b",
+            r"\blaunch(?:es|ed|ing)?\s+in\b",
+            r"\broll(?:s|ed|ing)?\s+out\b",
+            r"\bintroduc(?:e|es|ed|ing)\s+(?:new\s+)?(?:service|product|offering|feature)\b",
+            r"\bexpand(?:s|ed|ing)?\s+(?:its\s+)?(?:service|platform|product|offering)\b",
+            r"\benters?\s+(?:the\s+)?(?:space|sector|market|arena|industry)\b",
+            r"\bmov(?:e|es|ed|ing)\s+into\s+(?:the\s+)?(?:new\s+)?market\b",
+        ],
+        "confidence": 0.80,
+    },
+    {
+        "type": EventType.PRODUCT_FEATURE_LAUNCH,
+        "patterns": [
+            r"\blaunch(?:es|ed|ing)?\s+(?:new\s+)?(?:product|feature|service|tool|app|platform)\b",
+            r"\bannounce(?:s|d|ing)?\s+(?:new\s+)?(?:product|feature|service|offering)\b",
+            r"\breleas(?:e|es|ed|ing)?\s+(?:new\s+)?(?:product|feature|version|update)\b",
+            r"\bintroduc(?:e|es|ed|ing)\s+(?:new\s+)?(?:product|feature|service|tool)\b",
+            r"\bdebut(?:s|ed|ing)?\b",
+            r"\bunveil(?:s|ed|ing)?\b",
+            r"\broll(?:s|ed|ing)\s+out\s+(?:new\s+)?(?:feature|service|product)\b",
+            r"\bpilot(?:s|ed|ing)?\s+(?:new\s+)?(?:program|feature|service)\b",
+        ],
+        "confidence": 0.78,
+    },
+    {
+        "type": EventType.COMPETITIVE_POSITIONING,
+        "patterns": [
+            r"\btake(?:s|n)?\s+aim\s+at\b",
+            r"\bchalleng(?:e|es|ed|ing)\s+(?:the\s+)?(?:dominan|incumbent|rival|leader)\b",
+            r"\brival(?:s|ed|ing|ling)?\b",
+            r"\bcompet(?:e|es|ed|ing|ition|itor)\b",
+            r"\bdisrupt(?:s|ed|ing|or|ive)?\b",
+            r"\bchalleng(?:e|es|er)\s+to\b",
+            r"\bvs\.\s+\w+|versus\s+\w+",
+            r"\bgain(?:s|ed|ing)?\s+(?:market\s+)?share\b",
+            r"\bovert(?:ake|akes|aking|ook)\b",
+            r"\balternative\s+to\b",
+        ],
+        "confidence": 0.72,
+    },
+    {
+        "type": EventType.PLATFORM_STRATEGY,
+        "patterns": [
+            r"\bplatform\s+(?:strateg|expan|ecosys|monetiz|business)\b",
+            r"\becosystem\b",
+            r"\bmonetiz(?:e|es|ed|ing|ation)\b",
+            r"\bsubscription\s+(?:model|business|tier|plan|revenue)\b",
+            r"\bcreator\s+(?:economy|platform|tool|monetiz)\b",
+            r"\bmarketplace\b",
+            r"\bconsolidat(?:e|es|ed|ing|ion)\b",
+            r"\bvertical\s+integrat(?:e|ion)\b",
+            r"\bbundl(?:e|es|ed|ing)\b",
+        ],
+        "confidence": 0.72,
+    },
+    # Space / Technology breakthrough
+    {
+        "type": EventType.SPACE_MISSION,
+        "patterns": [
+            r"\borbit(?:s|ed|ing|al)?\b",
+            r"\bastronauts?\b",
+            r"\b(?:NASA|ESA|JAXA|SpaceX|Roscosmos|ISRO)\b",
+            r"\blaunch(?:es|ed|ing)?\s+(?:a\s+)?(?:rocket|spacecraft|satellite|probe|mission)\b",
+            r"\blunar\b",
+            r"\bmoon\s+(?:mission|landing|orbit|probe)\b",
+            r"\brocket\s+(?:launch|test|engine)\b",
+            r"\bspacecraft\b",
+            r"\bsatellite\s+(?:launch|deploy|orbit)\b",
+            r"\bspace\s+(?:station|mission|launch|exploration|agency)\b",
+            r"\bliftoff\b",
+            r"\bsplashdown\b",
+            r"\binterplanetary\b",
+        ],
+        "confidence": 0.82,
+    },
 ]
 
 # Pre-compile regexes for performance
@@ -224,6 +311,12 @@ _EVENT_TRIGGER_KEYWORDS: Dict[str, List[str]] = {
     EventType.CEASEFIRE:         ["ceasefire", "truce", "peace", "armistice", "cease"],
     EventType.MOBILIZATION:      ["mobiliz", "troop", "buildup", "deployment", "conscription"],
     EventType.WITHDRAWAL:        ["withdraw", "retreat", "pull"],
+    # Business / Tech
+    EventType.MARKET_ENTRY:           ["expand", "enter", "launch", "roll out", "introduc", "mov"],
+    EventType.PRODUCT_FEATURE_LAUNCH: ["launch", "announc", "releas", "introduc", "debut", "unveil", "pilot", "roll"],
+    EventType.COMPETITIVE_POSITIONING:["compet", "rival", "challenge", "disrupt", "share", "overtake", "alternative", "vs"],
+    EventType.PLATFORM_STRATEGY:      ["platform", "ecosystem", "monetiz", "subscription", "creator", "marketplace", "bundl", "consolidat"],
+    EventType.SPACE_MISSION:          ["orbit", "astronaut", "NASA", "ESA", "SpaceX", "lunar", "moon", "rocket", "spacecraft", "satellite", "space", "liftoff"],
 }
 
 # T1 weak / generic pattern overrides – used when an event is tiered T1 to
@@ -240,6 +333,12 @@ _T1_WEAK_PATTERNS: Dict[str, str] = {
     EventType.CEASEFIRE:         "政策性貿易限制模式",
     EventType.MOBILIZATION:      "潛在強制信號模式",
     EventType.WITHDRAWAL:        "政策性貿易限制模式",
+    # Business / Tech weak patterns
+    EventType.MARKET_ENTRY:            "產品能力擴張模式",
+    EventType.PRODUCT_FEATURE_LAUNCH:  "產品能力擴張模式",
+    EventType.COMPETITIVE_POSITIONING: "平台競爭 / 生態位擴張模式",
+    EventType.PLATFORM_STRATEGY:       "創作者經濟整合模式",
+    EventType.SPACE_MISSION:           "技術突破 / 太空探索模式",
 }
 
 
@@ -264,8 +363,11 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     An event is rejected (T0) if ANY of the following hold:
       - ``confidence <= 0``
       - ``evidence.quote`` is missing or empty
-      - ``evidence.quote`` length < ``_MIN_QUOTE_LEN``
       - ``confidence < _T0_CONF_THRESHOLD`` (before *or* after folding)
+
+    Exception to quote-length rule: if the event type has strong trigger
+    keywords present in the source text, a short quote is tolerated but
+    the event is downgraded to tier T1 and a verification_gap entry is added.
 
     Normalisation
     -------------
@@ -319,8 +421,8 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
         confidence = float(evt.get("confidence", 0.0))
 
-        # --- Initial T0 check ---
-        if confidence <= 0 or not q or len(q) < _MIN_QUOTE_LEN:
+        # --- Initial T0 check: reject zero/negative confidence or empty quote ---
+        if confidence <= 0 or not q:
             continue
         if confidence < _T0_CONF_THRESHOLD:
             continue
@@ -329,6 +431,20 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         inferred_fields: List[str] = list(evt.get("inferred_fields") or [])
         inference_rationale: str = str(evt.get("inference_rationale") or "")[:200]
         verification_gap: List[str] = list(evt.get("verification_gap") or [])
+
+        # --- Short-quote handling: keep as T1 with verification_gap ---
+        force_t1_short_quote = False
+        if len(q) < _MIN_QUOTE_LEN:
+            # Keep only when strong trigger is present in the quote
+            if _quote_has_trigger(q, evt["type"]):
+                force_t1_short_quote = True
+                verification_gap = list(verification_gap)
+                if "need more context: quote too short for full verification" not in verification_gap:
+                    verification_gap.append(
+                        "need more context: quote too short for full verification"
+                    )
+            else:
+                continue  # reject: short quote with no trigger
 
         # --- Confidence folding ---
         if inferred_fields:
@@ -345,7 +461,10 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             continue
 
         # --- Tiering ---
-        tier = "T2" if (confidence >= _T2_CONF_THRESHOLD and not inferred_fields) else "T1"
+        if force_t1_short_quote:
+            tier = "T1"
+        else:
+            tier = "T2" if (confidence >= _T2_CONF_THRESHOLD and not inferred_fields) else "T1"
 
         evt["confidence"] = confidence
         evt["tier"] = tier
@@ -366,12 +485,20 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
 
 def _extract_quote(text: str, match: re.Match, window: int = 80) -> str:
-    """Return a short quote centred on the match."""
+    """Return a short quote centred on the match.
+
+    Guarantees a non-empty result by using the matched text itself as the
+    fallback when context expansion produces an empty string.
+    """
     start = max(0, match.start() - window // 2)
     end   = min(len(text), match.end() + window // 2)
     snippet = text[start:end].strip()
     # Collapse whitespace
-    return re.sub(r"\s+", " ", snippet)
+    snippet = re.sub(r"\s+", " ", snippet)
+    # Fallback: always return at least the matched text
+    if not snippet:
+        snippet = match.group(0)
+    return snippet
 
 
 def _stable_id(event_type: str, quote: str) -> str:
@@ -419,7 +546,9 @@ def extract_events_llm(text: str, llm_service: Any) -> List[Dict[str, Any]]:
     focus_types = (
         "sanction_imposed, sanction_lifted, export_control, asset_freeze, "
         "legal_regulatory_action, coercive_warning, "
-        "military_strike, clashes, ceasefire, mobilization, withdrawal"
+        "military_strike, clashes, ceasefire, mobilization, withdrawal, "
+        "market_entry, product_feature_launch, competitive_positioning, "
+        "platform_strategy, space_mission"
     )
     prompt = (
         "You are an event-extraction engine.  Read the news text below and "
@@ -477,14 +606,115 @@ def extract_events(
     Primary event extraction entry-point.
 
     Tries rule-based first; if nothing found and llm_service is available,
-    falls back to LLM.  Candidate events are always post-processed (tiered,
-    filtered, normalised) before being returned.
+    falls back to LLM.  Compound multi-event rules are always applied to
+    supplement extracted candidates.  Candidate events are always
+    post-processed (tiered, filtered, normalised) before being returned.
     """
     candidates = extract_events_rule_based(text)
     if not candidates and llm_service is not None:
         logger.info("Rule-based extraction yielded 0 events; trying LLM fallback")
         candidates = extract_events_llm(text, llm_service)
+    # Supplement with compound rules (always deterministic, no LLM needed)
+    compound = _apply_compound_rules(text, candidates)
+    # Merge compound events that aren't already covered
+    existing_types = {e["type"] for e in candidates}
+    for evt in compound:
+        if evt["type"] not in existing_types:
+            candidates.append(evt)
+            existing_types.add(evt["type"])
     return postprocess_events(candidates)
+
+
+# ---------------------------------------------------------------------------
+# Compound multi-event rules
+# ---------------------------------------------------------------------------
+
+# Co-occurrence trigger sets: when multiple trigger sets are all present in
+# text, generate synthetic supplemental events to ensure distinct event types.
+_COMPOUND_RULES: List[Dict[str, Any]] = [
+    # Market entry + competitive positioning → generate both if only one detected
+    {
+        "requires_any": [EventType.MARKET_ENTRY, EventType.PRODUCT_FEATURE_LAUNCH],
+        "if_text_matches": [
+            r"\bcompet\w*\b",
+            r"\brival\w*\b",
+            r"\balternative\s+to\b",
+            r"\btake\s+aim\b",
+        ],
+        "emit": EventType.COMPETITIVE_POSITIONING,
+        "confidence": 0.65,
+    },
+    # Platform strategy + product launch → emit platform_strategy
+    {
+        "requires_any": [EventType.PRODUCT_FEATURE_LAUNCH, EventType.MARKET_ENTRY],
+        "if_text_matches": [
+            r"\bmonetiz\w*\b",
+            r"\bsubscription\b",
+            r"\bcreator\s+economy\b",
+            r"\bplatform\b",
+            r"\becosystem\b",
+        ],
+        "emit": EventType.PLATFORM_STRATEGY,
+        "confidence": 0.65,
+    },
+    # Sanction + export_control → compound tech decoupling signal
+    {
+        "requires_any": [EventType.SANCTION_IMPOSED, EventType.EXPORT_CONTROL],
+        "if_text_matches": [
+            r"\btrade\s+war\b",
+            r"\bdecoupl\w*\b",
+            r"\bchip\b",
+            r"\bsemiconductor\b",
+        ],
+        "emit": EventType.EXPORT_CONTROL,
+        "confidence": 0.75,
+    },
+]
+
+_COMPOUND_RULE_COMPILED: List[Dict[str, Any]] = [
+    {
+        **rule,
+        "if_text_compiled": [re.compile(p, re.IGNORECASE) for p in rule["if_text_matches"]],
+    }
+    for rule in _COMPOUND_RULES
+]
+
+
+def _apply_compound_rules(
+    text: str,
+    existing_candidates: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Apply compound multi-event rules to supplement rule-based extraction.
+
+    Returns additional candidate events (may be empty).  Each emitted event
+    has the required evented fields: id, type, args, evidence.quote, confidence.
+    """
+    existing_types = {e["type"] for e in existing_candidates}
+    added: List[Dict[str, Any]] = []
+
+    for rule in _COMPOUND_RULE_COMPILED:
+        # Skip if emit type already present
+        if rule["emit"] in existing_types:
+            continue
+        # Check that at least one required event type is present
+        if not any(t in existing_types for t in rule["requires_any"]):
+            continue
+        # Check that at least one text pattern matches
+        for compiled_re in rule["if_text_compiled"]:
+            m = compiled_re.search(text)
+            if m:
+                quote = _extract_quote(text, m)
+                eid = _stable_id(rule["emit"], quote)
+                added.append({
+                    "id":         eid,
+                    "type":       rule["emit"],
+                    "args":       {},
+                    "evidence":   {"quote": quote},
+                    "confidence": rule["confidence"],
+                })
+                break  # only emit once per rule
+
+    return added
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +821,12 @@ _EVENT_TO_PATTERN: List[Tuple[str, str]] = [
     (EventType.CEASEFIRE,         "停火 / 和平協議模式"),
     (EventType.MOBILIZATION,      "正式軍事同盟模式"),
     (EventType.WITHDRAWAL,        "外交讓步 / 去升級模式"),
+    # Business / Tech / Product Strategy
+    (EventType.MARKET_ENTRY,            "產品能力擴張模式"),
+    (EventType.PRODUCT_FEATURE_LAUNCH,  "產品能力擴張模式"),
+    (EventType.COMPETITIVE_POSITIONING, "平台競爭 / 生態位擴張模式"),
+    (EventType.PLATFORM_STRATEGY,       "創作者經濟整合模式"),
+    (EventType.SPACE_MISSION,           "技術突破 / 太空探索模式"),
 ]
 
 _EVENT_TYPE_TO_PATTERN: Dict[str, str] = {
@@ -953,7 +1189,7 @@ def compute_credibility(
 
     Fields returned
     ---------------
-    verifiability_score   float 0-1  rule-based on verifiable anchor presence
+    verifiability_score   float 0-1  additive scoring on verifiable anchor presence
     missing_evidence      list[str]  types of anchor that are absent
     kg_consistency_score  float 0-1  based on absence of contradicting patterns
     contradictions        list[str]  co-activated contradicting pattern pairs
@@ -961,15 +1197,34 @@ def compute_credibility(
     hypothesis_ratio      float 0-1  fraction of patterns that are T1 (hypothesis)
     overall_score         float 0-1  composite: (0.6*verifiability + 0.4*kg_consistency)
                                      * (1 - 0.5*hypothesis_ratio)
+
+    Verifiability is additive: each anchor type contributes independently,
+    so short but evidence-containing texts don't always yield 0.
+    Anchor weights (sum to 1.0 at max):
+      - specific_date:            0.30
+      - named_institution:        0.30
+      - official_document_or_url: 0.25
+      - named_person_or_source:   0.15
     """
-    # --- Verifiability ---
+    # --- Verifiability (additive scoring) ---
     has_date        = bool(_DATE_RE.search(text))
     has_url         = bool(_URL_RE.search(text))
     has_filing      = bool(_FILING_RE.search(text))
     has_institution = bool(_INSTITUTION_RE.search(text))
+    # Named person / source heuristic (simple: quoted speech or "said"/"according to" attribution)
+    has_named_source = bool(re.search(
+        r'(?:"\s*,?\s*(?:said|according\s+to|stated|told|confirmed|announced)'
+        r'|\baccording\s+to\b)',
+        text, re.IGNORECASE,
+    ))
 
-    anchors_present = sum([has_date, has_url, has_filing, has_institution])
-    verifiability_score = min(1.0, anchors_present / _VERIFIABILITY_ANCHOR_COUNT)
+    verifiability_score = (
+        (0.30 if has_date else 0.0)
+        + (0.30 if has_institution else 0.0)
+        + (0.25 if (has_filing or has_url) else 0.0)
+        + (0.15 if has_named_source else 0.0)
+    )
+    verifiability_score = min(1.0, verifiability_score)
 
     missing_evidence: List[str] = []
     if not has_date:
