@@ -396,7 +396,8 @@ def infer_entity_type_lightweight(name: str) -> str:
     tokens = name.split()
     if 2 <= len(tokens) <= 4:
         all_title_case = all(
-            t[0].isupper() and t[1:].islower() for t in tokens if t.isalpha()
+            len(t) >= 2 and t[0].isupper() and t[1:].islower()
+            for t in tokens if t.isalpha()
         )
         if all_title_case and not _CORP_SUFFIXES.search(name):
             return "person"
@@ -610,6 +611,10 @@ def _deterministic_conclusion(
 # Credibility assessment
 # ---------------------------------------------------------------------------
 
+# Scoring constants
+_VERIFIABILITY_ANCHOR_COUNT = 3.0     # number of anchors for max verifiability score
+_CONTRADICTION_PENALTY      = 0.3     # score deduction per contradicting pattern pair
+
 _DATE_RE     = re.compile(
     r"\b(\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
     r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|"
@@ -659,7 +664,7 @@ def compute_credibility(
     has_institution = bool(_INSTITUTION_RE.search(text))
 
     anchors_present = sum([has_date, has_url, has_filing, has_institution])
-    verifiability_score = min(1.0, anchors_present / 3.0)
+    verifiability_score = min(1.0, anchors_present / _VERIFIABILITY_ANCHOR_COUNT)
 
     missing_evidence: List[str] = []
     if not has_date:
@@ -678,7 +683,7 @@ def compute_credibility(
         if a in active_names and b in active_names:
             contradictions.append(f"Contradicting co-activation: {a} + {b}")
 
-    kg_consistency_score = max(0.0, 1.0 - 0.3 * len(contradictions))
+    kg_consistency_score = max(0.0, 1.0 - _CONTRADICTION_PENALTY * len(contradictions))
 
     return {
         "verifiability_score":   round(verifiability_score, 3),

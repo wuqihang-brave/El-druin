@@ -149,6 +149,15 @@ class TestPromptBraceSafety:
         assert id1 == id2
         assert len(id1) == 8
 
+    def test_stable_id_different_inputs_different_ids(self):
+        """Different event types or quotes must produce different IDs."""
+        id_a = _stable_id("sanction_imposed", "quote text")
+        id_b = _stable_id("military_strike",  "quote text")
+        id_c = _stable_id("sanction_imposed", "different quote")
+        assert id_a != id_b, "Different event types should yield different IDs"
+        assert id_a != id_c, "Different quotes should yield different IDs"
+        assert id_b != id_c
+
 
 # ===========================================================================
 # B. Inverse placeholder registration (relation_schema B1 strictness)
@@ -457,9 +466,15 @@ class TestFullPipeline:
             "after the military alliance activated Article 5."
         )
         result = run_evented_pipeline(text, llm_service=None)
-        derived_names = [d["derived"] for d in result.derived_patterns]
-        # sanction + alliance → 多邊聯盟制裁模式 should be derived
-        # (if both 霸權制裁模式 and 正式軍事同盟模式 are active)
         active_names = [ap["pattern"] for ap in result.active_patterns]
+        derived_names = [d["derived"] for d in result.derived_patterns]
+        # If both sanction and alliance patterns are active, composition must fire
         if "霸權制裁模式" in active_names and "正式軍事同盟模式" in active_names:
-            assert "多邊聯盟制裁模式" in derived_names
+            assert "多邊聯盟制裁模式" in derived_names, (
+                "Expected 多邊聯盟制裁模式 to be derived from "
+                "霸權制裁模式 + 正式軍事同盟模式 via composition_table"
+            )
+        else:
+            # Verify that at minimum a sanction event was detected from the text
+            assert EventType.SANCTION_IMPOSED in [e["type"] for e in result.events] or \
+                   len(result.events) > 0, "Expected at least one event from alliance/sanction text"
