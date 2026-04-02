@@ -80,6 +80,16 @@ async def startup_event() -> None:
         # reachable and operators can diagnose the problem without a full
         # service outage.
 
+    # Run ontology algebra validation (warn-only in all environments).
+    # Set DEBUG=true to enable strict mode (raises on error).
+    try:
+        from ontology.relation_schema import run_ontology_validation
+
+        strict_mode = os.getenv("DEBUG", "false").lower() == "true"
+        run_ontology_validation(strict=strict_mode)
+    except Exception as exc:
+        logger.warning("Ontology validation skipped: %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # Routes
