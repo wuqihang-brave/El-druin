@@ -268,9 +268,9 @@ def _llm_extract(text: str) -> Dict[str, Any]:
             system_prompt = (
                 "You are a knowledge-graph builder. Extract entities and relations "
                 "from the given text and return ONLY valid JSON in this exact format:\n"
-                '{"entities": [{"name": "...", "type": "ORG|GPE|PERSON|EVENT|PRODUCT", '
-                '"description": "brief description", "confidence": 0.9}], '
-                '"relations": [{"from": "...", "relation": "...", "to": "...", "weight": 0.8}]}\n'
+                '{{"entities": [{{"name": "...", "type": "ORG|GPE|PERSON|EVENT|PRODUCT", '
+                '"description": "brief description", "confidence": 0.9}}], '
+                '"relations": [{{"from": "...", "relation": "...", "to": "...", "weight": 0.8}]}}\n'
                 "confidence must be a float between 0.0 and 1.0. "
                 "Limit to the 10 most important entities and 5 most important relations."
             )
@@ -286,7 +286,7 @@ def _llm_extract(text: str) -> Dict[str, Any]:
             return result
         return {}
     except Exception as exc:
-        logger.warning("LLM entity extraction failed: %s", exc)
+        logger.debug
         return {}
 
 
