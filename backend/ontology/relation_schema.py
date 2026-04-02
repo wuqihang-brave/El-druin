@@ -490,6 +490,270 @@ _reg(
 )
 
 
+# ---------------------------------------------------------------------------
+# 4.5 逆元佔位模式（B1 嚴格模式：確保每個 inverse_pattern 引用均已注冊）
+# ---------------------------------------------------------------------------
+# 每個現有模式的 inverse_pattern 字段引用了一個逆模式名稱，
+# 但這些逆模式尚未作為 CARTESIAN_PATTERN_REGISTRY 條目存在。
+# 在此以「佔位動力模式」形式注冊它們，讓 validate_inverses() 通過，
+# 並使逆元推演查詢可以找到其典型後果。
+
+_reg(
+    EntityType.STATE, RelationType.AGREE, EntityType.STATE,
+    pattern_name="制裁解除 / 正常化模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "trade_normalization",          # 貿易關係正常化
+        "diplomatic_restoration",       # 外交關係恢復
+        "investment_flows_resumption",  # 投資流動恢復
+    ],
+    mechanism_class="diplomatic_normalization",
+    inverse_pattern="霸權制裁模式",
+    confidence_prior=0.65,
+)
+
+_reg(
+    EntityType.STATE, RelationType.AGREE, EntityType.FIRM,
+    pattern_name="技術許可 / 解禁模式",
+    domain="technology",
+    typical_outcomes=[
+        "technology_transfer_resumption",   # 技術轉讓恢復
+        "market_access_restoration",        # 市場准入恢復
+        "supply_chain_reintegration",       # 供應鏈重新整合
+    ],
+    mechanism_class="tech_normalization",
+    inverse_pattern="實體清單技術封鎖模式",
+    confidence_prior=0.60,
+)
+
+_reg(
+    EntityType.CONFLICT, RelationType.AGREE, EntityType.CONFLICT,
+    pattern_name="停火 / 和平協議模式",
+    domain="military",
+    typical_outcomes=[
+        "hostility_cessation",          # 敵對行動停止
+        "humanitarian_access",          # 人道救援通道開放
+        "reconstruction_process",       # 重建進程啟動
+        "political_negotiation",        # 政治談判啟動
+    ],
+    mechanism_class="conflict_resolution",
+    inverse_pattern="國家間武力衝突模式",
+    confidence_prior=0.62,
+)
+
+_reg(
+    EntityType.STATE, RelationType.SIGNAL, EntityType.STATE,
+    pattern_name="外交讓步 / 去升級模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "tension_reduction",            # 緊張態勢降低
+        "face_saving_compromise",       # 體面妥協
+        "negotiation_resumption",       # 談判恢復
+    ],
+    mechanism_class="de_escalation",
+    inverse_pattern="大國脅迫 / 威懾模式",
+    confidence_prior=0.60,
+)
+
+_reg(
+    EntityType.ALLIANCE, RelationType.AGREE, EntityType.STATE,
+    pattern_name="多邊制裁解除模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "multilateral_normalization",   # 多邊關係正常化
+        "coalition_pressure_release",   # 聯盟壓力釋放
+        "international_reintegration",  # 國際再融合
+    ],
+    mechanism_class="multilateral_normalization",
+    inverse_pattern="多邊聯盟制裁模式",
+    confidence_prior=0.60,
+)
+
+_reg(
+    EntityType.PARAMILITARY, RelationType.AGREE, EntityType.STATE,
+    pattern_name="代理武裝解除模式",
+    domain="military",
+    typical_outcomes=[
+        "proxy_disarmament",            # 代理武裝解除
+        "conflict_freeze",              # 衝突凍結
+        "political_integration",        # 政治整合
+    ],
+    mechanism_class="proxy_disarmament",
+    inverse_pattern="非國家武裝代理衝突模式",
+    confidence_prior=0.55,
+)
+
+_reg(
+    EntityType.STATE, RelationType.EXCLUDE, EntityType.STATE,
+    pattern_name="貿易戰 / 脫鉤模式",
+    domain="economics",
+    typical_outcomes=[
+        "bilateral_trade_collapse",     # 雙邊貿易崩潰
+        "supply_chain_fragmentation",   # 供應鏈碎片化
+        "third_country_trade_diversion",# 第三國貿易轉移
+        "inflation_pressure",           # 通脹壓力
+    ],
+    mechanism_class="economic_decoupling",
+    inverse_pattern="雙邊貿易依存模式",
+    confidence_prior=0.68,
+)
+
+_reg(
+    EntityType.FINANCIAL_ORG, RelationType.AID, EntityType.CURRENCY,
+    pattern_name="寬鬆週期模式",
+    domain="economics",
+    typical_outcomes=[
+        "credit_expansion",             # 信貸擴張
+        "asset_price_inflation",        # 資產價格通脹
+        "emerging_market_inflows",      # 新興市場資本流入
+        "currency_depreciation",        # 貨幣貶值壓力
+    ],
+    mechanism_class="monetary_easing",
+    inverse_pattern="央行貨幣政策傳導模式",
+    confidence_prior=0.68,
+)
+
+_reg(
+    EntityType.STATE, RelationType.INTEGRATE, EntityType.FINANCIAL_ORG,
+    pattern_name="金融再整合模式",
+    domain="economics",
+    typical_outcomes=[
+        "payment_system_reintegration", # 支付體系再整合
+        "credit_access_restoration",    # 信貸獲取恢復
+        "trade_finance_resumption",     # 貿易融資恢復
+    ],
+    mechanism_class="financial_normalization",
+    inverse_pattern="金融孤立 / SWIFT 切斷模式",
+    confidence_prior=0.60,
+)
+
+_reg(
+    EntityType.FIRM, RelationType.SUPPLY, EntityType.SUPPLY_CHAIN,
+    pattern_name="供應鏈多元化模式",
+    domain="economics",
+    typical_outcomes=[
+        "resilience_improvement",       # 韌性提升
+        "cost_increase_short_term",     # 短期成本上升
+        "geopolitical_risk_reduction",  # 地緣政治風險降低
+    ],
+    mechanism_class="supply_chain_diversification",
+    inverse_pattern="企業供應鏈單點依賴模式",
+    confidence_prior=0.65,
+)
+
+_reg(
+    EntityType.STATE, RelationType.TRADE_FLOW, EntityType.RESOURCE,
+    pattern_name="能源多元化 / 去依賴模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "energy_security_improvement",  # 能源安全改善
+        "supplier_bargaining_reduction",# 供應商議價能力下降
+        "green_transition_acceleration",# 可再生能源轉型加速
+    ],
+    mechanism_class="energy_diversification",
+    inverse_pattern="資源依賴 / 能源武器化模式",
+    confidence_prior=0.65,
+)
+
+_reg(
+    EntityType.STATE, RelationType.DELEGITIMIZE, EntityType.TECH,
+    pattern_name="標準競爭失敗 / 替代標準崛起模式",
+    domain="technology",
+    typical_outcomes=[
+        "standard_displacement",        # 標準替代
+        "market_share_redistribution",  # 市場份額重新分配
+        "technology_fragmentation",     # 技術碎片化
+    ],
+    mechanism_class="standard_disruption",
+    inverse_pattern="技術標準主導模式",
+    confidence_prior=0.58,
+)
+
+_reg(
+    EntityType.FIRM, RelationType.TRADE_FLOW, EntityType.FIRM,
+    pattern_name="供應市場競爭充分化模式",
+    domain="technology",
+    typical_outcomes=[
+        "price_competition",            # 價格競爭
+        "buyer_bargaining_increase",    # 採購方議價增強
+        "innovation_acceleration",      # 創新加速
+    ],
+    mechanism_class="market_competition",
+    inverse_pattern="關鍵零部件寡頭供應模式",
+    confidence_prior=0.62,
+)
+
+_reg(
+    EntityType.STATE, RelationType.INTEGRATE, EntityType.TECH,
+    pattern_name="技術合作再融合模式",
+    domain="technology",
+    typical_outcomes=[
+        "joint_rd_resumption",          # 聯合研發恢復
+        "technology_transfer_flow",     # 技術轉讓流動
+        "innovation_spillover",         # 創新溢出效應
+    ],
+    mechanism_class="tech_reintegration",
+    inverse_pattern="科技脫鉤 / 技術鐵幕模式",
+    confidence_prior=0.58,
+)
+
+_reg(
+    EntityType.MEDIA, RelationType.LEGITIMIZE, EntityType.TRUST,
+    pattern_name="信息環境修復模式",
+    domain="information",
+    typical_outcomes=[
+        "public_trust_restoration",     # 公眾信任恢復
+        "epistemic_common_ground",      # 認知共識形成
+        "media_credibility_recovery",   # 媒體公信力恢復
+    ],
+    mechanism_class="information_repair",
+    inverse_pattern="信息戰 / 敘事操控模式",
+    confidence_prior=0.55,
+)
+
+_reg(
+    EntityType.INSTITUTION, RelationType.AID, EntityType.FIRM,
+    pattern_name="監管放鬆 / 去規制模式",
+    domain="legal",
+    typical_outcomes=[
+        "compliance_cost_reduction",    # 合規成本降低
+        "market_entry_facilitation",    # 市場進入促進
+        "regulatory_risk_reduction",    # 監管風險降低
+    ],
+    mechanism_class="deregulation",
+    inverse_pattern="跨國監管 / 合規約束模式",
+    confidence_prior=0.60,
+)
+
+_reg(
+    EntityType.STATE, RelationType.DELEGITIMIZE, EntityType.STATE,
+    pattern_name="同盟瓦解 / 中立化模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "alliance_fragmentation",       # 同盟碎片化
+        "strategic_autonomy_pursuit",   # 戰略自主尋求
+        "collective_defense_weakening", # 集體防衛削弱
+    ],
+    mechanism_class="alliance_dissolution",
+    inverse_pattern="正式軍事同盟模式",
+    confidence_prior=0.58,
+)
+
+_reg(
+    EntityType.STATE, RelationType.DELEGITIMIZE, EntityType.NORM,
+    pattern_name="規範侵蝕 / 去合法化模式",
+    domain="geopolitics",
+    typical_outcomes=[
+        "international_order_erosion",  # 國際秩序侵蝕
+        "norm_fragmentation",           # 規範碎片化
+        "rule_based_order_weakening",   # 規則體系削弱
+    ],
+    mechanism_class="norm_erosion",
+    inverse_pattern="國際規範建構模式",
+    confidence_prior=0.55,
+)
+
+
 # ===========================================================================
 # 5. 查詢 API
 # ===========================================================================
