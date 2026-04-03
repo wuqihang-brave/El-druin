@@ -22,10 +22,11 @@ from dotenv import load_dotenv
 load_dotenv()
 import requests  # noqa: F401
 import streamlit as st
-
 import utils.api_client as uac
+import inspect
 st.write("api_client loaded from:", uac.__file__)
-st.write("has evented_deduce:", hasattr(uac.api_client, "evented_deduce"))
+st.write("evented_deduce signature:", inspect.signature(uac.api_client.evented_deduce))
+
 _FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
 if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
