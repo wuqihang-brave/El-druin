@@ -895,7 +895,7 @@ if page == "🏠 主页":
                         if _hyp_gaps:
                             st.caption("验证缺口：" + " · ".join(_hyp_gaps))
                     else:
-                        st.caption("💡 假设路径已隐藏（在侧边栏"推演引擎配置"中开启"显示潜在隐变量"）")
+                        st.caption("💡 假设路径已隐藏（在侧边栏'推演引擎配置'中开启'显示潜在隐变量'）")
 
                     st.markdown("#### 📋 总结论")
                     st.info(_ev_concl.get("conclusion", "（无结论）"))
