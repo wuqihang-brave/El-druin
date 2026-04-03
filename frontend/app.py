@@ -793,7 +793,7 @@ if page == "🏠 主页":
                 _tab_ev1 = _tabs_ev[0]
                 _tab_ev2 = _tabs_ev[1]
                 _tab_ev3 = _tabs_ev[2]
-                _tab_ev4 = _tabs_ev[3] if _ev_enrich else None
+                _tab_ev4 = _tabs_ev[3] if _ev_enrich and len(_tabs_ev) > 3 else None
 
                 # ── Stage 1: Events ──────────────────────────────────────
                 with _tab_ev1:

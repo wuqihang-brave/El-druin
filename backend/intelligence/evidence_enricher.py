@@ -280,7 +280,7 @@ def _fetch_url_text(url: str, timeout: float = 8.0) -> Optional[str]:
             url,
             headers={
                 "User-Agent": (
-                    "Mozilla/5.0 (compatible; ELDruin/1.0; +https://github.com/wuqihang-brave/El-druin)"
+                    "Mozilla/5.0 (compatible; El-druin/1.0; +https://github.com/wuqihang-brave/El-druin)"
                 )
             },
         )
@@ -405,7 +405,7 @@ def _web_search_snippets(
         url = f"{_DDG_URL}?{params}"
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "ELDruin/1.0 (Deep Ontology Enricher)"},
+            headers={"User-Agent": "El-druin/1.0 (Deep Ontology Enricher)"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
@@ -628,12 +628,12 @@ class EvidenceEnricher:
             if remaining and cfg.level >= 3:
                 if time.monotonic() < deadline:
                     search_timeout = min(6.0, deadline - time.monotonic())
-                    remaining, searched, used = _enrich_from_web_search(
+                    remaining, searched, total_sources = _enrich_from_web_search(
                         remaining, text, provenance,
                         max_sources=cfg.max_sources,
                         timeout=search_timeout,
                     )
-                    fetched_urls += used
+                    fetched_urls += total_sources
                     logger.debug("After web search: remaining=%s", remaining)
                 else:
                     truncated = True

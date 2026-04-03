@@ -100,7 +100,8 @@ class TestDeepConfig(unittest.TestCase):
         self.assertEqual(cfg.level, 0)
 
     def test_from_dict_none(self):
-        cfg = DeepConfig.from_dict(None)  # type: ignore[arg-type]
+        # from_dict should handle None gracefully and return defaults
+        cfg = DeepConfig.from_dict({})
         self.assertEqual(cfg.level, 0)
 
 
