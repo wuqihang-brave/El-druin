@@ -16,17 +16,23 @@ In ``app.py`` (main script)::
 In ``pages/`` files (sub-pages)::
 
     render_sidebar_navigation(is_subpage=True)
+
+Navigation note
+---------------
+``streamlit_option_menu`` is intentionally **not used** for navigation because
+its JavaScript component calls ``window.history.pushState()`` on every Streamlit
+rerun.  On advanced sub-pages this causes the browser to exceed Chrome/Firefox's
+100 pushState-per-10-seconds limit and crashes the page with::
+
+    Bad message format: Attempt to use history.pushState() more than 100 times
+    per 10 seconds
+
+Native ``st.radio`` is used instead – it carries no browser-history side-effects.
 """
 
 from __future__ import annotations
 
 import streamlit as st
-
-try:
-    from streamlit_option_menu import option_menu  # type: ignore[import]
-    _OPTION_MENU_AVAILABLE = True
-except ImportError:
-    _OPTION_MENU_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Navigation configuration
@@ -97,39 +103,37 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             unsafe_allow_html=True,
         )
 
-        # ── Navigation menu ────────────────────────────────────────────────
-        if _OPTION_MENU_AVAILABLE:
-            selected = option_menu(
-                menu_title=None,
-                options=_ALL_LABELS,
-                icons=_ALL_ICONS,
-                default_index=_default_idx,
-                styles={
-                    "container": {
-                        "padding": "0!important",
-                        "background-color": "#F5F5F5",
-                    },
-                    "icon": {"color": "#606060", "font-size": "14px"},
-                    "nav-link": {
-                        "font-size": "13px",
-                        "text-align": "left",
-                        "margin": "0px",
-                        "padding": "8px 14px",
-                        "border-bottom": "1px solid #E8E8E8",
-                    },
-                    "nav-link-selected": {
-                        "background-color": "#0047AB",
-                        "color": "#FFFFFF",
-                    },
-                },
-            )
-        else:
-            selected = st.radio(
-                "Navigation",
-                _ALL_LABELS,
-                index=_default_idx,
-                label_visibility="collapsed",
-            )
+        # ── Navigation menu (native radio – no browser history side-effects) ──
+        # CSS to make the radio look like a nav list
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stRadio"] > label { display: none; }
+            div[data-testid="stRadio"] > div { gap: 0 !important; }
+            div[data-testid="stRadio"] > div > label {
+                display: flex; align-items: center;
+                font-size: 13px; padding: 8px 14px;
+                border-bottom: 1px solid #E8E8E8;
+                cursor: pointer; width: 100%;
+                background: #F5F5F5;
+            }
+            div[data-testid="stRadio"] > div > label:hover {
+                background: #E8EFF8;
+            }
+            div[data-testid="stRadio"] > div > label[data-baseweb="radio"]:has(input:checked) {
+                background: #0047AB; color: #FFFFFF; font-weight: 600;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected = st.radio(
+            "Navigation",
+            _ALL_LABELS,
+            index=_default_idx,
+            key="sidebar_nav_radio",
+            label_visibility="collapsed",
+        )
 
         # ── Route to external pages ────────────────────────────────────────
         for label, _, path in _EXTERNAL_PAGES:

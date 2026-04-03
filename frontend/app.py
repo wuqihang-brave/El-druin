@@ -741,20 +741,29 @@ if page == "🏠 Home":
                 _ev_concl    = _er.get("conclusion", {})
                 _ev_cred     = _er.get("credibility", {})
                 _ev_enrich   = _er.get("enrichment")
+                _ev_ptree    = _er.get("probability_tree", {})
+                _ev_drvfact  = _er.get("driving_factors", [])
 
                 _tab_labels = [
                     f"① Events ({len(_ev_events)})",
                     f"② Patterns ({len(_ev_active)}+{len(_ev_derived)})",
                     "③ Conclusion & Credibility",
+                    "🌳 Probability Tree",
                 ]
+                if _ev_drvfact:
+                    _tab_labels.append(f"⚙️ Driving Factors ({len(_ev_drvfact)})")
                 if _ev_enrich:
                     _tab_labels.append("🔬 Evidence Enrichment")
 
                 _tabs_ev = st.tabs(_tab_labels)
-                _tab_ev1 = _tabs_ev[0]
-                _tab_ev2 = _tabs_ev[1]
-                _tab_ev3 = _tabs_ev[2]
-                _tab_ev4 = _tabs_ev[3] if _ev_enrich and len(_tabs_ev) > 3 else None
+                _tab_ev1    = _tabs_ev[0]
+                _tab_ev2    = _tabs_ev[1]
+                _tab_ev3    = _tabs_ev[2]
+                _tab_ptree  = _tabs_ev[3]
+                _tab_drv    = _tabs_ev[4] if _ev_drvfact and len(_tabs_ev) > 4 else None
+                _tab_ev4    = _tabs_ev[5] if _ev_enrich and len(_tabs_ev) > 5 else (
+                              _tabs_ev[4] if _ev_enrich and not _ev_drvfact and len(_tabs_ev) > 4 else None
+                              )
 
                 # ── Stage 1: Events ──────────────────────────────────────
                 with _tab_ev1:
@@ -861,6 +870,27 @@ if page == "🏠 Home":
                     st.markdown("#### 📋 Conclusion")
                     st.info(_ev_concl.get("conclusion", "(No conclusion)"))
 
+                    # Beta path algebra (inverse-based counterscenario)
+                    _beta_alg = _ev_concl.get("beta_path_algebra", {})
+                    if _beta_alg.get("algebra_used") and _beta_alg.get("patterns"):
+                        with st.expander("🔄 Beta Path (Algebra-derived Counterscenario)", expanded=False):
+                            st.caption(
+                                "If the Alpha (grounded) patterns are inverted by their "
+                                "counterpart mechanisms, the system may shift to:"
+                            )
+                            st.info(_beta_alg.get("summary", ""))
+                            for _bp in _beta_alg["patterns"]:
+                                st.markdown(
+                                    f"- **{_bp['pattern']}** ← inverts *{_bp['inverts']}*  "
+                                    f"(p ≈ {_bp['confidence']:.0%})  \n"
+                                    f"  {_bp.get('interpretation', '')}"
+                                )
+                            if _beta_alg.get("inverse_violations", 0) > 0:
+                                st.warning(
+                                    f"⚠ {_beta_alg['inverse_violations']} inverse-symmetry "
+                                    "violation(s) detected in the relation schema."
+                                )
+
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
                     st.markdown("#### 📊 Credibility Report")
                     _vc1, _vc2, _vc3 = st.columns(3)
@@ -884,6 +914,104 @@ if page == "🏠 Home":
 
                     with st.expander("🛠 Raw JSON (Evented result)", expanded=False):
                         st.json(_er)
+
+                # ── Probability Tree tab ──────────────────────────────────
+                with _tab_ptree:
+                    if _ev_ptree:
+                        _pt_nodes    = _ev_ptree.get("nodes", [])
+                        _pt_edges    = _ev_ptree.get("edges", [])
+                        _pt_cred_ov  = _ev_ptree.get("overall_credibility", 0)
+                        _pt_selected = _ev_ptree.get("selected_branch")
+                        _pt_summary  = _ev_ptree.get("summary", "")
+
+                        st.markdown("#### 🌳 Probability Tree (Bayesian-style)")
+                        st.caption(
+                            "Nodes = hypotheses/patterns · Edges = causal steps · "
+                            "Probabilities are calibrated from event-level confidence × overall credibility."
+                        )
+                        if _pt_summary:
+                            st.info(_pt_summary)
+
+                        # Render root node
+                        _root = next((n for n in _pt_nodes if n["id"] == "root"), None)
+                        if _root:
+                            st.markdown(
+                                f'<div style="background:#E3F2FD;border-left:4px solid #0047AB;'
+                                f'padding:8px 12px;border-radius:4px;margin-bottom:8px;">'
+                                f'<b>ROOT:</b> {_root["evidence"]}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        # Render child nodes
+                        _child_nodes = [n for n in _pt_nodes if n["id"] != "root"]
+                        for _cn in sorted(_child_nodes, key=lambda x: -x["probability"]):
+                            _cn_prob  = _cn["probability"]
+                            _cn_label = _cn["label"]
+                            _cn_type  = _cn["type"]
+                            _cn_evid  = _cn.get("evidence", "")
+                            _cn_gap   = _cn.get("verification_gap", "")
+                            _is_best  = (_cn["id"] == _pt_selected)
+                            _cn_bg    = "#E8F5E9" if _is_best else "#FAFAFA"
+                            _cn_bdr   = "#2E7D32" if _is_best else "#90A4AE"
+                            _bar_w    = max(4, int(_cn_prob * 100))
+                            _star_html = "&nbsp; ⭐ <em>highest prob</em>" if _is_best else ""
+                            _evid_html = (
+                                f'<div style="font-size:11px;color:#777;margin-top:3px">'
+                                f'{_cn_evid[:100]}</div>'
+                            ) if _cn_evid else ""
+                            _gap_html = (
+                                f'<div style="font-size:10px;color:#E65100;margin-top:2px">'
+                                f'⚠ gap: {str(_cn_gap)[:80]}</div>'
+                            ) if _cn_gap else ""
+                            st.markdown(
+                                f'<div style="background:{_cn_bg};border-left:4px solid {_cn_bdr};'
+                                f'padding:8px 12px;border-radius:4px;margin-bottom:6px;">'
+                                f'<b>{_cn_label}</b>{_star_html}'
+                                f'<div style="margin:4px 0;background:#E0E0E0;border-radius:4px;height:6px;">'
+                                f'<div style="background:{_cn_bdr};width:{_bar_w}%;height:6px;border-radius:4px;"></div>'
+                                f'</div>'
+                                f'<span style="font-size:11px;color:#555">p = {_cn_prob:.0%} · type: {_cn_type}</span>'
+                                f'{_evid_html}{_gap_html}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        st.metric("Overall credibility", f"{_pt_cred_ov:.0%}")
+                    else:
+                        st.info(
+                            "Probability tree not available. "
+                            "Run an Evented analysis to generate causal branching."
+                        )
+
+                # ── Driving Factors tab ───────────────────────────────────
+                if _tab_drv is not None and _ev_drvfact:
+                    with _tab_drv:
+                        st.markdown("#### ⚙️ Driving Mechanisms")
+                        st.caption(
+                            "Aggregated from repeated event types. "
+                            "Each factor shows frequency, confidence, and evidence anchors."
+                        )
+                        for _df in _ev_drvfact:
+                            _df_cnt  = _df["count"]
+                            _df_conf = _df["confidence"]
+                            _df_lbl  = _df["label"]
+                            _df_evid = _df.get("evidence", [])
+                            _df_bg   = "#FFF8E1" if _df_cnt > 1 else "#FAFAFA"
+                            st.markdown(
+                                f'<div style="background:{_df_bg};border-left:4px solid #F57F17;'
+                                f'padding:8px 12px;border-radius:4px;margin-bottom:6px;">'
+                                f'<b>{_df_lbl}</b>'
+                                f'<span style="font-size:11px;color:#888;margin-left:8px">'
+                                f'count={_df_cnt} · conf={_df_conf:.0%}</span>'
+                                + (
+                                    f'<div style="font-size:11px;color:#555;margin-top:4px">'
+                                    f'Evidence: {" | ".join(str(e)[:60] for e in _df_evid)}'
+                                    f'</div>' if _df_evid else ""
+                                )
+                                + f'</div>',
+                                unsafe_allow_html=True,
+                            )
 
                 # ── Enrichment panel (Deep mode only) ─────────────────────
                 if _tab_ev4 is not None and _ev_enrich is not None:
@@ -1213,10 +1341,12 @@ elif page == "📝 Custom Analysis":
                         _ca_ev_resp = None
 
                 if _ca_ev_resp:
-                    _ca_concl = _ca_ev_resp.get("conclusion", {})
-                    _ca_cred  = _ca_ev_resp.get("credibility", {})
-                    _ca_evts  = _ca_ev_resp.get("events", [])
-                    _ca_pats  = _ca_ev_resp.get("active_patterns", [])
+                    _ca_concl   = _ca_ev_resp.get("conclusion", {})
+                    _ca_cred    = _ca_ev_resp.get("credibility", {})
+                    _ca_evts    = _ca_ev_resp.get("events", [])
+                    _ca_pats    = _ca_ev_resp.get("active_patterns", [])
+                    _ca_ptree   = _ca_ev_resp.get("probability_tree", {})
+                    _ca_drvfact = _ca_ev_resp.get("driving_factors", [])
 
                     st.subheader("Evented Result")
                     _ca_c1, _ca_c2 = st.columns(2)
@@ -1229,7 +1359,7 @@ elif page == "📝 Custom Analysis":
                         _hr = _ca_cred.get("hypothesis_ratio", 0)
                         st.metric("Hypothesis ratio", f"{_hr:.0%}")
 
-                    st.markdown("**Conclusion**")
+                    st.markdown("**Conclusion & Judgement**")
                     st.info(_ca_concl.get("conclusion", "(No conclusion)"))
 
                     _ca_ev_path = _ca_concl.get("evidence_path", {})
@@ -1242,6 +1372,44 @@ elif page == "📝 Custom Analysis":
                         if _ca_hyp.get("summary"):
                             st.markdown("**Hypothesis path (T1 inferred)**")
                             st.warning(_ca_hyp["summary"])
+
+                    # Probability tree summary
+                    if _ca_ptree:
+                        _ca_pt_summary = _ca_ptree.get("summary", "")
+                        _ca_pt_cred    = _ca_ptree.get("overall_credibility", 0)
+                        with st.expander(
+                            f"🌳 Probability Tree (credibility {_ca_pt_cred:.0%})",
+                            expanded=False,
+                        ):
+                            if _ca_pt_summary:
+                                st.info(_ca_pt_summary)
+                            for _cn in sorted(
+                                [n for n in _ca_ptree.get("nodes", []) if n["id"] != "root"],
+                                key=lambda x: -x["probability"],
+                            ):
+                                _bar = max(4, int(_cn["probability"] * 100))
+                                st.markdown(
+                                    f'<div style="border-left:3px solid #0047AB;'
+                                    f'padding:4px 8px;margin-bottom:4px;background:#F5F5F5;">'
+                                    f'<b>{_cn["label"]}</b> &nbsp;'
+                                    f'<span style="color:#555;font-size:11px">p={_cn["probability"]:.0%}</span>'
+                                    f'<div style="background:#E0E0E0;height:4px;border-radius:2px;margin-top:3px;">'
+                                    f'<div style="background:#0047AB;width:{_bar}%;height:4px;border-radius:2px;"></div>'
+                                    f'</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                    # Driving factors summary
+                    if _ca_drvfact:
+                        with st.expander(
+                            f"⚙️ Driving Mechanisms ({len(_ca_drvfact)})",
+                            expanded=False,
+                        ):
+                            for _df in _ca_drvfact:
+                                st.markdown(
+                                    f"**{_df['label']}** — count: {_df['count']}, "
+                                    f"conf: {_df['confidence']:.0%}"
+                                )
 
                     with st.expander("📋 Full JSON response", expanded=False):
                         st.json(_ca_ev_resp)
@@ -1558,34 +1726,81 @@ elif page == "🕸 KG Tools":
 # ===========================================================================
 elif page == "⚙️ System Status":
     st.title("⚙️ System Status & Configuration")
-    st.caption("Monitor backend connectivity and view configured news sources.")
-    st.subheader("🔌 Backend Service")
-    sources_resp = _api.get_news_sources()
-    if "error" in sources_resp:
+    st.caption("Backend health, Knowledge Graph statistics, ingestion status, and provider configuration.")
+
+    # ── Backend connectivity ──────────────────────────────────────────────
+    st.subheader("🔌 Backend Connectivity")
+    _health = _api.health_check()
+    if "error" in _health:
         st.error(
-            f"❌ Cannot connect to FastAPI backend: {sources_resp['error']}\n\n"
+            f"❌ Cannot reach FastAPI backend at `{_backend_url}`\n\n"
+            f"**Error:** {_health['error']}\n\n"
             "Start backend: `python -m uvicorn app.main:app --reload --port 8001`"
         )
+        _backend_ok = False
     else:
-        st.success(f"✅ FastAPI backend: OK ({_backend_url})")
-        sources_list: List[Dict[str, Any]] = sources_resp.get("sources", [])
-        m1, m2 = st.columns(2)
-        m1.metric("Configured sources", len(sources_list))
-        m2.metric("System status", "🟢 OK")
-        if sources_list:
-            st.subheader("News Sources")
-            for source in sources_list:
-                with st.expander(f"📡 {source.get('name', 'Unknown')}"):
-                    st.write(f"**Category:** {source.get('category', 'N/A')}")
-                    st.write(f"**Priority:** {source.get('priority', 'N/A')}")
-                    st.caption(source.get("url", "N/A"))
+        st.success(f"✅ FastAPI backend reachable at `{_backend_url}`")
+        _backend_ok = True
 
+    # ── Metrics row ───────────────────────────────────────────────────────
+    _ss_m1, _ss_m2, _ss_m3, _ss_m4 = st.columns(4)
+    _ss_m1.metric("Backend", "🟢 Online" if _backend_ok else "🔴 Offline")
+    _ss_m2.metric("Version", "2.0.0")
+    _ss_m3.metric("Platform", "EL'druin v2")
+    _ss_m4.metric("KG Engine", "Kuzu (embedded)")
+
+    st.divider()
+
+    # ── Knowledge Graph statistics ────────────────────────────────────────
+    st.subheader("🕸 Knowledge Graph Statistics")
+    if _backend_ok:
+        _ent_resp = _api.get_kg_entities(limit=1000)
+        _ents = _ent_resp.get("entities", [])
+        _ss_g1, _ss_g2, _ss_g3 = st.columns(3)
+        _ss_g1.metric("Total entities", len(_ents))
+        _entity_types = {e.get("type", "Unknown") for e in _ents}
+        _ss_g2.metric("Entity types", len(_entity_types))
+        _ss_g3.metric("Ontology module", "CAMEO + FIBO fusion")
+        if _entity_types:
+            st.caption(f"Types present: {', '.join(sorted(_entity_types))}")
+    else:
+        st.info("KG stats unavailable – backend offline.")
+
+    st.divider()
+
+    # ── Provider configuration (news sources) ─────────────────────────────
+    st.subheader("📡 News Provider Configuration")
+    if _backend_ok:
+        _src_resp = _api.get_news_sources()
+        if "error" in _src_resp:
+            st.warning(f"Could not load provider config: {_src_resp['error']}")
+        else:
+            _src_list: List[Dict[str, Any]] = _src_resp.get("sources", [])
+            _ss_p1, _ss_p2 = st.columns(2)
+            _ss_p1.metric("Configured providers", len(_src_list))
+            _provider_cats = {s.get("category", "?") for s in _src_list}
+            _ss_p2.metric("Categories", len(_provider_cats))
+            if _src_list:
+                with st.expander("📋 Provider details", expanded=False):
+                    for _src in _src_list:
+                        _p1, _p2, _p3 = st.columns([3, 1, 1])
+                        _p1.write(f"**{_src.get('name', 'Unknown')}**")
+                        _p2.caption(_src.get("category", "N/A"))
+                        _p3.caption(f"Priority {_src.get('priority', 'N/A')}")
+                        st.caption(f"↳ {_src.get('url', 'N/A')}")
+                        st.markdown("---")
+    else:
+        st.info("Provider config unavailable – backend offline.")
+
+    st.divider()
+
+    # ── System information ────────────────────────────────────────────────
     st.subheader("📊 System Information")
     st.info(
-        f"**Version:** 2.0.0  \n"
-        f"**Backend URL:** {_backend_url}  \n"
-        f"**Page load time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n"
-        "**Platform:** EL'druin Intelligence Platform v2  \n"
-        "**Knowledge Graph:** Kuzu (embedded) / NetworkX (fallback)  \n"
-        "**Ontology module:** CAMEO + FIBO fusion | Cartesian pattern library v2"
+        f"**Backend URL:** `{_backend_url}`  \n"
+        f"**Page rendered:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}  \n"
+        "**Ontology module:** CAMEO + FIBO fusion | Cartesian pattern library v2  \n"
+        "**Reasoning engines:** Evented (three-stage) | Grounded (KG-anchored)  \n"
+        "**Explainability:** Probability tree | Bayesian confidence propagation  \n"
+        "**Storage:** KuzuDB (embedded graph) | JSONL probability tree store"
     )

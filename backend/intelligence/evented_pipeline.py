@@ -1065,10 +1065,91 @@ def generate_conclusion(
             "mode":              "llm_constrained",
             "evidence_path":     evidence_path,
             "hypothesis_path":   hypothesis_path,
+            "beta_path_algebra": _build_beta_path_from_algebra(active_patterns),
         }
     except Exception as exc:
         logger.warning("LLM conclusion generation failed: %s", exc)
         return _deterministic_conclusion(events, active_patterns, derived_patterns)
+
+
+def _build_beta_path_from_algebra(
+    active_patterns: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Construct a Beta (counterscenario) path using relation-algebra inverses.
+
+    For each Alpha (T2-grounded) pattern, look up its inverse in the relation
+    schema.  If an inverse exists, the Beta path is "what happens if the inverse
+    operation is triggered instead."
+
+    Args:
+        active_patterns: Stage-2 active pattern dicts.
+
+    Returns:
+        Dict with keys ``patterns`` (list of inverse-pattern names),
+        ``summary`` (human-readable description), and
+        ``algebra_used`` (bool flag).
+    """
+    try:
+        from ontology.relation_schema import get_inverse_pattern, validate_inverses
+    except ImportError:
+        return {
+            "patterns": [],
+            "summary": "Relation algebra unavailable (import error).",
+            "algebra_used": False,
+        }
+
+    # Surface any inverse-symmetry violations (log only; non-blocking)
+    inv_errors = validate_inverses()
+    if inv_errors:
+        logger.warning(
+            "Relation algebra: %d inverse-symmetry violation(s): %s",
+            len(inv_errors),
+            "; ".join(inv_errors[:3]),
+        )
+
+    t2_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
+    if not t2_patterns:
+        return {
+            "patterns": [],
+            "summary": "No T2-grounded patterns; Beta path via algebra not constructible.",
+            "algebra_used": True,
+        }
+
+    beta_patterns: List[Dict[str, Any]] = []
+    for ap in t2_patterns[:3]:
+        alpha_name = ap["pattern"]
+        inv_name   = get_inverse_pattern(alpha_name)
+        if inv_name:
+            beta_patterns.append({
+                "pattern":          inv_name,
+                "inverts":          alpha_name,
+                "confidence":       round(float(ap.get("confidence", 0.5)) * 0.65, 4),
+                "interpretation":   (
+                    f"If '{alpha_name}' is reversed/invalidated, "
+                    f"the system may shift toward '{inv_name}'."
+                ),
+            })
+
+    if beta_patterns:
+        summary = (
+            "Beta path (algebra-derived): Key Alpha assumptions could be invalidated by: "
+            + "; ".join(
+                f"{bp['pattern']} (inverse of {bp['inverts']})"
+                for bp in beta_patterns
+            )
+        )
+    else:
+        summary = (
+            "No registered inverse patterns found for active T2 patterns. "
+            "Beta path cannot be algebraically derived."
+        )
+
+    return {
+        "patterns":    beta_patterns,
+        "summary":     summary,
+        "algebra_used": True,
+        "inverse_violations": len(inv_errors),
+    }
 
 
 def _deterministic_conclusion(
@@ -1122,6 +1203,8 @@ def _deterministic_conclusion(
         {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
         for ap in active_patterns[:3]
     ]
+    # Construct Beta path using relation algebra (inverse patterns)
+    beta_algebra = _build_beta_path_from_algebra(active_patterns)
     return {
         "selected_patterns": selected,
         "conclusion":        conclusion,
@@ -1136,6 +1219,7 @@ def _deterministic_conclusion(
             "summary":           hypothesis_summary,
             "verification_gaps": list(dict.fromkeys(all_gaps))[:5],
         },
+        "beta_path_algebra": beta_algebra,
     }
 
 
@@ -1283,6 +1367,169 @@ class EventedPipelineResult:
     derived_patterns: List[Dict[str, Any]] = field(default_factory=list)
     conclusion:       Dict[str, Any]       = field(default_factory=dict)
     credibility:      Dict[str, Any]       = field(default_factory=dict)
+    probability_tree: Dict[str, Any]       = field(default_factory=dict)
+    driving_factors:  List[Dict[str, Any]] = field(default_factory=list)
+
+
+def _build_probability_tree_from_result(
+    text: str,
+    events: List[Dict[str, Any]],
+    active_patterns: List[Dict[str, Any]],
+    derived_patterns: List[Dict[str, Any]],
+    credibility: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build a lightweight probability-tree / Bayesian-style explanation.
+
+    The tree has one root node (the analysed text) and child nodes for each
+    active pattern.  Each node carries a probability derived from the
+    pattern's event-level confidence, propagated through the credibility
+    score so that overall credibility dampens all branch probabilities.
+
+    The structure is self-contained (no external ML library required).
+    """
+    overall_cred = float(credibility.get("overall_score", 0.5))
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    root_id = "root"
+    nodes.append({
+        "id":          root_id,
+        "label":       "Input event",
+        "type":        "root",
+        "probability": 1.0,
+        "evidence":    text[:120] + ("…" if len(text) > 120 else ""),
+        "verification_gap": credibility.get("missing_evidence", []),
+    })
+
+    all_patterns = active_patterns + derived_patterns
+    if not all_patterns:
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "overall_credibility": overall_cred,
+            "selected_branch": None,
+            "summary": "No patterns derived; insufficient evidence for branching.",
+        }
+
+    # Collect raw weights from pattern confidence × overall credibility
+    raw_weights: List[float] = []
+    for pat in all_patterns:
+        conf = float(pat.get("confidence", 0.5))
+        raw_weights.append(conf * overall_cred)
+
+    total_w = sum(raw_weights) or 1.0
+    best_prob = -1.0
+    best_node_id: Optional[str] = None
+
+    for i, (pat, raw_w) in enumerate(zip(all_patterns, raw_weights)):
+        node_id  = f"pat_{i}"
+        prob     = round(raw_w / total_w, 4)
+        pat_type = pat.get("type") or pat.get("pattern") or f"pattern_{i}"
+        is_derived = i >= len(active_patterns)
+        evts_anchored = [
+            e.get("type", "") for e in pat.get("events", [])
+        ] if "events" in pat else []
+
+        nodes.append({
+            "id":          node_id,
+            "label":       pat_type,
+            "type":        "derived_pattern" if is_derived else "active_pattern",
+            "probability": prob,
+            "confidence":  float(pat.get("confidence", 0.5)),
+            "evidence":    pat.get("description") or pat.get("summary") or pat_type,
+            "event_anchors": evts_anchored,
+            "verification_gap": pat.get("verification_gap") or "",
+        })
+        edges.append({
+            "from":   root_id,
+            "to":     node_id,
+            "label":  "causes" if not is_derived else "composed_via",
+            "weight": prob,
+        })
+        if prob > best_prob:
+            best_prob    = prob
+            best_node_id = node_id
+
+    return {
+        "nodes":                nodes,
+        "edges":                edges,
+        "overall_credibility":  overall_cred,
+        "selected_branch":      best_node_id,
+        "summary": (
+            f"Highest-probability branch: {best_node_id} "
+            f"(p={best_prob:.2f}). "
+            f"Overall credibility: {overall_cred:.0%}."
+        ),
+    }
+
+
+def _extract_driving_factors_from_events(
+    events: List[Dict[str, Any]],
+    active_patterns: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Aggregate repeated event/pattern types into driving-factor summaries.
+
+    Groups events by their type, then maps each group to a human-readable
+    driving-factor label with supporting evidence.
+
+    Args:
+        events:          Stage-1 extracted event dicts.
+        active_patterns: Stage-2 pattern dicts.
+
+    Returns:
+        List of driving-factor dicts, each with ``type``, ``label``,
+        ``count``, ``confidence``, and ``evidence`` keys.
+    """
+    from collections import defaultdict
+
+    # Aggregate event types
+    type_groups: dict = defaultdict(list)
+    for evt in events:
+        etype = evt.get("type", "unknown")
+        type_groups[etype].append(evt)
+
+    factors: List[Dict[str, Any]] = []
+    for etype, evts in type_groups.items():
+        confidences = [float(e.get("confidence", 0.5)) for e in evts]
+        avg_conf    = sum(confidences) / len(confidences)
+        # Map event type to a mechanism label
+        mechanism = _EVENT_TYPE_TO_MECHANISM.get(etype, etype.replace("_", " ").title())
+        evidence_snippets = [
+            e.get("snippet") or e.get("text") or e.get("type", "")
+            for e in evts[:3]
+        ]
+        factors.append({
+            "type":       etype,
+            "label":      mechanism,
+            "count":      len(evts),
+            "confidence": round(avg_conf, 4),
+            "evidence":   [s for s in evidence_snippets if s],
+        })
+
+    # Sort by count desc, then confidence desc
+    factors.sort(key=lambda f: (-f["count"], -f["confidence"]))
+    return factors
+
+
+# Mapping from event type constants → human-readable mechanism labels
+_EVENT_TYPE_TO_MECHANISM: Dict[str, str] = {
+    "sanction_imposed":          "Coercive economic pressure",
+    "sanction_lifted":           "Normalisation / sanction relief",
+    "export_control":            "Technology denial / export restriction",
+    "asset_freeze":              "Financial coercion",
+    "legal_regulatory_action":   "Regulatory constraint",
+    "coercive_warning":          "Deterrence signal",
+    "military_strike":           "Kinetic escalation",
+    "clashes":                   "Armed conflict",
+    "ceasefire":                 "De-escalation / ceasefire",
+    "mobilization":              "Force projection",
+    "withdrawal":                "Strategic withdrawal",
+    "market_entry":              "Market expansion",
+    "product_feature_launch":    "Competitive product launch",
+    "competitive_positioning":   "Market positioning",
+    "platform_strategy":         "Platform ecosystem strategy",
+    "space_mission":             "Space technology projection",
+}
 
 
 def run_evented_pipeline(
@@ -1298,7 +1545,7 @@ def run_evented_pipeline(
 
     Returns:
         EventedPipelineResult with events, active_patterns, derived_patterns,
-        conclusion, and credibility.
+        conclusion, credibility, probability_tree, and driving_factors.
     """
     logger.info("EventedPipeline: starting on %d chars", len(text))
 
@@ -1322,10 +1569,20 @@ def run_evented_pipeline(
     # Stage 3b – credibility
     credibility = compute_credibility(text, active_patterns, derived_patterns)
 
+    # Stage 4 – probability tree (Bayesian-style explainability)
+    probability_tree = _build_probability_tree_from_result(
+        text, events, active_patterns, derived_patterns, credibility
+    )
+
+    # Stage 5 – driving factor extraction
+    driving_factors = _extract_driving_factors_from_events(events, active_patterns)
+
     return EventedPipelineResult(
         events=events,
         active_patterns=active_patterns,
         derived_patterns=derived_patterns,
         conclusion=conclusion,
         credibility=credibility,
+        probability_tree=probability_tree,
+        driving_factors=driving_factors,
     )

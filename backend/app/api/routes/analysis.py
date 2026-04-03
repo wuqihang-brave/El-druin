@@ -854,6 +854,8 @@ def analyze_with_evented_pipeline(
             "derived_patterns": result.derived_patterns,
             "conclusion":       result.conclusion,
             "credibility":      result.credibility,
+            "probability_tree": result.probability_tree,
+            "driving_factors":  result.driving_factors,
             "timestamp":        datetime.now().isoformat(),
             "meta": {
                 "seed_entities":   list(request.seed_entities),
