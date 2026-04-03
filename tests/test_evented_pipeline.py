@@ -611,6 +611,7 @@ class TestFallbackTopEvents:
 
 
 
+class TestPostProcessingTiering:
     """Tiering boundary tests: T0 < 0.2, T1 in [0.2, 0.7), T2 >= 0.7."""
 
     def test_exactly_t0_boundary_rejected(self):
