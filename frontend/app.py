@@ -22,10 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import requests  # noqa: F401
 import streamlit as st
-import frontend.utils.api_client as ac
-import inspect
-st.sidebar.write("api_client file:", ac.__file__)
-st.sidebar.write("evented_deduce sig:", str(inspect.signature(ac.APIClient.evented_deduce)))
+
 import utils.api_client as uac
 st.write("api_client loaded from:", uac.__file__)
 st.write("has evented_deduce:", hasattr(uac.api_client, "evented_deduce"))
