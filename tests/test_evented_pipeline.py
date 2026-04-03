@@ -35,6 +35,7 @@ from intelligence.evented_pipeline import (
     compute_credibility,
     run_evented_pipeline,
     postprocess_events,
+    _fallback_top_events,
     _stable_id,
     _T0_CONF_THRESHOLD,
     _T2_CONF_THRESHOLD,
@@ -517,7 +518,7 @@ def _make_event(
 
 
 class TestPostProcessingReject:
-    """Post-processor must reject T0 events unconditionally."""
+    """Post-processor T0 rejection: only truly invalid events are dropped."""
 
     def test_rejects_zero_confidence(self):
         candidate = _make_event(confidence=0.0)
@@ -527,18 +528,32 @@ class TestPostProcessingReject:
         candidate = _make_event(confidence=-0.1)
         assert postprocess_events([candidate]) == []
 
-    def test_rejects_empty_quote(self):
+    def test_empty_quote_kept_as_t1_with_gap(self):
+        # Empty quote is no longer a hard-reject; event kept as T1 with verification_gap.
+        # confidence=0.85, no trigger in "" → folded * 0.7 = 0.595 (above T0=0.2)
         candidate = _make_event(quote="")
-        assert postprocess_events([candidate]) == []
+        result = postprocess_events([candidate])
+        assert len(result) == 1, f"Expected 1 event, got {result}"
+        assert result[0]["tier"] == "T1"
+        assert any("quote missing" in g for g in result[0]["verification_gap"])
 
-    def test_rejects_whitespace_only_quote(self):
+    def test_whitespace_only_quote_kept_as_t1_with_gap(self):
+        # Whitespace-only quote is stripped to empty → same treatment as missing quote.
         candidate = _make_event(quote="   ")
-        assert postprocess_events([candidate]) == []
+        result = postprocess_events([candidate])
+        assert len(result) == 1, f"Expected 1 event, got {result}"
+        assert result[0]["tier"] == "T1"
+        assert any("quote" in g for g in result[0]["verification_gap"])
 
-    def test_rejects_short_quote_below_min_len(self):
+    def test_short_quote_no_trigger_kept_as_t1_with_gap(self):
+        # Short quote without trigger keywords → T1 with gap (not hard-rejected).
+        # confidence=0.85, no trigger → folded * 0.7 = 0.595 (above T0=0.2)
         short_q = "x" * (_MIN_QUOTE_LEN - 1)
         candidate = _make_event(quote=short_q)
-        assert postprocess_events([candidate]) == []
+        result = postprocess_events([candidate])
+        assert len(result) == 1, f"Expected 1 event, got {result}"
+        assert result[0]["tier"] == "T1"
+        assert any("quote" in g for g in result[0]["verification_gap"])
 
     def test_rejects_confidence_below_t0_threshold(self):
         candidate = _make_event(confidence=_T0_CONF_THRESHOLD - 0.01)
@@ -562,6 +577,38 @@ class TestPostProcessingReject:
         candidate = _make_event(confidence=0.85)
         result = postprocess_events([candidate])
         assert len(result) == 1
+
+
+class TestFallbackTopEvents:
+    """_fallback_top_events: keeps best candidates when all are T0-rejected."""
+
+    def test_returns_empty_for_no_candidates(self):
+        assert _fallback_top_events([]) == []
+
+    def test_returns_empty_for_zero_confidence_only(self):
+        candidate = _make_event(confidence=0.0)
+        assert _fallback_top_events([candidate]) == []
+
+    def test_keeps_top_event_as_t1(self):
+        candidate = _make_event(confidence=0.55)
+        result = _fallback_top_events([candidate])
+        assert len(result) == 1
+        assert result[0]["tier"] == "T1"
+        assert result[0]["confidence"] <= 0.35  # clamped
+        assert any("fallback" in g for g in result[0]["verification_gap"])
+
+    def test_keeps_at_most_max_keep_events(self):
+        candidates = [_make_event(confidence=0.5 + i * 0.1, eid=f"id{i}") for i in range(5)]
+        result = _fallback_top_events(candidates, max_keep=2)
+        assert len(result) == 2
+
+    def test_selects_highest_confidence_candidates(self):
+        low  = _make_event(confidence=0.3, eid="low")
+        high = _make_event(confidence=0.8, eid="high")
+        result = _fallback_top_events([low, high], max_keep=1)
+        assert len(result) == 1
+        assert result[0]["id"] == "high"
+
 
 
 class TestPostProcessingTiering:

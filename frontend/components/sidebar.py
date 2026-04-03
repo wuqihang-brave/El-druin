@@ -121,7 +121,10 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
                 background: #E8EFF8;
             }
             div[data-testid="stRadio"] > div > label[data-baseweb="radio"]:has(input:checked) {
-                background: #0047AB; color: #FFFFFF; font-weight: 600;
+                background: #0047AB !important; color: #FFFFFF !important; font-weight: 600;
+            }
+            div[data-testid="stRadio"] > div > label[data-baseweb="radio"]:has(input:checked) * {
+                color: #FFFFFF !important;
             }
             </style>
             """,
