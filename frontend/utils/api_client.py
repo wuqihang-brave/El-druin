@@ -25,7 +25,7 @@ if BACKEND_URL.endswith("/api/v1"):
     BACKEND_URL = BACKEND_URL.replace("/api/v1", "")
 
 _DEFAULT_BASE_URL = BACKEND_URL.rstrip("/")
-_TIMEOUT = 15  # 增加一点超时时间，防止 502
+_TIMEOUT = 40  # 增加一点超时时间，防止 502
 # --- 修改结束 ---
 class APIClient:
     """Thin HTTP wrapper around the EL'druin FastAPI backend."""
