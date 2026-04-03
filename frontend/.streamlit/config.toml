@@ -8,6 +8,7 @@ font = "sans serif"
 [client]
 showErrorDetails = true
 toolbarMode = "developer"
+showSidebarNavigation = false
 
 [logger]
 level = "info"

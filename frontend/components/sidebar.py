@@ -1,13 +1,25 @@
 """
 EL'druin Intelligence Platform – Sidebar Navigation Component
 =============================================================
-参考 GraphRAG 思路，集成了：
-1. 核心功能导航
-2. 推演深度控制 (Inference Control)
-3. 知识图谱视图切换
+
+Provides a unified, English-first navigation sidebar with:
+  1. Page navigation (inline pages handled by app.py + external pages/ files)
+  2. Reasoning engine configuration (Engine, Deep Ontology level, Hypothesis toggle)
+  3. Single refresh control
+
+Usage
+-----
+In ``app.py`` (main script)::
+
+    page = render_sidebar_navigation()
+
+In ``pages/`` files (sub-pages)::
+
+    render_sidebar_navigation(is_subpage=True)
 """
 
 from __future__ import annotations
+
 import streamlit as st
 
 try:
@@ -16,86 +28,189 @@ try:
 except ImportError:
     _OPTION_MENU_AVAILABLE = False
 
-# 核心导航项：只保留真正在运行的逻辑页面
-_NAV_ITEMS: list[tuple[str, str]] = [
-    ("🏠 主页", "house-fill"),      # 确保这一行在首位
-    ("📰 实时新闻", "newspaper"),
-    ("🕸️ 知识图谱", "diagram-3-fill"),
-    ("⚙️ 系统状态", "gear-fill"),
+# ---------------------------------------------------------------------------
+# Navigation configuration
+# ---------------------------------------------------------------------------
+
+# Labels for pages rendered inline inside app.py
+_INLINE_LABELS: list[str] = [
+    "🏠 Home",
+    "📝 Custom Analysis",
+    "📰 Intelligence Feed",
+    "🕸 KG Tools",
+    "⚙️ System Status",
 ]
 
-_LABELS = [item[0] for item in _NAV_ITEMS]
-_ICONS = [item[1] for item in _NAV_ITEMS]
+# Pages living in the pages/ directory – (label, bootstrap-icon, relative path from root)
+_EXTERNAL_PAGES: list[tuple[str, str, str]] = [
+    ("🔍 Object Explorer", "search",          "pages/3_🔍_Object_Explorer.py"),
+    ("🔬 Logic Audit",     "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
+    ("🔮 Oracle Lab ✦Beta","stars",           "pages/10_🔮_Oracle_Laboratory.py"),
+]
 
-def render_sidebar_navigation() -> str:
-    """渲染侧边栏并返回选中的页面，同时在侧边栏注入推演配置"""
-    
-    _prev_page = st.session_state.get("current_page")
+_EXTERNAL_LABELS: list[str] = [ep[0] for ep in _EXTERNAL_PAGES]
+
+_ALL_LABELS: list[str] = _INLINE_LABELS + _EXTERNAL_LABELS
+_ALL_ICONS: list[str] = [
+    "house-fill",      # Home
+    "pencil-square",   # Custom Analysis
+    "newspaper",       # Intelligence Feed
+    "diagram-3-fill",  # KG Tools
+    "gear-fill",       # System Status
+    "search",          # Object Explorer
+    "binoculars-fill", # Logic Audit
+    "stars",           # Oracle Lab
+]
+
+
+def render_sidebar_navigation(is_subpage: bool = False) -> str:
+    """Render the unified sidebar and return the selected inline-page label.
+
+    Parameters
+    ----------
+    is_subpage:
+        Set to ``True`` when called from a ``pages/`` file.  In that case,
+        selecting an inline page will store the target in session state and
+        call ``st.switch_page("app.py")`` to navigate back to the main app.
+
+    Returns
+    -------
+    str
+        The selected page label (only meaningful for inline pages when called
+        from ``app.py``).  When ``is_subpage=True`` this function may not
+        return if ``st.switch_page`` is triggered.
+    """
+    _current = st.session_state.get("current_page", "🏠 Home")
+    _default_idx = _ALL_LABELS.index(_current) if _current in _ALL_LABELS else 0
 
     with st.sidebar:
+        # ── Brand header ──────────────────────────────────────────────────
         st.markdown(
             """
-            <div style="text-align: center; padding: 10px 0;">
-                <h2 style="color: #0047AB; margin-bottom: 0;">EL'druin</h2>
-                <p style="color: #606060; font-size: 0.8rem;">Ontological Reasoning v1.0</p>
+            <div style="text-align:center;padding:10px 0 4px 0;">
+                <h2 style="color:#0047AB;margin:0 0 2px 0;">EL&#39;druin</h2>
+                <p style="color:#606060;font-size:0.78rem;margin:0;">
+                    Ontological Intelligence v1.0
+                </p>
             </div>
-            """, 
-            unsafe_allow_html=True
+            """,
+            unsafe_allow_html=True,
         )
 
-        # ── 1. 页面导航 ────────────────────────────────────────────────────────
+        # ── Navigation menu ────────────────────────────────────────────────
         if _OPTION_MENU_AVAILABLE:
-            selected_label = option_menu(
+            selected = option_menu(
                 menu_title=None,
-                options=_LABELS,
-                icons=_ICONS,
-                menu_icon="cast",
-                default_index=0,
+                options=_ALL_LABELS,
+                icons=_ALL_ICONS,
+                default_index=_default_idx,
                 styles={
-                    "container": {"padding": "0!important", "background-color": "#F5F5F5"},
+                    "container": {
+                        "padding": "0!important",
+                        "background-color": "#F5F5F5",
+                    },
                     "icon": {"color": "#606060", "font-size": "14px"},
                     "nav-link": {
                         "font-size": "13px",
                         "text-align": "left",
                         "margin": "0px",
-                        "padding": "10px 16px",
-                        "border-bottom": "1px solid #E0E0E0",
+                        "padding": "8px 14px",
+                        "border-bottom": "1px solid #E8E8E8",
                     },
-                    "nav-link-selected": {"background-color": "#0047AB", "color": "#FFFFFF"},
+                    "nav-link-selected": {
+                        "background-color": "#0047AB",
+                        "color": "#FFFFFF",
+                    },
                 },
             )
-            page = selected_label
         else:
-            page = st.sidebar.radio("导航菜单", _LABELS, index=0)
+            selected = st.radio(
+                "Navigation",
+                _ALL_LABELS,
+                index=_default_idx,
+                label_visibility="collapsed",
+            )
+
+        # ── Route to external pages ────────────────────────────────────────
+        for label, _, path in _EXTERNAL_PAGES:
+            if selected == label:
+                st.session_state.current_page = selected
+                st.switch_page(path)
+
+        # ── Route inline pages when called from a sub-page ─────────────────
+        if is_subpage and selected in _INLINE_LABELS:
+            st.session_state.current_page = selected
+            st.switch_page("app.py")
 
         st.markdown("---")
 
-        # ── 2. 推演引擎配置 (参考 GraphRAG 的调优思路) ──────────────────────────
-        st.subheader("🧠 推演引擎配置")
-        
-        # 允许用户控制推演深度，这将直接传递给后端的 sacred-sword 接口
-        st.session_state.inference_level = st.select_slider(
-            "逻辑推演深度",
-            options=["基础", "关联", "本体", "预测"],
-            value=st.session_state.get("inference_level", "关联"),
-            help="基础：单篇分析；关联：跨篇关联；本体：语义挖掘；预测：因果推断"
+        # ── Reasoning Engine section ───────────────────────────────────────
+        st.markdown(
+            "<p style='font-weight:700;font-size:0.82rem;color:#0047AB;"
+            "text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>"
+            "🧠 Reasoning Engine</p>",
+            unsafe_allow_html=True,
         )
 
-        st.session_state.show_hidden_nodes = st.toggle(
-            "显示潜在隐变量", 
-            value=False,
-            help="开启后将显示后端推导出的隐藏逻辑实体"
+        st.radio(
+            "Engine",
+            options=["Evented", "Grounded"],
+            index=0,
+            horizontal=True,
+            key="cfg_engine",
+            help=(
+                "**Evented** – event-based three-stage pipeline "
+                "(recommended; works without a Knowledge Graph).\n\n"
+                "**Grounded** – knowledge-graph-grounded reasoning "
+                "(requires a populated KuzuDB)."
+            ),
+            label_visibility="collapsed",
+        )
+        if st.session_state.get("cfg_engine") == "Grounded":
+            st.caption("⚠️ Grounded requires a non-empty Knowledge Graph.")
+
+        st.markdown(
+            "<p style='font-size:0.78rem;color:#444;margin:8px 0 2px 0'>"
+            "Deep Ontology Level</p>",
+            unsafe_allow_html=True,
+        )
+        st.slider(
+            "Deep level",
+            min_value=0,
+            max_value=3,
+            value=st.session_state.get("cfg_deep_level", 0),
+            key="cfg_deep_level",
+            help=(
+                "0 = Normal  ·  1 = Local metadata enrichment  ·  "
+                "2 = + Fetch source URL  ·  3 = + Web search"
+            ),
+            label_visibility="collapsed",
+        )
+        _level_desc = {0: "Normal", 1: "Local metadata", 2: "+ Fetch source", 3: "+ Web search"}
+        st.caption(
+            f"Mode: **{_level_desc.get(st.session_state.get('cfg_deep_level', 0), 'Normal')}**"
+        )
+
+        st.toggle(
+            "Show hypothesis path (hidden variables)",
+            value=True,
+            key="cfg_show_hidden",
+            help="Display the T1 hypothesis path in the Evented conclusion panel.",
         )
 
         st.markdown("---")
-        
-        # ── 3. 快捷操作 ──────────────────────────────────────────────────────
-        if st.button("🔄 刷新全量图谱", use_container_width=True):
-            st.toast("正在重新构建本体索引...")
 
-    # 状态更新逻辑
-    st.session_state.current_page = page
-    if page != _prev_page:
-        st.rerun()
+        # ── Refresh control ───────────────────────────────────────────────
+        if st.button(
+            "🔄 Refresh Knowledge Graph",
+            use_container_width=True,
+            key="sidebar_kg_refresh",
+        ):
+            st.session_state.graph_data = {
+                "entities": [], "relations": [], "status": "not_loaded"
+            }
+            st.session_state["_kg_cache_clear"] = True
+            st.rerun()
 
-    return page
+    st.session_state.current_page = selected
+    return selected

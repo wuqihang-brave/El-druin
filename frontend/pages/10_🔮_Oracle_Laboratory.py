@@ -45,11 +45,20 @@ st.set_page_config(
     page_title="Oracle Laboratory – EL-DRUIN",
     page_icon="🔮",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Inline CSS – Light Blue Rational theme
+# Shared sidebar navigation
+# ---------------------------------------------------------------------------
+try:
+    from components.sidebar import render_sidebar_navigation  # noqa: E402
+    render_sidebar_navigation(is_subpage=True)
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
+# Inline CSS – Light theme
 # ---------------------------------------------------------------------------
 st.markdown(
     """
@@ -136,18 +145,30 @@ if "oracle_seed_event" not in st.session_state:
     st.session_state.oracle_seed_event = ""
 
 # ---------------------------------------------------------------------------
-# Header
+# Header + onboarding
 # ---------------------------------------------------------------------------
 st.markdown(
     """
     <div class="oracle-header">
-      <h1 style="margin:0;font-size:1.6rem;">🔮 THE ORACLE LABORATORY</h1>
+      <h1 style="margin:0;font-size:1.6rem;">🔮 THE ORACLE LABORATORY
+        <span style="font-size:0.6rem;background:#E65100;color:#fff;padding:2px 7px;
+              border-radius:10px;vertical-align:middle;margin-left:8px;">BETA</span>
+      </h1>
       <p style="margin:4px 0 0;color:#606060;font-size:0.9rem;">
         Multi-Agent Simulation &amp; Timeline Branching · Ontological Intelligence &amp; Systematic Order
       </p>
     </div>
     """,
     unsafe_allow_html=True,
+)
+st.info(
+    "**What this page does:** The Oracle Laboratory is an experimental multi-agent "
+    "simulation environment. Given a seed event, three specialised agents reason "
+    "sequentially (Action → Reaction → Synthesis) to explore potential futures, "
+    "detect divergence, and branch the timeline into alternative scenarios.\n\n"
+    "**How to use:** Paste a news headline or event description below, then click "
+    "**🔮 Run Oracle Simulation**. The timeline tree on the left tracks scenario "
+    "branches; agent decisions and audit flags appear on the right."
 )
 
 # ---------------------------------------------------------------------------

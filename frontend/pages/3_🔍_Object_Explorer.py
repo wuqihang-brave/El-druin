@@ -53,13 +53,22 @@ st.set_page_config(
     page_title="Object Explorer – EL-DRUIN",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
+
+# ---------------------------------------------------------------------------
+# Shared sidebar navigation (so the user can navigate back to app.py)
+# ---------------------------------------------------------------------------
+try:
+    from components.sidebar import render_sidebar_navigation  # noqa: E402
+    render_sidebar_navigation(is_subpage=True)
+except Exception:
+    pass  # Sidebar is non-critical; do not block the page
 
 # ---------------------------------------------------------------------------
 # CSS injection
 # ---------------------------------------------------------------------------
-_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles.css")
+_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles_light.css")
 try:
     with open(_CSS_PATH, encoding="utf-8") as _f:
         st.markdown(f"<style>{_f.read()}</style>", unsafe_allow_html=True)
@@ -90,7 +99,7 @@ if "oe_show_proof" not in st.session_state:
     st.session_state.oe_show_proof: bool = False
 
 # ---------------------------------------------------------------------------
-# Page title
+# Page title + onboarding
 # ---------------------------------------------------------------------------
 st.markdown(
     '<h2 style="color:#0047AB; font-weight:600; letter-spacing:1px;">🔍 OBJECT EXPLORER</h2>',
@@ -101,6 +110,12 @@ st.markdown(
     "Ontology-centric entity search, graph navigation, and object profiling."
     "</p>",
     unsafe_allow_html=True,
+)
+st.info(
+    "**What this page does:** Browse the Knowledge Graph as a set of typed objects "
+    "(entities extracted from news and reports). Use the **left panel** to filter by "
+    "entity type, confidence, or date range. Click a node in the **centre graph** to "
+    "inspect its full profile, relationships, and source articles in the **right panel**."
 )
 st.divider()
 

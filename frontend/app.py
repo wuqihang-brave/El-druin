@@ -22,10 +22,6 @@ from dotenv import load_dotenv
 load_dotenv()
 import requests  # noqa: F401
 import streamlit as st
-import utils.api_client as uac
-import inspect
-st.write("api_client loaded from:", uac.__file__)
-st.write("evented_deduce signature:", inspect.signature(uac.api_client.evented_deduce))
 
 _FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
 if _FRONTEND_DIR not in sys.path:
@@ -198,7 +194,7 @@ def get_graph_context_for_news(query_text: str) -> str:
 # ---------------------------------------------------------------------------
 _STATE_DEFAULTS = {
     "initialized": False,
-    "current_page": "🏠 主页",
+    "current_page": "🏠 Home",
     "selected_entity": "",
     "graph_data": {"entities": [], "relations": [], "status": "not_loaded"},
     "entity_cache": {},
@@ -235,6 +231,8 @@ def load_knowledge_graph() -> Dict[str, Any]:
 
 
 with st.spinner("Loading Knowledge Graph..."):
+    if st.session_state.pop("_kg_cache_clear", False):
+        load_knowledge_graph.clear()
     if st.session_state.graph_data.get("status") != "loaded":
         st.session_state.graph_data = load_knowledge_graph()
         st.session_state.last_update = datetime.now()
@@ -251,50 +249,6 @@ with st.spinner("Loading Knowledge Graph..."):
 # ---------------------------------------------------------------------------
 page = render_sidebar_navigation()
 
-_sidebar_entity_names: List[str] = [
-    e.get("name", "") for e in st.session_state.graph_data.get("entities", []) if e.get("name")
-]
-if _sidebar_entity_names:
-    st.sidebar.markdown("<hr style='border-color:#E0E0E0;margin:4px 0'/>", unsafe_allow_html=True)
-    st.sidebar.markdown(
-        "<p style='color:#0047AB;font-size:0.78rem;margin:0 0 4px 0'>🔎 实体搜索</p>",
-        unsafe_allow_html=True,
-    )
-    _sel = st.sidebar.selectbox(
-        "搜索实体", [""] + _sidebar_entity_names,
-        index=0, key="sidebar_entity_select", label_visibility="collapsed",
-    )
-    if _sel and _sel != st.session_state.selected_entity:
-        st.session_state.selected_entity = _sel
-        st.rerun()
-
-st.sidebar.markdown("<hr style='border-color:#E0E0E0;margin:8px 0'/>", unsafe_allow_html=True)
-with st.sidebar.expander("⚙️ 推演引擎配置", expanded=False):
-    st.markdown("**📡 数据源**")
-    st.selectbox("选择数据源", ["实时新闻", "历史数据", "自定义输入"], key="cfg_data_source", label_visibility="collapsed")
-    st.markdown("**🤖 分析模式**")
-    st.radio("模式", ["本体论模式", "快速模式", "深度模式"], key="cfg_model_mode", label_visibility="collapsed")
-    st.markdown("**🔬 推演深度（Deep Ontology）**")
-    st.slider(
-        "深度级别",
-        min_value=0, max_value=3, value=0,
-        key="cfg_deep_level",
-        help="0=普通模式  1=仅本地元数据  2=+抓取原文  3=+全网搜索",
-        label_visibility="collapsed",
-    )
-    st.checkbox(
-        "显示潜在隐变量（假设路径）",
-        key="cfg_show_hidden",
-        value=True,
-        help="在三段式推演结论中显示 T1 假设路径",
-    )
-
-st.sidebar.markdown("<hr style='border-color:#E0E0E0;margin:8px 0'/>", unsafe_allow_html=True)
-if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
-    load_knowledge_graph.clear()
-    st.session_state.graph_data = {"entities": [], "relations": [], "status": "not_loaded"}
-    st.session_state.last_update = None
-    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -405,9 +359,9 @@ def _domain_class(domain: str) -> str:
 
 
 # ===========================================================================
-# Page: 🏠 主页
+# Page: 🏠 Home
 # ===========================================================================
-if page == "🏠 主页":
+if page == "🏠 Home":
     st.markdown("""
     <style>
     .compact-news { padding:10px 12px; border-left:3px solid #0047AB; background:#fff;
@@ -421,16 +375,20 @@ if page == "🏠 主页":
 
     _col_h1, _col_h2 = st.columns([4, 1])
     with _col_h1:
-        st.markdown("# ⚔️ EL-DRUIN 核心预测与本体推演")
+        st.markdown("# ⚔️ EL-DRUIN — Core Prediction & Ontological Reasoning")
     with _col_h2:
-        st.markdown(f"**{datetime.now().strftime('%H:%M CST')}**")
+        st.markdown(f"**{datetime.now().strftime('%H:%M UTC')}**")
+    st.caption(
+        "Select an article from the left feed, choose your reasoning engine from the sidebar, "
+        "and click **Run Ontological Analysis** to generate a causal deduction."
+    )
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
     col_feed, col_deduction = st.columns([4, 6], gap="large")
 
     # ─── LEFT: 情报流 ─────────────────────────────────────────────────────
     with col_feed:
-        st.subheader("📍 重要情报摘要")
+        st.subheader("📍 Intelligence Feed")
 
         _feed_news: List[Dict[str, Any]] = []
         try:
@@ -448,7 +406,7 @@ if page == "🏠 主页":
             ]
 
         for _idx, _article in enumerate(_feed_news[:8]):
-            _title   = (_article.get("title") or "（无标题）")[:55]
+            _title   = (_article.get("title") or "(no title)")[:55]
             _src     = _article.get("source", "")
             _pub     = str(_article.get("published") or "")[:10]
             _desc    = (_article.get("description") or "")[:80]
@@ -463,33 +421,35 @@ if page == "🏠 主页":
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button("🎯 执行本体推演", key=f"deduce_{_idx}_{_article.get('title','')[:20]}", use_container_width=True):
+            if st.button("🎯 Run Ontological Analysis", key=f"deduce_{_idx}_{_article.get('title','')[:20]}", use_container_width=True):
                 st.session_state.selected_news    = _article
                 st.session_state.deduction_result = None
+                st.session_state.evented_result   = None
                 st.rerun()
 
-    # ─── RIGHT: 推演面板 ──────────────────────────────────────────────────
+    # ─── RIGHT: Deduction panel ───────────────────────────────────────────
     with col_deduction:
-        st.subheader("🧠 本体论预测分析")
+        st.subheader("🧠 Ontological Prediction & Analysis")
 
-        # --- 分析模式选择器 ---
-        _prev_mode = st.session_state.get("analysis_mode", "Grounded")
-        _analysis_mode = st.radio(
-            "分析模式",
-            options=["Grounded（图谱接地推演）", "Evented（事件三段式推演）"],
-            index=0 if _prev_mode == "Grounded" else 1,
-            horizontal=True,
-            key="analysis_mode_radio",
-            help="Grounded 模式使用 KuzuDB 图谱路径；Evented 模式使用事件提取 → 模式映射 → 双路径结论三段流水线。",
-        )
-        _mode_key = "Grounded" if "Grounded" in _analysis_mode else "Evented"
-        # 切换模式时清除上次结果
+        # --- Engine selection is driven by the sidebar (cfg_engine) ---
+        _prev_mode = st.session_state.get("_prev_engine", "Evented")
+        _mode_key  = st.session_state.get("cfg_engine", "Evented")
+        # Clear stale results when engine changes
         if _mode_key != _prev_mode:
-            st.session_state.analysis_mode      = _mode_key
-            st.session_state.deduction_result   = None
-            st.session_state.evented_result     = None
-            st.rerun()
-        st.session_state.analysis_mode = _mode_key
+            st.session_state._prev_engine    = _mode_key
+            st.session_state.deduction_result = None
+            st.session_state.evented_result   = None
+
+        _engine_badge = (
+            '<span style="background:#0047AB;color:#fff;padding:2px 8px;'
+            'border-radius:10px;font-size:11px;margin-left:8px">'
+            f'{_mode_key}</span>'
+        )
+        st.markdown(
+            f"Engine: {_engine_badge}  ·  Use the sidebar to change engine or Deep Ontology level.",
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
         _selected: Optional[Dict[str, Any]] = st.session_state.get("selected_news")
 
@@ -497,24 +457,24 @@ if page == "🏠 主页":
             st.markdown("""
             <div style="text-align:center;padding:60px 20px;color:#999;">
                 <div style="font-size:40px;margin-bottom:12px;">⚔️</div>
-                <div style="font-size:16px;font-weight:500;">请在左侧选择一个重要事件执行本体推演</div>
-                <div style="font-size:13px;margin-top:8px;">系统将基于 KuzuDB 图谱 + 笛卡尔积模式库进行因果推演</div>
+                <div style="font-size:16px;font-weight:500;">Select an article on the left to run ontological analysis</div>
+                <div style="font-size:13px;margin-top:8px;">The system will use the KuzuDB graph + Cartesian pattern library for causal reasoning</div>
             </div>
             """, unsafe_allow_html=True)
         elif _mode_key == "Grounded":
-            _sel_title = _selected.get("title", "（无标题）")
+            _sel_title = _selected.get("title", "(no title)")
             _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
-            st.markdown(f"**针对事件：** `{_sel_title}`")
+            st.markdown(f"**Analysing event:** `{_sel_title}`")
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
             _dr: Optional[Dict[str, Any]] = st.session_state.get("deduction_result")
             _err: Optional[str] = None
 
-            # 首次触发推演
+            # First-time trigger
             if _dr is None:
-                with st.status("🔍 正在构建因果链条（LLM + 本体 + KuzuDB）...", expanded=True) as _status:
+                with st.status("🔍 Building causal chain (LLM + Ontology + KuzuDB)...", expanded=True) as _status:
                     try:
-                        st.write("📡 调用后端 grounded_deduce 接口，检索 KuzuDB 证据...")
+                        st.write("📡 Calling backend grounded_deduce endpoint, retrieving KuzuDB evidence...")
                         _payload = {
                             "title": _sel_title,
                             "text": _sel_desc or _sel_title,
@@ -525,30 +485,30 @@ if page == "🏠 主页":
                         _resp = _api.grounded_deduce(_payload)
                         if "error" in _resp and "deduction_result" not in _resp:
                             _err = str(_resp["error"])
-                            _status.update(label="⚠ 推演失败", state="error")
+                            _status.update(label="⚠ Analysis failed", state="error")
                         else:
                             _dr = _resp.get("deduction_result", _resp)
                             st.session_state.deduction_result = _dr
-                            st.write("✅ 已获取本体推理结果与图谱证据，正在渲染...")
-                            _status.update(label="✅ 推演完成", state="complete")
+                            st.write("✅ Ontological reasoning result obtained. Rendering...")
+                            _status.update(label="✅ Analysis complete", state="complete")
                     except Exception as _exc:
                         _err = str(_exc)
-                        _status.update(label="⚠ 连接失败", state="error")
+                        _status.update(label="⚠ Connection failed", state="error")
 
             if _err:
-                st.error(f"推演失败：{_err}")
+                st.error(f"Grounded analysis failed: {_err}")
 
             elif _dr is not None:
-                # ── A. Hero：驱动因素 ────────────────────────────────────
-                _driving = _dr.get("driving_factor") or _dr.get("mechanism_summary") or "（推演引擎未返回驱动因素）"
+                # ── A. Hero: driving factor ───────────────────────────────
+                _driving = _dr.get("driving_factor") or _dr.get("mechanism_summary") or "(Engine returned no driving factor)"
                 st.markdown(f"""
                 <div class="driving-hero">
-                    <div class="driving-label">⚡ 核心驱动因素</div>
+                    <div class="driving-label">⚡ Core Driving Factor</div>
                     <div class="driving-text">{_driving}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                # ── B. 机制域标签 + 置信度 ────────────────────────────────
+                # ── B. Mechanism domain tags + confidence ─────────────────
                 _conf_raw = _dr.get("confidence") or 0.5
                 try:
                     _conf_raw = float(_conf_raw)
@@ -559,7 +519,7 @@ if page == "🏠 主页":
 
                 _b1, _b2, _b3 = st.columns([3, 2, 2])
                 with _b1:
-                    st.markdown("**🏷 机制域**")
+                    st.markdown("**🏷 Mechanism Domain**")
                     _gev = _dr.get("graph_evidence", "")
                     _domains_found = []
                     for _dm, _cls in [
@@ -575,18 +535,18 @@ if page == "🏠 主页":
                     )
                     st.markdown(_tags, unsafe_allow_html=True)
                     if _mech_count:
-                        st.caption(f"🔗 {_mech_count} 条机制标签")
+                        st.caption(f"🔗 {_mech_count} mechanism labels")
                 with _b2:
-                    st.markdown("**📊 推演置信度**")
+                    st.markdown("**📊 Deduction Confidence**")
                     st.markdown(
                         f'<div class="confidence-big">{_conf_pct}%</div>'
                         f'<div class="confidence-label">Pr(E | KG)</div>',
                         unsafe_allow_html=True,
                     )
                 with _b3:
-                    st.markdown("**⚖️ 逻辑状态**")
+                    st.markdown("**⚖️ Logic State**")
                     _conf_color = "#2E7D32" if _conf_pct >= 65 else "#E65100" if _conf_pct >= 45 else "#B71C1C"
-                    _conf_label = "收敛" if _conf_pct >= 65 else "发散" if _conf_pct >= 45 else "不确定"
+                    _conf_label = "Converging" if _conf_pct >= 65 else "Diverging" if _conf_pct >= 45 else "Uncertain"
                     st.markdown(
                         f'<div style="font-size:22px;font-weight:700;color:{_conf_color}">{_conf_label}</div>',
                         unsafe_allow_html=True,
@@ -594,77 +554,76 @@ if page == "🏠 主页":
 
                 st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
-                # ── C. Tab 结构 ──────────────────────────────────────────
+                # ── C. Tab structure ──────────────────────────────────────
                 _tab_causal, _tab_scenarios, _tab_evidence, _tab_debug = st.tabs([
-                    "⛓ 因果链分解", "🔮 情景预测", "🕸 图谱证据", "🛠 Debug"
+                    "⛓ Causal Chain", "🔮 Scenario Forecast", "🕸 Graph Evidence", "🛠 Debug"
                 ])
 
-                # Tab 1: 因果链
+                # Tab 1: Causal chain
                 with _tab_causal:
                     _alpha = _dr.get("scenario_alpha") or {}
                     _beta  = _dr.get("scenario_beta") or {}
                     _alpha_chain = _alpha.get("causal_chain") or _dr.get("causal_chain") or _driving
                     _beta_chain  = _beta.get("causal_chain") or ""
 
-                    st.markdown("#### 🟡 Alpha 路径（最高概率）")
+                    st.markdown("#### 🟡 Alpha Path (Highest Probability)")
                     _alpha_prob = float(_alpha.get("probability", 0.72) or 0.72)
                     st.progress(_alpha_prob, text=f"Alpha Pr = {int(_alpha_prob*100)}%")
                     _render_causal_chain(_alpha_chain)
                     if _alpha.get("mechanism"):
                         st.markdown(
-                            f'**锚定机制：** <span class="mech-tag">{_alpha["mechanism"]}</span>',
+                            f'**Anchored mechanism:** <span class="mech-tag">{_alpha["mechanism"]}</span>',
                             unsafe_allow_html=True,
                         )
 
                     st.markdown('<div style="height:12px"/>', unsafe_allow_html=True)
-                    st.markdown("#### 🔴 Beta 路径（结构性断裂）")
+                    st.markdown("#### 🔴 Beta Path (Structural Break)")
                     _beta_prob = float(_beta.get("probability", 0.28) or 0.28)
                     st.progress(_beta_prob, text=f"Beta Pr = {int(_beta_prob*100)}%")
                     if _beta_chain:
                         _render_causal_chain(_beta_chain)
                     else:
-                        st.caption("（后端未提供 Beta 路径因果链）")
+                        st.caption("(Backend did not return a Beta path causal chain)")
                     if _beta.get("trigger_condition"):
-                        st.info(f"⚡ 触发条件：{_beta['trigger_condition']}")
+                        st.info(f"⚡ Trigger condition: {_beta['trigger_condition']}")
 
                     _vgap = _dr.get("verification_gap", "")
                     if _vgap:
                         st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-                        st.warning(f"**🔍 验证缺口：** {_vgap}")
+                        st.warning(f"**🔍 Verification gap:** {_vgap}")
 
-                # Tab 2: 情景预测
+                # Tab 2: Scenario forecast
                 with _tab_scenarios:
                     _alpha_desc = _alpha.get("description") or _dr.get("prediction") or ""
                     _beta_desc  = _beta.get("description") or ""
                     st.markdown(f"""
                     <div class="scenario-alpha">
                         <div class="scenario-alpha-hdr">
-                            🟡 Scenario Alpha — {_alpha.get("name","现状延续路径")}
+                            🟡 Scenario Alpha — {_alpha.get("name","Status Quo Continuation")}
                         </div>
                         <p style="color:#5D4037;margin:0;font-size:14px;line-height:1.6">
-                            {_alpha_desc or "（后端未返回场景描述）"}
+                            {_alpha_desc or "(Backend returned no scenario description)"}
                         </p>
                     </div>
                     <div class="scenario-beta">
                         <div class="scenario-beta-hdr">
-                            🔴 Scenario Beta — {_beta.get("name","结构性断裂路径")}
+                            🔴 Scenario Beta — {_beta.get("name","Structural Break")}
                         </div>
                         <p style="color:#5D4037;margin:0;font-size:14px;line-height:1.6">
-                            {_beta_desc or "（后端未返回场景描述）"}
+                            {_beta_desc or "(Backend returned no scenario description)"}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
 
                     _outcomes = _dr.get("pattern_outcomes") or []
                     if _outcomes:
-                        st.markdown("**🎯 笛卡尔积模式库预期后果**")
+                        st.markdown("**🎯 Cartesian Pattern Library Expected Outcomes**")
                         st.markdown(
                             " ".join(f'<span class="outcome-pill">{o}</span>' for o in _outcomes[:6]),
                             unsafe_allow_html=True,
                         )
 
-                    # 本体论计算模型
-                    st.markdown("**本体论计算模型**")
+                    st.markdown("**Ontological Computation Model**")
                     st.markdown(f"""
                     <div class="math-logic">
                     # Inference Trajectory<br>
@@ -674,14 +633,14 @@ if page == "🏠 主页":
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Tab 3: 图谱证据
+                # Tab 3: Graph evidence
                 with _tab_evidence:
                     _gev  = _dr.get("graph_evidence", "")
                     _subg = _dr.get("graph_subgraph") or {}
                     if isinstance(_subg, dict) and _subg.get("nodes"):
                         render_graph(_subg)
                     elif _gev:
-                        st.caption("相关图谱路径：")
+                        st.caption("Relevant graph paths:")
                         if isinstance(_gev, str):
                             st.text(_gev[:2000])
                         elif isinstance(_gev, list):
@@ -692,22 +651,22 @@ if page == "🏠 主页":
                         if _fallback and "未找到" not in _fallback:
                             st.text(_fallback)
                         else:
-                            st.info("未从本体图谱中检索到显式证据，请检查 KuzuDB 同步及后端推理逻辑。")
+                            st.info("No explicit evidence retrieved from the ontology graph. Check KuzuDB sync and backend reasoning logic.")
 
                 # Tab 4: Debug
                 with _tab_debug:
-                    with st.expander("🛠 后端原始 deduction_result JSON", expanded=False):
+                    with st.expander("🛠 Raw Backend deduction_result JSON", expanded=False):
                         st.json(_dr)
 
-            if st.button("🔄 重新选择情报", key="clear_selection"):
+            if st.button("🔄 Clear selection", key="clear_selection"):
                 st.session_state.selected_news    = None
                 st.session_state.deduction_result = None
                 st.session_state.evented_result   = None
                 st.rerun()
 
         elif _mode_key == "Evented":
-            # ─── Evented 三段式推演面板 ────────────────────────────────────
-            _sel_title = _selected.get("title", "（无标题）")
+            # ─── Evented three-stage reasoning panel ───────────────────────
+            _sel_title = _selected.get("title", "(no title)")
             _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
 
             # Read engine config from sidebar session state
@@ -715,9 +674,9 @@ if page == "🏠 主页":
             _show_hidden    = bool(st.session_state.get("cfg_show_hidden", True))
             _is_deep_mode   = _deep_level > 0
 
-            _mode_label = "🔬 深度本体分析" if _is_deep_mode else "⚙️ 普通推演"
+            _mode_label = "🔬 Deep Ontology Analysis" if _is_deep_mode else "⚙️ Normal Reasoning"
             st.markdown(
-                f"**针对事件：** `{_sel_title}`"
+                f"**Analysing event:** `{_sel_title}`"
                 + (f"&nbsp;&nbsp;<span style='background:#1565C0;color:#fff;"
                    f"padding:2px 8px;border-radius:10px;font-size:11px'>"
                    f"{_mode_label} (Level {_deep_level})</span>"
@@ -731,13 +690,13 @@ if page == "🏠 主页":
 
             if _er is None:
                 _status_msg = (
-                    "🔬 正在运行深度本体分析（事件提取 → 证据增强 → 重推演）..."
+                    "🔬 Running Deep Ontology Analysis (event extraction → evidence enrichment → re-reasoning)..."
                     if _is_deep_mode
-                    else "⚙️ 正在运行事件推演流水线（事件提取 → 模式映射 → 双路径结论）..."
+                    else "⚙️ Running Evented reasoning pipeline (event extraction → pattern mapping → dual-path conclusion)..."
                 )
                 with st.status(_status_msg, expanded=True) as _ev_status:
                     try:
-                        st.write("📡 调用后端 evented_deduce 接口…")
+                        st.write("📡 Calling backend evented_deduce endpoint…")
                         _ev_payload = {
                             "title":       _sel_title,
                             "summary":     _sel_desc or _sel_title,
@@ -754,7 +713,7 @@ if page == "🏠 主页":
                                 "timeout_seconds": 20,
                                 "max_sources":     3,
                             }
-                            st.write(f"🔬 深度级别 {_deep_level} 已激活，正在增强证据锚点…")
+                            st.write(f"🔬 Deep Ontology level {_deep_level} activated, enriching evidence anchors…")
                         _ev_resp = _api.evented_deduce(
                             _ev_payload,
                             deep_mode=_is_deep_mode,
@@ -763,17 +722,17 @@ if page == "🏠 主页":
                         if _ev_resp.get("status") == "success" or "events" in _ev_resp:
                             _er = _ev_resp
                             st.session_state.evented_result = _er
-                            st.write("✅ 三段式推演完成，正在渲染…")
-                            _ev_status.update(label="✅ 推演完成", state="complete")
+                            st.write("✅ Three-stage reasoning complete. Rendering…")
+                            _ev_status.update(label="✅ Analysis complete", state="complete")
                         else:
-                            _evented_err = str(_ev_resp.get("error") or _ev_resp.get("detail", "未知错误"))
-                            _ev_status.update(label="⚠ 推演失败", state="error")
+                            _evented_err = str(_ev_resp.get("error") or _ev_resp.get("detail", "Unknown error"))
+                            _ev_status.update(label="⚠ Analysis failed", state="error")
                     except Exception as _exc:
                         _evented_err = str(_exc)
-                        _ev_status.update(label="⚠ 连接失败", state="error")
+                        _ev_status.update(label="⚠ Connection failed", state="error")
 
             if _evented_err:
-                st.error(f"Evented 推演失败：{_evented_err}")
+                st.error(f"Evented analysis failed: {_evented_err}")
 
             elif _er is not None:
                 _ev_events   = _er.get("events", [])
@@ -784,12 +743,12 @@ if page == "🏠 主页":
                 _ev_enrich   = _er.get("enrichment")
 
                 _tab_labels = [
-                    f"① 事件节点 ({len(_ev_events)})",
-                    f"② 模式节点 ({len(_ev_active)}+{len(_ev_derived)})",
-                    "③ 结论与可信度",
+                    f"① Events ({len(_ev_events)})",
+                    f"② Patterns ({len(_ev_active)}+{len(_ev_derived)})",
+                    "③ Conclusion & Credibility",
                 ]
                 if _ev_enrich:
-                    _tab_labels.append("🔬 证据增强")
+                    _tab_labels.append("🔬 Evidence Enrichment")
 
                 _tabs_ev = st.tabs(_tab_labels)
                 _tab_ev1 = _tabs_ev[0]
@@ -800,7 +759,7 @@ if page == "🏠 主页":
                 # ── Stage 1: Events ──────────────────────────────────────
                 with _tab_ev1:
                     if not _ev_events:
-                        st.info("未从文本中提取到有效事件（所有候选事件已被 T0 过滤器拒绝）。")
+                        st.info("No valid events extracted from the text (all candidates rejected by T0 filter).")
                     for _ev in _ev_events:
                         _ev_tier = _ev.get("tier", "?")
                         _ev_tier_color = "#2E7D32" if _ev_tier == "T2" else "#E65100"
@@ -814,9 +773,9 @@ if page == "🏠 主页":
                             f'<span style="font-weight:700;font-size:13px">{_ev_type}</span>'
                             f'&nbsp;&nbsp;<span style="background:{_ev_tier_color};color:#fff;'
                             f'padding:1px 7px;border-radius:10px;font-size:11px">{_ev_tier}</span>'
-                            f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">置信度 {_ev_conf:.0%}</span>'
+                            f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">confidence {_ev_conf:.0%}</span>'
                             f'<div style="font-size:12px;color:#555;margin-top:4px">📎 {_ev_quote}</div>'
-                            f'<div style="font-size:11px;color:#888;margin-top:2px">推断字段: {_ev_inf}</div>'
+                            f'<div style="font-size:11px;color:#888;margin-top:2px">Inferred fields: {_ev_inf}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -824,7 +783,7 @@ if page == "🏠 主页":
                 # ── Stage 2: Patterns ─────────────────────────────────────
                 with _tab_ev2:
                     if _ev_active:
-                        st.markdown("**🔵 激活模式（Active Patterns）**")
+                        st.markdown("**🔵 Active Patterns**")
                         for _ap in _ev_active:
                             _ap_tier  = _ap.get("tier", "T2")
                             _ap_conf  = _ap.get("confidence", 0)
@@ -837,16 +796,16 @@ if page == "🏠 主页":
                                 f'&nbsp;<span style="background:{_ap_color};color:#fff;'
                                 f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
                                 f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
-                                f'{" · 推断" if _ap_inf else ""}</span>'
+                                f'{" · inferred" if _ap_inf else ""}</span>'
                                 f'&nbsp;<span style="color:#aaa;font-size:10px">← {_ap.get("from_event","")}</span>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
                     else:
-                        st.info("无激活模式。")
+                        st.info("No active patterns.")
 
                     if _ev_derived:
-                        st.markdown("**🟣 衍生模式（Derived Patterns via Composition）**")
+                        st.markdown("**🟣 Derived Patterns (via Composition)**")
                         for _dp in _ev_derived:
                             _dp_tier  = _dp.get("derived_tier", "T1")
                             _dp_conf  = _dp.get("derived_confidence", 0)
@@ -860,21 +819,21 @@ if page == "🏠 主页":
                                 f'&nbsp;<span style="background:{_dp_color};color:#fff;'
                                 f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
                                 f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}'
-                                f'{" · 推断" if _dp_inf else ""}</span>'
-                                f'<div style="font-size:10px;color:#aaa;margin-top:2px">规则: {_dp_rule}</div>'
+                                f'{" · inferred" if _dp_inf else ""}</span>'
+                                f'<div style="font-size:10px;color:#aaa;margin-top:2px">rule: {_dp_rule}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
                     else:
-                        st.caption("无衍生模式（需要至少两个可组合的激活模式）。")
+                        st.caption("No derived patterns (requires at least two composable active patterns).")
 
                 # ── Stage 3: Conclusion + Credibility ─────────────────────
                 with _tab_ev3:
                     _ev_path  = _ev_concl.get("evidence_path", {})
                     _hyp_path = _ev_concl.get("hypothesis_path", {})
 
-                    st.markdown("#### 🟢 证据路径（Evidence Path — T2 接地）")
-                    _ev_summary = _ev_path.get("summary") or "（无接地证据路径）"
+                    st.markdown("#### 🟢 Evidence Path (T2 grounded)")
+                    _ev_summary = _ev_path.get("summary") or "(No grounded evidence path)"
                     st.markdown(
                         f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
                         f'padding:10px 14px;border-radius:4px;font-size:14px">{_ev_summary}</div>',
@@ -882,12 +841,12 @@ if page == "🏠 主页":
                     )
                     _ep_pats = _ev_path.get("patterns", [])
                     if _ep_pats:
-                        st.caption("支撑模式：" + "、".join(p["pattern"] for p in _ep_pats))
+                        st.caption("Supporting patterns: " + ", ".join(p["pattern"] for p in _ep_pats))
 
-                    # Hypothesis path – controlled by 显示潜在隐变量 toggle
+                    # Hypothesis path – controlled by sidebar toggle
                     if _show_hidden:
-                        st.markdown("#### 🟡 假设路径（Hypothesis Path — T1 推断）")
-                        _hyp_summary = _hyp_path.get("summary") or "（无假设路径）"
+                        st.markdown("#### 🟡 Hypothesis Path (T1 inferred)")
+                        _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path)"
                         st.markdown(
                             f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
                             f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
@@ -895,35 +854,35 @@ if page == "🏠 主页":
                         )
                         _hyp_gaps = _hyp_path.get("verification_gaps", [])
                         if _hyp_gaps:
-                            st.caption("验证缺口：" + " · ".join(_hyp_gaps))
+                            st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
                     else:
-                        st.caption("💡 假设路径已隐藏（在侧边栏'推演引擎配置'中开启'显示潜在隐变量'）")
+                        st.caption("💡 Hypothesis path hidden — enable 'Show hypothesis path' in the sidebar.")
 
-                    st.markdown("#### 📋 总结论")
-                    st.info(_ev_concl.get("conclusion", "（无结论）"))
+                    st.markdown("#### 📋 Conclusion")
+                    st.info(_ev_concl.get("conclusion", "(No conclusion)"))
 
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-                    st.markdown("#### 📊 可信度报告")
+                    st.markdown("#### 📊 Credibility Report")
                     _vc1, _vc2, _vc3 = st.columns(3)
                     with _vc1:
                         _vs = _ev_cred.get("verifiability_score", 0)
-                        st.metric("可验证性", f"{_vs:.0%}")
+                        st.metric("Verifiability", f"{_vs:.0%}")
                     with _vc2:
                         _ks = _ev_cred.get("kg_consistency_score", 0)
-                        st.metric("图谱一致性", f"{_ks:.0%}")
+                        st.metric("KG Consistency", f"{_ks:.0%}")
                     with _vc3:
                         _os = _ev_cred.get("overall_score", 0)
                         _hr = _ev_cred.get("hypothesis_ratio", 0)
-                        st.metric("综合评分", f"{_os:.0%}", delta=f"假设比 {_hr:.0%}")
+                        st.metric("Overall Score", f"{_os:.0%}", delta=f"hyp ratio {_hr:.0%}")
 
                     _missing = _ev_cred.get("missing_evidence", [])
                     if _missing:
-                        st.warning("缺失证据锚点：" + "、".join(_missing))
+                        st.warning("Missing evidence anchors: " + ", ".join(_missing))
                     _contras = _ev_cred.get("contradictions", [])
                     if _contras:
-                        st.error("检测到矛盾：" + " | ".join(_contras))
+                        st.error("Contradictions detected: " + " | ".join(_contras))
 
-                    with st.expander("🛠 原始 JSON（Evented 推演结果）", expanded=False):
+                    with st.expander("🛠 Raw JSON (Evented result)", expanded=False):
                         st.json(_er)
 
                 # ── Enrichment panel (Deep mode only) ─────────────────────
@@ -939,23 +898,23 @@ if page == "🏠 主页":
                         _enr_level          = _ev_enrich.get("level", 0)
 
                         # Header
-                        _level_labels = {0: "关闭", 1: "本地元数据", 2: "+原文抓取", 3: "+全网搜索"}
+                        _level_labels = {0: "Off", 1: "Local metadata", 2: "+Fetch source", 3: "+Web search"}
                         st.markdown(
-                            f"**🔬 深度本体分析** · 级别 {_enr_level} "
-                            f"（{_level_labels.get(_enr_level, '')}）"
-                            + (" &nbsp; 🗄️ `缓存命中`" if _enr_cache_hit else ""),
+                            f"**🔬 Deep Ontology Analysis** · Level {_enr_level} "
+                            f"({_level_labels.get(_enr_level, '')})"
+                            + (" &nbsp; 🗄️ `cache hit`" if _enr_cache_hit else ""),
                             unsafe_allow_html=True,
                         )
 
                         if _enr_error:
-                            st.error(f"增强失败（已回退到普通结果）：{_enr_error}")
+                            st.error(f"Enrichment failed (fell back to normal result): {_enr_error}")
 
                         # Missing anchors delta
                         _filled = [a for a in _enr_missing_before if a not in _enr_missing_after]
                         _still_missing = _enr_missing_after
                         _col_a, _col_b = st.columns(2)
                         with _col_a:
-                            st.markdown("**增强前缺失锚点**")
+                            st.markdown("**Missing anchors before enrichment**")
                             for _anc in _enr_missing_before:
                                 _ok = _anc in _filled
                                 st.markdown(
@@ -969,88 +928,91 @@ if page == "🏠 主页":
                                 for _anc in _still_missing:
                                     st.markdown(f"• {_anc}")
                             else:
-                                st.success("所有锚点已填充 ✓")
+                                st.success("All anchors filled ✓")
 
                         if _enr_summary:
                             st.caption(_enr_summary)
 
                         # Provenance table
                         if _enr_provenance:
-                            st.markdown("**📋 证据来源（Provenance）**")
+                            st.markdown("**📋 Evidence Provenance**")
                             for _prov in _enr_provenance:
                                 _p_anchor  = _prov.get("anchor_type", "")
                                 _p_snippet = _prov.get("snippet", "")
                                 _p_url     = _prov.get("source_url", "")
                                 _p_title   = _prov.get("title", "")
                                 _p_conf    = _prov.get("confidence", 0)
-                                _p_at      = _prov.get("fetched_at", "")
                                 st.markdown(
                                     f'<div style="border-left:3px solid #1565C0;'
                                     f'padding:6px 12px;margin-bottom:6px;background:#E3F2FD;border-radius:4px;">'
                                     f'<span style="font-weight:700;font-size:12px;color:#1565C0">{_p_anchor}</span>'
-                                    f'&nbsp;&nbsp;<span style="color:#555;font-size:11px">置信度 {_p_conf:.0%}</span>'
+                                    f'&nbsp;&nbsp;<span style="color:#555;font-size:11px">confidence {_p_conf:.0%}</span>'
                                     f'<div style="font-size:13px;margin-top:3px">{_p_snippet}</div>'
                                     + (f'<div style="font-size:11px;color:#888;margin-top:2px">'
-                                       f'来源: <a href="{_p_url}" target="_blank">{_p_title or _p_url}</a>'
+                                       f'Source: <a href="{_p_url}" target="_blank">{_p_title or _p_url}</a>'
                                        f'</div>' if _p_url else "")
                                     + f'</div>',
                                     unsafe_allow_html=True,
                                 )
                         else:
-                            st.info("未提取到新的证据来源。")
+                            st.info("No new evidence sources extracted.")
 
                         # Limits summary
                         if _enr_limits:
                             _lim_parts = []
                             if _enr_limits.get("searched"):
-                                _lim_parts.append("已执行网络搜索")
+                                _lim_parts.append("web search executed")
                             _furl = _enr_limits.get("fetched_urls", 0)
                             if _furl:
-                                _lim_parts.append(f"抓取 {_furl} 个 URL")
+                                _lim_parts.append(f"fetched {_furl} URL(s)")
                             if _enr_limits.get("truncated"):
-                                _lim_parts.append("⚠️ 因超时截断")
+                                _lim_parts.append("⚠️ truncated due to timeout")
                             if _lim_parts:
-                                st.caption("限制信息: " + " · ".join(_lim_parts))
+                                st.caption("Limits: " + " · ".join(_lim_parts))
 
-            if st.button("🔄 重新选择情报", key="clear_selection_evented"):
+            if st.button("🔄 Clear selection", key="clear_selection_evented"):
                 st.session_state.selected_news  = None
                 st.session_state.evented_result = None
                 st.rerun()
 
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-    with st.expander("ℹ️ 相关本体知识储备 (Active Sub-Graphs)", expanded=False):
+    with st.expander("ℹ️ Active Ontology Sub-Graphs", expanded=False):
         st.write("""
-        **当前关联逻辑库引擎在线状态：**
-        * 🟢 **[地缘政治本体]**：制裁、同盟、胁迫模式库已加载
-        * 🟢 **[经济金融本体]**：贸易依存、央行传导、供应链模式库已加载
-        * 🟢 **[技术本体]**：科技脱钩、标准主导、技术封锁模式库已加载
-        * 🟡 **[技术变迁本体]**：技术扩散率、政策阻力、合规成本矩阵（待深度构建）
+        **Current ontology engine status:**
+        * 🟢 **[Geopolitics Ontology]**: Sanctions, alliance, coercion pattern library loaded
+        * 🟢 **[Economics & Finance Ontology]**: Trade dependency, central bank transmission, supply chain patterns loaded
+        * 🟢 **[Technology Ontology]**: Tech decoupling, standards dominance, technology blockade patterns loaded
+        * 🟡 **[Technology Transition Ontology]**: Tech diffusion rate, policy resistance, compliance cost matrix (pending deep build)
         """)
 
 
 # ===========================================================================
-# Page: 📰 实时新闻
+# Page: 📰 Intelligence Feed
 # ===========================================================================
-elif page == "📰 实时新闻":
-    st.title("📰 实时世界新闻")
+elif page == "📰 Intelligence Feed":
+    st.title("📰 Real-Time Intelligence Feed")
+    st.caption(
+        "Aggregated news from monitored sources. Click **Run Ontological Analysis** "
+        "on any article to send it to the Home page analysis panel."
+    )
 
     col_title, col_refresh = st.columns([3, 1])
     with col_refresh:
-        if st.button("🔄 立即刷新", key="refresh_news"):
-            with st.spinner("📡 正在聚合新闻…"):
+        if st.button("🔄 Refresh Now", key="refresh_news"):
+            with st.spinner("📡 Aggregating news…"):
                 result = _api.ingest_news()
                 if "error" not in result:
-                    st.success("✅ 新闻聚合完成！")
+                    st.success("✅ News aggregation complete!")
                 else:
-                    st.error(f"❌ 错误：{result['error']}")
+                    st.error(f"❌ Error: {result['error']}")
 
     col_hours, col_limit = st.columns(2)
     with col_hours:
-        hours = st.slider("时间范围（小时）", min_value=1, max_value=168, value=24)
+        hours = st.slider("Time range (hours)", min_value=1, max_value=168, value=24)
     with col_limit:
-        limit = st.slider("显示条数", min_value=5, max_value=100, value=20)
+        limit = st.slider("Articles to display", min_value=5, max_value=100, value=20)
 
-    search_query = st.text_input("⚔️ Discern Truth — 关键词搜索", placeholder="输入关键词…")
+    search_query = st.text_input("🔍 Keyword search", placeholder="Enter keywords…")
 
     if search_query:
         data = _api.search_news(search_query, limit=limit)
@@ -1058,75 +1020,76 @@ elif page == "📰 实时新闻":
         data = _api.get_latest_news(limit=limit, hours=hours)
 
     if "error" in data:
-        st.error(f"❌ 无法获取新闻：{data['error']}\n\n请确认后端正在运行。")
+        st.error(f"❌ Could not fetch news: {data['error']}\n\nEnsure the backend is running.")
     else:
         articles: List[Dict[str, Any]] = data.get("articles", [])
         if search_query:
-            st.info(f"🔍 共找到 {len(articles)} 条结果")
+            st.info(f"🔍 Found {len(articles)} results")
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("📰 文章总数", len(articles))
-        m2.metric("📂 分类数", len({a.get("category", "?") for a in articles}))
-        m3.metric("🏢 新闻源数", len({a.get("source", "?") for a in articles}))
-        m4.metric("⏰ 时间范围", f"{hours} 小时")
+        m1.metric("📰 Articles", len(articles))
+        m2.metric("📂 Categories", len({a.get("category", "?") for a in articles}))
+        m3.metric("🏢 Sources", len({a.get("source", "?") for a in articles}))
+        m4.metric("⏰ Time range", f"{hours} h")
         st.divider()
 
         import hashlib as _hashlib
 
-        with st.expander("🌊 Raw News Stream (Entropic Data) — 原始数据流", expanded=False):
-            st.caption("⚠️ 以下为未经秩序过滤的原始数据流。")
+        with st.expander("🌊 Raw News Stream", expanded=False):
+            st.caption("⚠️ Unfiltered raw data stream.")
             if articles:
                 for i, article in enumerate(articles, 1):
-                    title_preview = (article.get("title") or "（无标题）")[:80]
+                    title_preview = (article.get("title") or "(no title)")[:80]
                     _key_src  = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
                     _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
 
                     with st.expander(f"🔹 [{i}] {title_preview}…", expanded=False):
                         c1, c2, c3 = st.columns(3)
-                        c1.caption(f"📌 来源：{article.get('source', 'N/A')}")
-                        c2.caption(f"📍 分类：{article.get('category', 'N/A')}")
-                        c3.caption(f"⏰ 时间：{str(article.get('published', 'N/A'))[:10]}")
-                        st.write(article.get("description") or "（暂无摘要）")
+                        c1.caption(f"📌 Source: {article.get('source', 'N/A')}")
+                        c2.caption(f"📍 Category: {article.get('category', 'N/A')}")
+                        c3.caption(f"⏰ Date: {str(article.get('published', 'N/A'))[:10]}")
+                        st.write(article.get("description") or "(no summary)")
                         if article.get("link"):
-                            st.markdown(f"[📖 阅读原文]({article['link']})")
+                            st.markdown(f"[📖 Read original]({article['link']})")
 
-                        # 直达本体推演
-                        if st.button("⚔️ 直达因果链推演", key=f"news_deduce_{i}"):
+                        # Navigate to analysis
+                        if st.button("⚔️ Run Ontological Analysis", key=f"news_deduce_{i}"):
                             st.session_state.selected_news    = article
                             st.session_state.deduction_result = None
-                            st.session_state.current_page     = "🏠 主页"
+                            st.session_state.evented_result   = None
+                            st.session_state.current_page     = "🏠 Home"
                             st.rerun()
 
-                        # 知识图谱提取
+                        # Knowledge graph extraction
                         already = _cache_key in st.session_state.kg_cache
-                        btn_lbl = "✅ 已提取知识图" if already else "🧠 提取知识图"
+                        btn_lbl = "✅ KG extracted" if already else "🧠 Extract KG"
                         if st.button(btn_lbl, key=f"kg_btn_{i}"):
                             _text = " ".join(filter(None, [
                                 article.get("title", ""), article.get("description", ""),
                             ])).strip()
                             if _text:
-                                with st.spinner("提取中..."):
+                                with st.spinner("Extracting…"):
                                     _kg_resp = _api.extract_knowledge(_text)
                                 if _kg_resp.get("status") == "error" or (
                                     "error" in _kg_resp and "entities" not in _kg_resp
                                 ):
-                                    st.error(f"❌ 知识图提取失败：{_kg_resp.get('error')}")
+                                    st.error(f"❌ KG extraction failed: {_kg_resp.get('error')}")
                                 else:
                                     st.session_state.kg_cache[_cache_key] = _kg_resp
                                     st.rerun()
                             else:
-                                st.warning("⚠️ 该文章暂无文本内容可供提取。")
+                                st.warning("⚠️ No text content available for this article.")
 
                         if _cache_key in st.session_state.kg_cache:
                             _kg_data = st.session_state.kg_cache[_cache_key]
                             _entities_kg  = _kg_data.get("entities", [])
                             _relations_kg = _kg_data.get("relations", [])
                             with st.expander(
-                                f"🕸️ 知识图谱结果（实体: {len(_entities_kg)}, 关系: {len(_relations_kg)}）",
+                                f"🕸️ KG Result (entities: {len(_entities_kg)}, relations: {len(_relations_kg)})",
                                 expanded=True,
                             ):
                                 if _entities_kg:
-                                    st.write("**📋 实体**")
+                                    st.write("**📋 Entities**")
                                     try:
                                         import pandas as pd
                                         st.dataframe(pd.DataFrame([
@@ -1138,7 +1101,7 @@ elif page == "📰 实时新闻":
                                         for _e in _entities_kg:
                                             st.write(f"- **{_e.get('name')}** ({_e.get('type','?')})")
                                 if _relations_kg:
-                                    st.write("**🔗 关系**")
+                                    st.write("**🔗 Relations**")
                                     try:
                                         import pandas as pd
                                         st.dataframe(pd.DataFrame([
@@ -1152,19 +1115,196 @@ elif page == "📰 实时新闻":
 
 
 # ===========================================================================
-# Page: 🕸 知识图谱
+# Page: 📝 Custom Analysis
 # ===========================================================================
-elif page == "🕸 知识图谱":
-    st.title("🕸 知识图谱 & 本体诊断")
+elif page == "📝 Custom Analysis":
+    st.title("📝 Custom Content Analysis")
+    st.caption(
+        "Analyse your own text content (and optionally a source URL) using the "
+        "Evented or Grounded reasoning engine. Results are displayed below."
+    )
+    st.info(
+        "**How to use:** Paste or type any text (news, report, article excerpt) in the box below. "
+        "Optionally add a source URL for Deep Ontology enrichment (level ≥ 2). "
+        "Select your engine and click **Run Analysis**."
+    )
+
+    _ca_col1, _ca_col2 = st.columns([3, 2], gap="large")
+
+    with _ca_col1:
+        _ca_text = st.text_area(
+            "Content to analyse",
+            height=200,
+            placeholder="Paste article text, news summary, or any relevant content here…",
+            key="ca_text",
+        )
+        _ca_url = st.text_input(
+            "Source URL (optional)",
+            placeholder="https://example.com/article",
+            key="ca_url",
+            help="Providing a URL enables Deep Ontology level 2+ enrichment (fetch original source).",
+        )
+
+        _ca_engine = st.session_state.get("cfg_engine", "Evented")
+        _ca_deep   = int(st.session_state.get("cfg_deep_level", 0))
+        _ca_btn_c1, _ca_btn_c2 = st.columns(2)
+        with _ca_btn_c1:
+            _ca_run_ev = st.button(
+                "▶ Run Evented",
+                type="primary",
+                use_container_width=True,
+                key="ca_run_evented",
+            )
+        with _ca_btn_c2:
+            _ca_run_gr = st.button(
+                "▶ Run Grounded",
+                use_container_width=True,
+                key="ca_run_grounded",
+            )
+        if _ca_run_gr:
+            st.caption("⚠️ Grounded mode requires a non-empty Knowledge Graph in KuzuDB.")
+
+    with _ca_col2:
+        st.markdown("**Engine settings (from sidebar)**")
+        st.markdown(
+            f"Engine: **{_ca_engine}** · Deep level: **{_ca_deep}** · "
+            f"Hypothesis: **{'on' if st.session_state.get('cfg_show_hidden', True) else 'off'}**"
+        )
+        st.caption("Change engine and Deep Ontology level in the sidebar's Reasoning Engine section.")
+
+    if _ca_run_ev or _ca_run_gr:
+        _ca_text_val = (_ca_text or "").strip()
+        _ca_url_val  = (_ca_url or "").strip()
+
+        if not _ca_text_val:
+            st.warning("⚠️ Please enter some content to analyse.")
+        else:
+            _ca_news = {
+                "title":       _ca_text_val[:120],
+                "summary":     _ca_text_val,
+                "description": _ca_text_val,
+                "url":         _ca_url_val,
+                "entities":    [],
+            }
+            _ca_is_deep = _ca_deep > 0
+            _ca_deep_cfg = (
+                {"level": _ca_deep, "timeout_seconds": 20, "max_sources": 3}
+                if _ca_is_deep else None
+            )
+
+            if _ca_run_ev:
+                with st.status("⚙️ Running Evented analysis…", expanded=True) as _ca_st:
+                    try:
+                        st.write("📡 Calling evented_deduce…")
+                        _ca_ev_resp = _api.evented_deduce(
+                            _ca_news,
+                            deep_mode=_ca_is_deep,
+                            deep_config=_ca_deep_cfg,
+                        )
+                        if _ca_ev_resp.get("status") == "success" or "events" in _ca_ev_resp:
+                            _ca_st.update(label="✅ Evented analysis complete", state="complete")
+                        else:
+                            _ca_st.update(label="⚠ Analysis failed", state="error")
+                            st.error(str(_ca_ev_resp.get("error") or _ca_ev_resp.get("detail", "Unknown error")))
+                            _ca_ev_resp = None
+                    except Exception as _ca_exc:
+                        _ca_st.update(label="⚠ Connection failed", state="error")
+                        st.error(str(_ca_exc))
+                        _ca_ev_resp = None
+
+                if _ca_ev_resp:
+                    _ca_concl = _ca_ev_resp.get("conclusion", {})
+                    _ca_cred  = _ca_ev_resp.get("credibility", {})
+                    _ca_evts  = _ca_ev_resp.get("events", [])
+                    _ca_pats  = _ca_ev_resp.get("active_patterns", [])
+
+                    st.subheader("Evented Result")
+                    _ca_c1, _ca_c2 = st.columns(2)
+                    with _ca_c1:
+                        st.metric("Events extracted", len(_ca_evts))
+                        st.metric("Active patterns", len(_ca_pats))
+                    with _ca_c2:
+                        _ov = _ca_cred.get("overall_score", 0)
+                        st.metric("Credibility", f"{_ov:.0%}")
+                        _hr = _ca_cred.get("hypothesis_ratio", 0)
+                        st.metric("Hypothesis ratio", f"{_hr:.0%}")
+
+                    st.markdown("**Conclusion**")
+                    st.info(_ca_concl.get("conclusion", "(No conclusion)"))
+
+                    _ca_ev_path = _ca_concl.get("evidence_path", {})
+                    if _ca_ev_path.get("summary"):
+                        st.markdown("**Evidence path (T2 grounded)**")
+                        st.success(_ca_ev_path["summary"])
+
+                    if st.session_state.get("cfg_show_hidden", True):
+                        _ca_hyp = _ca_concl.get("hypothesis_path", {})
+                        if _ca_hyp.get("summary"):
+                            st.markdown("**Hypothesis path (T1 inferred)**")
+                            st.warning(_ca_hyp["summary"])
+
+                    with st.expander("📋 Full JSON response", expanded=False):
+                        st.json(_ca_ev_resp)
+
+            elif _ca_run_gr:
+                with st.status("⚙️ Running Grounded analysis…", expanded=True) as _ca_st:
+                    try:
+                        st.write("📡 Calling grounded_deduce…")
+                        _ca_gr_resp = _api.grounded_deduce(_ca_news)
+                        if "error" in _ca_gr_resp and "deduction_result" not in _ca_gr_resp:
+                            _ca_st.update(label="⚠ Analysis failed", state="error")
+                            st.error(str(_ca_gr_resp["error"]))
+                            _ca_gr_resp = None
+                        else:
+                            _ca_st.update(label="✅ Grounded analysis complete", state="complete")
+                    except Exception as _ca_exc:
+                        _ca_st.update(label="⚠ Connection failed", state="error")
+                        st.error(str(_ca_exc))
+                        _ca_gr_resp = None
+
+                if _ca_gr_resp:
+                    _ca_dr = _ca_gr_resp.get("deduction_result", _ca_gr_resp)
+                    _ca_driv = _ca_dr.get("driving_factor") or _ca_dr.get("mechanism_summary") or "(No driving factor)"
+                    _ca_conf = float(_ca_dr.get("confidence") or 0.5)
+
+                    st.subheader("Grounded Result")
+                    _cg1, _cg2 = st.columns(2)
+                    with _cg1:
+                        st.metric("Confidence", f"{int(_ca_conf * 100)}%")
+                    with _cg2:
+                        _ca_logstate = "Converging" if _ca_conf >= 0.65 else "Diverging" if _ca_conf >= 0.45 else "Uncertain"
+                        st.metric("Logic state", _ca_logstate)
+
+                    st.markdown("**Core driving factor**")
+                    st.info(_ca_driv)
+
+                    _ca_vgap = _ca_dr.get("verification_gap", "")
+                    if _ca_vgap:
+                        st.warning(f"Verification gap: {_ca_vgap}")
+
+                    with st.expander("📋 Full JSON response", expanded=False):
+                        st.json(_ca_gr_resp)
+
+
+# ===========================================================================
+# Page: 🕸 KG Tools
+# ===========================================================================
+elif page == "🕸 KG Tools":
+    st.title("🕸 Knowledge Graph Tools")
+    st.caption(
+        "View and query the Knowledge Graph stored in KuzuDB. "
+        "The graph is populated by the intelligence ingestion pipeline. "
+        "Use the Cypher query panel to explore entity relationships directly."
+    )
 
     col_graph, col_chat = st.columns([3, 2], gap="large")
 
     with col_graph:
-        st.subheader("🌐 知识图谱视图")
-        if st.button("🔄 更新图谱", type="primary", key="kg_update"):
-            with st.spinner("正在摄入图谱数据…"):
+        st.subheader("🌐 Knowledge Graph View")
+        if st.button("🔄 Update Graph", type="primary", key="kg_update"):
+            with st.spinner("Ingesting graph data…"):
                 _resp = _api.ingest_news()
-                st.success("✅ 完成" if "error" not in _resp else f"❌ {_resp['error']}")
+                st.success("✅ Done" if "error" not in _resp else f"❌ {_resp['error']}")
 
         _ents = st.session_state.graph_data.get("entities", [])
         _rels = st.session_state.graph_data.get("relations", [])
@@ -1175,31 +1315,31 @@ elif page == "🕸 知识图谱":
             "edges": [{"from": r.get("from",""), "to": r.get("to",""), "type": r.get("relation","")}
                       for r in _rels if r.get("from") in _known_ids and r.get("to") in _known_ids],
         }
-        st.caption(f"图谱共 **{len(_gdata['nodes'])}** 个节点，**{len(_gdata['edges'])}** 条边")
+        st.caption(f"Graph: **{len(_gdata['nodes'])}** nodes · **{len(_gdata['edges'])}** edges")
         render_graph(_gdata)
 
     with col_chat:
-        st.subheader("💬 Cypher 查询")
-        st.caption("仅 Kuzu 后端支持 Cypher 查询（需设置 `GRAPH_BACKEND=kuzu`）。")
+        st.subheader("💬 Cypher Query")
+        st.caption("Cypher queries are supported with KuzuDB backend (`GRAPH_BACKEND=kuzu`).")
         _default_cypher = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
         _cypher_input = st.text_area(
-            "Cypher 查询语句", value=_default_cypher, height=100,
+            "Cypher query", value=_default_cypher, height=100,
             key="kg_cypher_input_main", placeholder=_default_cypher,
         )
         _c1, _c2 = st.columns([1, 1])
         with _c1:
-            _run_query = st.button("⚔️ Reveal Order", type="primary", key="kg_run_query_main")
+            _run_query = st.button("▶ Run Query", type="primary", key="kg_run_query_main")
         with _c2:
-            if st.button("🗑️ 清除历史", key="kg_clear_history"):
+            if st.button("🗑️ Clear history", key="kg_clear_history"):
                 st.session_state.kg_chat_history = []
                 st.rerun()
 
         if _run_query:
             _q = (_cypher_input or "").strip()
             if not _q:
-                st.warning("⚠️ 请输入 Cypher 查询语句。")
+                st.warning("⚠️ Please enter a Cypher query.")
             else:
-                with st.spinner("⏳ 执行中…"):
+                with st.spinner("⏳ Running…"):
                     _qr = _api.run_kg_query(_q)
                 st.session_state.kg_chat_history.insert(0, {"query": _q, "response": _qr})
 
@@ -1216,21 +1356,21 @@ elif page == "🕸 知识图谱":
             else:
                 _results = _resp.get("results", [])
                 if _results:
-                    st.success(f"✅ {len(_results)} 条结果")
+                    st.success(f"✅ {len(_results)} results")
                     try:
                         import pandas as pd
                         st.dataframe(pd.DataFrame(_results), use_container_width=True, height=200)
                     except Exception:
                         st.json(_results)
                 else:
-                    st.info("查询成功，但无结果。")
+                    st.info("Query succeeded but returned no results.")
             st.markdown("---")
 
     st.divider()
 
-    # Detail tabs — 新增「笛卡尔积诊断」
+    # Detail tabs
     tab_entities, tab_relations, tab_neighbours, tab_diagnostic = st.tabs([
-        "📋 实体列表", "🔗 关系列表", "🔍 邻居查询", "🧮 笛卡尔积诊断"
+        "📋 Entity List", "🔗 Relation List", "🔍 Neighbour Query", "🧮 Cartesian Diagnostic"
     ])
 
     with tab_entities:
@@ -1247,7 +1387,7 @@ elif page == "🕸 知识图谱":
                     for e in entities_list:
                         st.write(f"**{e.get('name')}** ({e.get('type','?')})")
             else:
-                st.info("📭 图谱中暂无实体。请点击「更新图谱」按钮先进行数据摄入。")
+                st.info("📭 No entities in the graph. Click **Update Graph** to ingest data first.")
 
     with tab_relations:
         relations_resp = _api.get_kg_relations(limit=300)
@@ -1263,10 +1403,10 @@ elif page == "🕸 知识图谱":
                     for r in relations_list:
                         st.write(f"**{r.get('from')}** –[{r.get('relation')}]→ **{r.get('to')}**")
             else:
-                st.info("📭 图谱中暂无关系。请先进行数据摄入。")
+                st.info("📭 No relations in the graph. Ingest data first.")
 
     with tab_neighbours:
-        entity_query = st.text_input("输入实体名称", placeholder="例如：Federal Reserve")
+        entity_query = st.text_input("Entity name", placeholder="e.g. Federal Reserve")
         if entity_query:
             nbr_resp = _api.get_kg_neighbours(entity_query)
             if "error" in nbr_resp:
@@ -1274,7 +1414,7 @@ elif page == "🕸 知识图谱":
             else:
                 neighbours: List[Dict[str, Any]] = nbr_resp.get("neighbours", [])
                 if neighbours:
-                    st.success(f"找到 {len(neighbours)} 个邻居节点")
+                    st.success(f"Found {len(neighbours)} neighbour nodes")
                     try:
                         import pandas as pd
                         st.dataframe(pd.DataFrame(neighbours), use_container_width=True)
@@ -1282,12 +1422,12 @@ elif page == "🕸 知识图谱":
                         for n in neighbours:
                             st.write(f"→ **{n.get('name')}** ({n.get('type')}) via [{n.get('relation')}]")
 
-    # ── 笛卡尔积诊断 Tab ───────────────────────────────────────────────────
+    # ── Cartesian Diagnostic Tab ────────────────────────────────────────────
     with tab_diagnostic:
-        st.markdown("### 🧮 笛卡尔积动力模式诊断")
+        st.markdown("### 🧮 Cartesian Dynamic Pattern Diagnostic")
         st.caption(
-            "输入三元组 (源实体类型, 关系类型, 目标实体类型)，"
-            "系统从模式库中查询对应的动力模式、典型后果与先验置信度。"
+            "Enter a triple (source entity type, relation type, target entity type) "
+            "to query the pattern library for matching dynamic patterns, typical outcomes, and prior confidence."
         )
 
         try:
@@ -1298,7 +1438,7 @@ elif page == "🕸 知识图谱":
             _schema_available = True
         except ImportError:
             _schema_available = False
-            st.warning("⚠️ `ontology/relation_schema.py` 未找到，请确认后端模块已部署。")
+            st.warning("⚠️ `ontology/relation_schema.py` not found. Ensure the backend module is deployed.")
 
         if _schema_available:
             _e_types = [e.value for e in EntityType]
@@ -1307,24 +1447,24 @@ elif page == "🕸 知识图谱":
             col_d1, col_d2, col_d3 = st.columns(3)
             with col_d1:
                 _d_src = st.selectbox(
-                    "🔵 源实体类型", _e_types,
+                    "🔵 Source entity type", _e_types,
                     index=_e_types.index("state") if "state" in _e_types else 0,
                     key="diag_src",
                 )
             with col_d2:
                 _d_rel = st.selectbox(
-                    "⚡ 关系类型", _r_types,
+                    "⚡ Relation type", _r_types,
                     index=_r_types.index("sanction") if "sanction" in _r_types else 0,
                     key="diag_rel",
                 )
             with col_d3:
                 _d_tgt = st.selectbox(
-                    "🔴 目标实体类型", _e_types,
+                    "🔴 Target entity type", _e_types,
                     index=_e_types.index("state") if "state" in _e_types else 0,
                     key="diag_tgt",
                 )
 
-            if st.button("🧮 执行笛卡尔积诊断", type="primary", key="run_diag"):
+            if st.button("🧮 Run Cartesian Diagnostic", type="primary", key="run_diag"):
                 _report = generate_diagnostic_report(_d_src, _d_rel, _d_tgt)
                 st.session_state["diag_report"] = _report
 
@@ -1342,16 +1482,16 @@ elif page == "🕸 知识图谱":
                         unsafe_allow_html=True,
                     )
                     st.markdown(
-                        f"**三元组：** `{_rpt.input_triple[0]}` × `{_rpt.input_triple[1]}` × `{_rpt.input_triple[2]}`"
+                        f"**Triple:** `{_rpt.input_triple[0]}` × `{_rpt.input_triple[1]}` × `{_rpt.input_triple[2]}`"
                     )
                     _cp = _rpt.confidence_prior
-                    st.markdown(f"**先验置信度：** {_cp:.0%}")
+                    st.markdown(f"**Prior confidence:** {_cp:.0%}")
                     st.markdown(
                         f'<div class="conf-bar-wrap"><div class="conf-bar" style="width:{int(_cp*100)}%"></div></div>',
                         unsafe_allow_html=True,
                     )
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-                    st.markdown("**📋 典型后果（按概率降序）**")
+                    st.markdown("**📋 Typical outcomes (descending probability)**")
                     st.markdown(
                         " ".join(f'<span class="outcome-pill">{o}</span>' for o in _rpt.typical_outcomes),
                         unsafe_allow_html=True,
@@ -1359,38 +1499,38 @@ elif page == "🕸 知识图谱":
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
                     c_comp, c_inv = st.columns(2)
                     with c_comp:
-                        st.markdown("**🔗 高阶组合效应**")
+                        st.markdown("**🔗 Higher-order composition effects**")
                         if _rpt.composition_chain:
                             for hint in _rpt.composition_chain:
                                 st.markdown(f"- `{hint}`")
                         else:
-                            st.caption("暂无组合记录")
+                            st.caption("No composition records")
                     with c_inv:
-                        st.markdown("**↩️ 逆动力模式（群论反元素）**")
+                        st.markdown("**↩️ Inverse dynamic pattern (group-theory inverse)**")
                         if _rpt.inverse_pattern:
                             st.markdown(f"`{_rpt.inverse_pattern}`")
-                            st.caption("当逆模式激活时，当前模式后果被反转或抵消。")
+                            st.caption("When the inverse pattern activates, outcomes of the current pattern are reversed.")
                         else:
-                            st.caption("暂未定义逆模式")
+                            st.caption("No inverse pattern defined")
                 else:
-                    st.warning("无精确匹配，以下为模糊匹配结果：")
+                    st.warning("No exact match. Showing fuzzy matches:")
                     for (src, rel, tgt), pat, score in _rpt.fuzzy_matches:
-                        with st.expander(f"模糊匹配: {pat.pattern_name} (score={score:.2f})", expanded=False):
-                            st.write(f"**三元组：** {src.value} × {rel.value} × {tgt.value}")
-                            st.write(f"**领域：** {pat.domain}")
+                        with st.expander(f"Fuzzy match: {pat.pattern_name} (score={score:.2f})", expanded=False):
+                            st.write(f"**Triple:** {src.value} × {rel.value} × {tgt.value}")
+                            st.write(f"**Domain:** {pat.domain}")
                             for o in pat.typical_outcomes:
                                 st.write(f"  - {o}")
 
                 st.markdown(f'<div class="diag-note">📝 {_rpt.diagnostic_note}</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-            with st.expander("📚 当前模式库总览", expanded=False):
+            with st.expander("📚 Full Pattern Library", expanded=False):
                 try:
                     import pandas as pd
                     _df_pats = pd.DataFrame([
                         {"src": k[0].value, "relation": k[1].value, "tgt": k[2].value,
-                         "模式名称": v.pattern_name, "领域": v.domain,
-                         "机制类别": v.mechanism_class, "先验置信度": f"{v.confidence_prior:.0%}"}
+                         "pattern_name": v.pattern_name, "domain": v.domain,
+                         "mechanism_class": v.mechanism_class, "prior_confidence": f"{v.confidence_prior:.0%}"}
                         for k, v in CARTESIAN_PATTERN_REGISTRY.items()
                     ])
                     st.dataframe(_df_pats, use_container_width=True, height=400)
@@ -1398,53 +1538,54 @@ elif page == "🕸 知识图谱":
                     for (src, rel, tgt), pat in CARTESIAN_PATTERN_REGISTRY.items():
                         st.write(f"**{pat.pattern_name}** — {src.value} × {rel.value} × {tgt.value}")
 
-            with st.expander("💡 如何在推演管线中使用笛卡尔积诊断", expanded=False):
+            with st.expander("💡 How the Cartesian Diagnostic integrates with the reasoning pipeline", expanded=False):
                 st.markdown("""
-                **联动流程：**
-                1. `analysis_service.perform_deduction` 提取 `MechanismLabel` 列表
-                2. 调用 `relation_schema.enrich_mechanism_labels_with_patterns()` 为每条标签查询模式库
-                3. 调用 `build_pattern_context_for_prompt()` 生成「先验后果」片段注入 LLM prompt
-                4. LLM 被强制从「典型后果」中选择推演方向，而非自由发挥
+                **Integration flow:**
+                1. `analysis_service.perform_deduction` extracts a `MechanismLabel` list
+                2. `relation_schema.enrich_mechanism_labels_with_patterns()` queries the pattern library for each label
+                3. `build_pattern_context_for_prompt()` generates a "prior outcomes" fragment injected into the LLM prompt
+                4. The LLM is constrained to choose from "typical outcomes" rather than generating freely
 
-                **群论类比（长远方向）：**
-                - 当前：E × R × E → DynamicPattern（有限集合映射）
-                - 下一步：为 Pattern 定义「组合律」，即 Pattern_A ∘ Pattern_B = Pattern_C
-                - 长远：引入 Lie group 连续对称性，描述模式在时间维度上的「流形演化」
+                **Group-theory analogy (long-term direction):**
+                - Current: E × R × E → DynamicPattern (finite set mapping)
+                - Next: Define a "composition law" for Patterns: Pattern_A ∘ Pattern_B = Pattern_C
+                - Long-term: Introduce Lie group continuous symmetry to describe pattern manifold evolution over time
                 """)
 
 
 # ===========================================================================
-# Page: ⚙️ 系统状态
+# Page: ⚙️ System Status
 # ===========================================================================
-elif page == "⚙️ 系统状态":
-    st.title("⚙️ 系统状态与配置")
-    st.subheader("🔌 后端服务")
+elif page == "⚙️ System Status":
+    st.title("⚙️ System Status & Configuration")
+    st.caption("Monitor backend connectivity and view configured news sources.")
+    st.subheader("🔌 Backend Service")
     sources_resp = _api.get_news_sources()
     if "error" in sources_resp:
         st.error(
-            f"❌ 无法连接到 FastAPI 后端：{sources_resp['error']}\n\n"
-            "启动后端：`python -m uvicorn app.main:app --reload --port 8001`"
+            f"❌ Cannot connect to FastAPI backend: {sources_resp['error']}\n\n"
+            "Start backend: `python -m uvicorn app.main:app --reload --port 8001`"
         )
     else:
-        st.success(f"✅ FastAPI 后端：正常 ({_backend_url})")
+        st.success(f"✅ FastAPI backend: OK ({_backend_url})")
         sources_list: List[Dict[str, Any]] = sources_resp.get("sources", [])
         m1, m2 = st.columns(2)
-        m1.metric("配置新闻源数", len(sources_list))
-        m2.metric("系统状态", "🟢 正常")
+        m1.metric("Configured sources", len(sources_list))
+        m2.metric("System status", "🟢 OK")
         if sources_list:
-            st.subheader("新闻源列表")
+            st.subheader("News Sources")
             for source in sources_list:
-                with st.expander(f"📡 {source.get('name', '未知')}"):
-                    st.write(f"**分类：** {source.get('category', 'N/A')}")
-                    st.write(f"**优先级：** {source.get('priority', 'N/A')}")
+                with st.expander(f"📡 {source.get('name', 'Unknown')}"):
+                    st.write(f"**Category:** {source.get('category', 'N/A')}")
+                    st.write(f"**Priority:** {source.get('priority', 'N/A')}")
                     st.caption(source.get("url", "N/A"))
 
-    st.subheader("📊 系统信息")
+    st.subheader("📊 System Information")
     st.info(
-        f"**版本：** 2.0.0  \n"
-        f"**后端地址：** {_backend_url}  \n"
-        f"**页面刷新时间：** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n"
-        "**平台：** EL'druin Intelligence Platform v2  \n"
-        "**知识图谱：** Kuzu（嵌入式）/ NetworkX（备用）  \n"
-        "**本体模块：** CAMEO + FIBO 融合 | 笛卡尔积模式库 v2"
+        f"**Version:** 2.0.0  \n"
+        f"**Backend URL:** {_backend_url}  \n"
+        f"**Page load time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n"
+        "**Platform:** EL'druin Intelligence Platform v2  \n"
+        "**Knowledge Graph:** Kuzu (embedded) / NetworkX (fallback)  \n"
+        "**Ontology module:** CAMEO + FIBO fusion | Cartesian pattern library v2"
     )
