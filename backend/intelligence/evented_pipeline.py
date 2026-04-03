@@ -374,12 +374,12 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     ------------------------------------
     An event is rejected (T0) if ANY of the following hold:
       - ``confidence <= 0``
-      - ``evidence.quote`` is missing or empty
       - ``confidence < _T0_CONF_THRESHOLD`` (before *or* after folding)
 
-    Exception to quote-length rule: if the event type has strong trigger
-    keywords present in the source text, a short quote is tolerated but
-    the event is downgraded to tier T1 and a verification_gap entry is added.
+    Missing or short evidence quotes are **not** hard-rejected; instead a
+    ``verification_gap`` entry is added and the event is kept as T1.  This
+    avoids mass-rejection for otherwise plausible events whose quote was
+    simply not extracted cleanly.
 
     Normalisation
     -------------
@@ -433,8 +433,8 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
         confidence = float(evt.get("confidence", 0.0))
 
-        # --- Initial T0 check: reject zero/negative confidence or empty quote ---
-        if confidence <= 0 or not q:
+        # --- Initial T0 check: reject zero/negative confidence ---
+        if confidence <= 0:
             continue
         if confidence < _T0_CONF_THRESHOLD:
             continue
@@ -444,19 +444,27 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         inference_rationale: str = str(evt.get("inference_rationale") or "")[:200]
         verification_gap: List[str] = list(evt.get("verification_gap") or [])
 
+        # --- Missing quote: add gap but do not hard-reject ---
+        if not q:
+            if "evidence quote missing; event trigger inferred from context" not in verification_gap:
+                verification_gap.append(
+                    "evidence quote missing; event trigger inferred from context"
+                )
+
         # --- Short-quote handling: keep as T1 with verification_gap ---
         force_t1_short_quote = False
         if len(q) < _MIN_QUOTE_LEN:
-            # Keep only when strong trigger is present in the quote
+            force_t1_short_quote = True
             if _quote_has_trigger(q, evt["type"]):
-                force_t1_short_quote = True
-                verification_gap = list(verification_gap)
                 if "need more context: quote too short for full verification" not in verification_gap:
                     verification_gap.append(
                         "need more context: quote too short for full verification"
                     )
             else:
-                continue  # reject: short quote with no trigger
+                if "evidence quote missing or too short; trigger keywords absent" not in verification_gap:
+                    verification_gap.append(
+                        "evidence quote missing or too short; trigger keywords absent"
+                    )
 
         # --- Confidence folding ---
         if inferred_fields:
@@ -486,6 +494,61 @@ def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
         # --- De-duplication ---
         eid = evt.get("id") or _stable_id(evt["type"], q)
+        if eid in seen_ids:
+            continue
+        seen_ids.add(eid)
+        evt["id"] = eid
+
+        result.append(evt)
+
+    return result
+
+
+def _fallback_top_events(
+    candidates: List[Dict[str, Any]],
+    max_keep: int = 2,
+) -> List[Dict[str, Any]]:
+    """Return up to *max_keep* highest-confidence candidates as low-confidence T1 events.
+
+    Called by :func:`extract_events` when :func:`postprocess_events` rejects
+    all candidates.  Each returned event receives a ``verification_gap`` entry
+    documenting the fallback reason and has its confidence clamped to at most
+    0.35 to signal low reliability.
+    """
+    valid = [c for c in candidates if float(c.get("confidence", 0)) > 0]
+    if not valid:
+        return []
+
+    valid_sorted = sorted(
+        valid, key=lambda c: float(c.get("confidence", 0)), reverse=True
+    )
+
+    result: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+
+    for _evt in valid_sorted[:max_keep]:
+        evt = dict(_evt)
+        evt["type"] = (evt.get("type") or "").strip()
+        evidence = evt.get("evidence")
+        if isinstance(evidence, dict):
+            q = (evidence.get("quote") or "").strip()
+            evt["evidence"] = dict(evidence)
+            evt["evidence"]["quote"] = q
+        else:
+            evt["evidence"] = {"quote": ""}
+            q = ""
+
+        raw_conf = float(evt.get("confidence", 0.1))
+        evt["confidence"] = round(min(0.35, max(0.1, raw_conf * 0.5)), 4)
+        evt["tier"] = "T1"
+        evt["inferred_fields"] = list(evt.get("inferred_fields") or [])
+        evt["inference_rationale"] = str(evt.get("inference_rationale") or "")[:200]
+        gaps = list(evt.get("verification_gap") or [])
+        if "low-confidence fallback: all candidates rejected by T0 filter" not in gaps:
+            gaps.append("low-confidence fallback: all candidates rejected by T0 filter")
+        evt["verification_gap"] = gaps
+
+        eid = evt.get("id") or _stable_id(evt.get("type", "unknown"), q)
         if eid in seen_ids:
             continue
         seen_ids.add(eid)
@@ -621,6 +684,10 @@ def extract_events(
     falls back to LLM.  Compound multi-event rules are always applied to
     supplement extracted candidates.  Candidate events are always
     post-processed (tiered, filtered, normalised) before being returned.
+
+    If post-processing rejects every candidate, :func:`_fallback_top_events`
+    is called to rescue the top-2 by confidence as low-confidence T1 events,
+    reducing spurious "0 events" outcomes for news items with weak evidence.
     """
     candidates = extract_events_rule_based(text)
     if not candidates and llm_service is not None:
@@ -634,7 +701,15 @@ def extract_events(
         if evt["type"] not in existing_types:
             candidates.append(evt)
             existing_types.add(evt["type"])
-    return postprocess_events(candidates)
+    result = postprocess_events(candidates)
+    if not result and candidates:
+        logger.info(
+            "EventedPipeline: all %d candidates rejected by T0 filter; "
+            "applying top-event fallback",
+            len(candidates),
+        )
+        result = _fallback_top_events(candidates)
+    return result
 
 
 # ---------------------------------------------------------------------------

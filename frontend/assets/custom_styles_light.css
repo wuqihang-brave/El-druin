@@ -148,6 +148,15 @@ section[data-testid="stSidebar"] .stButton > button {
   color: #FFFFFF !important;
 }
 
+/* Selected sidebar navigation item: white text on cobalt background.
+   Must override the broad `section * { color: var(--color-accent) }` rule
+   above to prevent invisible cobalt-on-cobalt text. */
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
+  color: #FFFFFF !important;
+  background-color: #0047AB !important;
+}
+
 /* Sidebar footer text */
 section[data-testid="stSidebar"] .sidebar-footer {
   color: var(--color-text-secondary) !important;

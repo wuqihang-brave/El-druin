@@ -866,6 +866,18 @@ def analyze_with_evented_pipeline(
                 "deep_mode":       request.deep_mode,
             },
         }
+
+        # Lie algebra vector space analysis (bounded, optional)
+        try:
+            from ontology.lie_algebra_space import compute_pattern_trajectory  # type: ignore
+            active_names  = [ap["pattern"] for ap in result.active_patterns]
+            derived_names = [dp["pattern"] for dp in result.derived_patterns]
+            lie_algebra = compute_pattern_trajectory(active_names, derived_names)
+        except Exception as lie_exc:
+            logger.debug("Lie algebra computation skipped: %s", lie_exc)
+            lie_algebra = {"enabled": False, "reason": "computation_unavailable"}
+        response["lie_algebra"] = lie_algebra
+
         if enrichment_dict is not None:
             response["enrichment"] = enrichment_dict
 
