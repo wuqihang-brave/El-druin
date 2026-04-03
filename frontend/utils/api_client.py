@@ -570,23 +570,35 @@ class APIClient:
             },
         )
 
-    def evented_deduce(self, news: Dict[str, Any]) -> Dict[str, Any]:
+    def evented_deduce(
+        self,
+        news: Dict[str, Any],
+        deep_mode: bool = False,
+        deep_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Call the evented reasoning pipeline endpoint for a news item.
 
         Sends the news summary to ``POST /analysis/evented/deduce`` and returns
         the three-stage result: events → active/derived patterns → conclusion +
-        credibility.
+        credibility.  When *deep_mode* is enabled the backend will also run the
+        evidence enrichment pipeline and include an ``"enrichment"`` key in the
+        response.
 
         Args:
-            news: News item dict.  Recognised keys:
-                * ``"summary"`` / ``"description"`` – news body text
-                * ``"title"``                       – news headline
-                * ``"entities"``                    – list of entity name strings
+            news:        News item dict.  Recognised keys:
+                           * ``"summary"`` / ``"description"`` – news body text
+                           * ``"title"``                       – news headline
+                           * ``"entities"``                    – list of entity name strings
+                           * ``"url"``                         – article URL (used as source_url)
+                           * ``"published"`` / ``"published_at"`` – publish date
+                           * ``"source"``                      – publisher name
+            deep_mode:   Enable Deep Ontology Analysis (enrichment + re-reasoning).
+            deep_config: Optional dict with keys: level (0-3), timeout_seconds,
+                         max_sources.
 
         Returns:
-            Full response dict from the backend, containing ``"status"``,
-            ``"events"``, ``"active_patterns"``, ``"derived_patterns"``,
-            ``"conclusion"``, and ``"credibility"``.
+            Full response dict from the backend.  In deep mode this includes
+            an ``"enrichment"`` key with provenance and cache-hit status.
         """
         news_body = news.get("summary") or news.get("description") or ""
         title = news.get("title", "")
@@ -601,14 +613,35 @@ class APIClient:
         else:
             seed_entities = [str(e) for e in raw_entities if e]
 
-        return self._post(
-            "/analysis/evented/deduce",
-            json={
-                "news_fragment": news_fragment,
-                "seed_entities": seed_entities,
-                "claim": f"What will be the impact of {claim_title}?",
-            },
-        )
+        payload: Dict[str, Any] = {
+            "news_fragment": news_fragment,
+            "seed_entities": seed_entities,
+            "claim": f"What will be the impact of {claim_title}?",
+            "deep_mode": deep_mode,
+        }
+
+        if deep_mode:
+            if deep_config:
+                payload["deep_config"] = deep_config
+            # Pass source URL for level-2+ enrichment
+            article_url = news.get("url") or news.get("link") or ""
+            if article_url:
+                payload["source_url"] = article_url
+            # Pass local metadata for level-1 enrichment
+            published = (
+                news.get("published_at")
+                or news.get("published")
+                or ""
+            )
+            source_name = news.get("source") or ""
+            if published or source_name or article_url:
+                payload["local_meta"] = {
+                    "published_at": str(published) if published else "",
+                    "source":       source_name,
+                    "url":          article_url,
+                }
+
+        return self._post("/analysis/evented/deduce", json=payload)
 
 
 # Module-level singleton – import and use directly in Streamlit pages.

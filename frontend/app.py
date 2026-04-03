@@ -267,12 +267,25 @@ if _sidebar_entity_names:
         st.rerun()
 
 st.sidebar.markdown("<hr style='border-color:#E0E0E0;margin:8px 0'/>", unsafe_allow_html=True)
-with st.sidebar.expander("⚙️ 配置面板", expanded=False):
-    from datetime import date as _date
+with st.sidebar.expander("⚙️ 推演引擎配置", expanded=False):
     st.markdown("**📡 数据源**")
     st.selectbox("选择数据源", ["实时新闻", "历史数据", "自定义输入"], key="cfg_data_source", label_visibility="collapsed")
     st.markdown("**🤖 分析模式**")
     st.radio("模式", ["本体论模式", "快速模式", "深度模式"], key="cfg_model_mode", label_visibility="collapsed")
+    st.markdown("**🔬 推演深度（Deep Ontology）**")
+    st.slider(
+        "深度级别",
+        min_value=0, max_value=3, value=0,
+        key="cfg_deep_level",
+        help="0=普通模式  1=仅本地元数据  2=+抓取原文  3=+全网搜索",
+        label_visibility="collapsed",
+    )
+    st.checkbox(
+        "显示潜在隐变量（假设路径）",
+        key="cfg_show_hidden",
+        value=True,
+        help="在三段式推演结论中显示 T1 假设路径",
+    )
 
 st.sidebar.markdown("<hr style='border-color:#E0E0E0;margin:8px 0'/>", unsafe_allow_html=True)
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
@@ -694,15 +707,33 @@ if page == "🏠 主页":
             # ─── Evented 三段式推演面板 ────────────────────────────────────
             _sel_title = _selected.get("title", "（无标题）")
             _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
-            st.markdown(f"**针对事件：** `{_sel_title}`")
+
+            # Read engine config from sidebar session state
+            _deep_level     = int(st.session_state.get("cfg_deep_level", 0))
+            _show_hidden    = bool(st.session_state.get("cfg_show_hidden", True))
+            _is_deep_mode   = _deep_level > 0
+
+            _mode_label = "🔬 深度本体分析" if _is_deep_mode else "⚙️ 普通推演"
+            st.markdown(
+                f"**针对事件：** `{_sel_title}`"
+                + (f"&nbsp;&nbsp;<span style='background:#1565C0;color:#fff;"
+                   f"padding:2px 8px;border-radius:10px;font-size:11px'>"
+                   f"{_mode_label} (Level {_deep_level})</span>"
+                   if _is_deep_mode else ""),
+                unsafe_allow_html=True,
+            )
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
             _er: Optional[Dict[str, Any]] = st.session_state.get("evented_result")
             _evented_err: Optional[str] = None
 
             if _er is None:
-                with st.status("⚙️ 正在运行事件推演流水线（事件提取 → 模式映射 → 双路径结论）...",
-                               expanded=True) as _ev_status:
+                _status_msg = (
+                    "🔬 正在运行深度本体分析（事件提取 → 证据增强 → 重推演）..."
+                    if _is_deep_mode
+                    else "⚙️ 正在运行事件推演流水线（事件提取 → 模式映射 → 双路径结论）..."
+                )
+                with st.status(_status_msg, expanded=True) as _ev_status:
                     try:
                         st.write("📡 调用后端 evented_deduce 接口…")
                         _ev_payload = {
@@ -712,8 +743,21 @@ if page == "🏠 主页":
                             "source":      _selected.get("source"),
                             "published":   str(_selected.get("published", "")),
                             "entities":    _selected.get("entities", []),
+                            "url":         _selected.get("url") or _selected.get("link") or "",
                         }
-                        _ev_resp = _api.evented_deduce(_ev_payload)
+                        _deep_cfg = None
+                        if _is_deep_mode:
+                            _deep_cfg = {
+                                "level":           _deep_level,
+                                "timeout_seconds": 20,
+                                "max_sources":     3,
+                            }
+                            st.write(f"🔬 深度级别 {_deep_level} 已激活，正在增强证据锚点…")
+                        _ev_resp = _api.evented_deduce(
+                            _ev_payload,
+                            deep_mode=_is_deep_mode,
+                            deep_config=_deep_cfg,
+                        )
                         if _ev_resp.get("status") == "success" or "events" in _ev_resp:
                             _er = _ev_resp
                             st.session_state.evented_result = _er
@@ -735,12 +779,21 @@ if page == "🏠 主页":
                 _ev_derived  = _er.get("derived_patterns", [])
                 _ev_concl    = _er.get("conclusion", {})
                 _ev_cred     = _er.get("credibility", {})
+                _ev_enrich   = _er.get("enrichment")
 
-                _tab_ev1, _tab_ev2, _tab_ev3 = st.tabs([
+                _tab_labels = [
                     f"① 事件节点 ({len(_ev_events)})",
                     f"② 模式节点 ({len(_ev_active)}+{len(_ev_derived)})",
                     "③ 结论与可信度",
-                ])
+                ]
+                if _ev_enrich:
+                    _tab_labels.append("🔬 证据增强")
+
+                _tabs_ev = st.tabs(_tab_labels)
+                _tab_ev1 = _tabs_ev[0]
+                _tab_ev2 = _tabs_ev[1]
+                _tab_ev3 = _tabs_ev[2]
+                _tab_ev4 = _tabs_ev[3] if _ev_enrich else None
 
                 # ── Stage 1: Events ──────────────────────────────────────
                 with _tab_ev1:
@@ -829,16 +882,20 @@ if page == "🏠 主页":
                     if _ep_pats:
                         st.caption("支撑模式：" + "、".join(p["pattern"] for p in _ep_pats))
 
-                    st.markdown("#### 🟡 假设路径（Hypothesis Path — T1 推断）")
-                    _hyp_summary = _hyp_path.get("summary") or "（无假设路径）"
-                    st.markdown(
-                        f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
-                        f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    _hyp_gaps = _hyp_path.get("verification_gaps", [])
-                    if _hyp_gaps:
-                        st.caption("验证缺口：" + " · ".join(_hyp_gaps))
+                    # Hypothesis path – controlled by 显示潜在隐变量 toggle
+                    if _show_hidden:
+                        st.markdown("#### 🟡 假设路径（Hypothesis Path — T1 推断）")
+                        _hyp_summary = _hyp_path.get("summary") or "（无假设路径）"
+                        st.markdown(
+                            f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
+                            f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _hyp_gaps = _hyp_path.get("verification_gaps", [])
+                        if _hyp_gaps:
+                            st.caption("验证缺口：" + " · ".join(_hyp_gaps))
+                    else:
+                        st.caption("💡 假设路径已隐藏（在侧边栏"推演引擎配置"中开启"显示潜在隐变量"）")
 
                     st.markdown("#### 📋 总结论")
                     st.info(_ev_concl.get("conclusion", "（无结论）"))
@@ -866,6 +923,92 @@ if page == "🏠 主页":
 
                     with st.expander("🛠 原始 JSON（Evented 推演结果）", expanded=False):
                         st.json(_er)
+
+                # ── Enrichment panel (Deep mode only) ─────────────────────
+                if _tab_ev4 is not None and _ev_enrich is not None:
+                    with _tab_ev4:
+                        _enr_missing_before = _ev_enrich.get("missing_before", [])
+                        _enr_missing_after  = _ev_enrich.get("missing_after", [])
+                        _enr_provenance     = _ev_enrich.get("provenance", [])
+                        _enr_summary        = _ev_enrich.get("enriched_context_summary", "")
+                        _enr_cache_hit      = _ev_enrich.get("cache_hit", False)
+                        _enr_limits         = _ev_enrich.get("limits", {})
+                        _enr_error          = _ev_enrich.get("error")
+                        _enr_level          = _ev_enrich.get("level", 0)
+
+                        # Header
+                        _level_labels = {0: "关闭", 1: "本地元数据", 2: "+原文抓取", 3: "+全网搜索"}
+                        st.markdown(
+                            f"**🔬 深度本体分析** · 级别 {_enr_level} "
+                            f"（{_level_labels.get(_enr_level, '')}）"
+                            + (" &nbsp; 🗄️ `缓存命中`" if _enr_cache_hit else ""),
+                            unsafe_allow_html=True,
+                        )
+
+                        if _enr_error:
+                            st.error(f"增强失败（已回退到普通结果）：{_enr_error}")
+
+                        # Missing anchors delta
+                        _filled = [a for a in _enr_missing_before if a not in _enr_missing_after]
+                        _still_missing = _enr_missing_after
+                        _col_a, _col_b = st.columns(2)
+                        with _col_a:
+                            st.markdown("**增强前缺失锚点**")
+                            for _anc in _enr_missing_before:
+                                _ok = _anc in _filled
+                                st.markdown(
+                                    f'<span style="color:{"#2E7D32" if _ok else "#C62828"}">'
+                                    f'{"✅" if _ok else "❌"} {_anc}</span>',
+                                    unsafe_allow_html=True,
+                                )
+                        with _col_b:
+                            st.markdown("**增强后仍缺失**")
+                            if _still_missing:
+                                for _anc in _still_missing:
+                                    st.markdown(f"• {_anc}")
+                            else:
+                                st.success("所有锚点已填充 ✓")
+
+                        if _enr_summary:
+                            st.caption(_enr_summary)
+
+                        # Provenance table
+                        if _enr_provenance:
+                            st.markdown("**📋 证据来源（Provenance）**")
+                            for _prov in _enr_provenance:
+                                _p_anchor  = _prov.get("anchor_type", "")
+                                _p_snippet = _prov.get("snippet", "")
+                                _p_url     = _prov.get("source_url", "")
+                                _p_title   = _prov.get("title", "")
+                                _p_conf    = _prov.get("confidence", 0)
+                                _p_at      = _prov.get("fetched_at", "")
+                                st.markdown(
+                                    f'<div style="border-left:3px solid #1565C0;'
+                                    f'padding:6px 12px;margin-bottom:6px;background:#E3F2FD;border-radius:4px;">'
+                                    f'<span style="font-weight:700;font-size:12px;color:#1565C0">{_p_anchor}</span>'
+                                    f'&nbsp;&nbsp;<span style="color:#555;font-size:11px">置信度 {_p_conf:.0%}</span>'
+                                    f'<div style="font-size:13px;margin-top:3px">{_p_snippet}</div>'
+                                    + (f'<div style="font-size:11px;color:#888;margin-top:2px">'
+                                       f'来源: <a href="{_p_url}" target="_blank">{_p_title or _p_url}</a>'
+                                       f'</div>' if _p_url else "")
+                                    + f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.info("未提取到新的证据来源。")
+
+                        # Limits summary
+                        if _enr_limits:
+                            _lim_parts = []
+                            if _enr_limits.get("searched"):
+                                _lim_parts.append("已执行网络搜索")
+                            _furl = _enr_limits.get("fetched_urls", 0)
+                            if _furl:
+                                _lim_parts.append(f"抓取 {_furl} 个 URL")
+                            if _enr_limits.get("truncated"):
+                                _lim_parts.append("⚠️ 因超时截断")
+                            if _lim_parts:
+                                st.caption("限制信息: " + " · ".join(_lim_parts))
 
             if st.button("🔄 重新选择情报", key="clear_selection_evented"):
                 st.session_state.selected_news  = None

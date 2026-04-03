@@ -51,11 +51,24 @@ class AnalysisRequest(BaseModel):
     claim: str
 
 
+class DeepConfigModel(BaseModel):
+    """Configuration for the Deep Ontology enrichment step."""
+    level:           int = 0
+    timeout_seconds: int = 20
+    max_sources:     int = 3
+
+
 class OntologyGroundedAnalysisRequest(BaseModel):
     news_fragment: str
     seed_entities: List[str]
     claim: str
     extract_paths: bool = True
+    # Deep Ontology Analysis
+    deep_mode:   bool                   = False
+    deep_config: Optional[DeepConfigModel] = None
+    source_url:  Optional[str]          = None
+    # Local metadata to assist enrichment (published_at, source, url)
+    local_meta:  Optional[Dict[str, Any]] = None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -748,9 +761,93 @@ def analyze_with_evented_pipeline(
 
         from intelligence.evented_pipeline import run_evented_pipeline
 
+        # ── Normal mode run ──────────────────────────────────────────
         result = run_evented_pipeline(text=text, llm_service=llm_service)
 
-        return {
+        enrichment_dict: Optional[Dict[str, Any]] = None
+
+        # ── Deep Ontology enrichment (if requested) ──────────────────
+        if request.deep_mode:
+            missing_before = result.credibility.get("missing_evidence", [])
+
+            if missing_before:
+                try:
+                    from intelligence.evidence_enricher import (
+                        DeepConfig,
+                        enrich_missing_anchors,
+                    )
+
+                    cfg_dict = (request.deep_config.model_dump()
+                                if request.deep_config else {})
+                    deep_cfg = DeepConfig.from_dict(cfg_dict)
+
+                    enrichment = enrich_missing_anchors(
+                        text=text,
+                        missing_before=missing_before,
+                        deep_config=deep_cfg,
+                        source_url=request.source_url,
+                        local_meta=request.local_meta or {},
+                    )
+                    enrichment_dict = enrichment.to_dict()
+
+                    # Rerun pipeline with enriched context appended
+                    if enrichment.extra_context:
+                        enriched_text = (
+                            text
+                            + "\n\n"
+                            + enrichment.extra_context
+                        )
+                        result = run_evented_pipeline(
+                            text=enriched_text,
+                            llm_service=llm_service,
+                        )
+
+                except Exception as enrich_exc:
+                    logger.warning(
+                        "Deep enrichment failed, returning Normal results: %s",
+                        enrich_exc,
+                    )
+                    enrichment_dict = {
+                        "enabled": True,
+                        "level": (request.deep_config.level
+                                  if request.deep_config else 0),
+                        "timeout_seconds": (request.deep_config.timeout_seconds
+                                            if request.deep_config else 20),
+                        "missing_before": missing_before,
+                        "missing_after": missing_before,
+                        "provenance": [],
+                        "enriched_context_summary": "",
+                        "cache_hit": False,
+                        "limits": {
+                            "searched": False,
+                            "fetched_urls": 0,
+                            "total_sources_used": 0,
+                            "truncated": False,
+                        },
+                        "error": str(enrich_exc),
+                    }
+            else:
+                # No missing anchors – return a minimal enrichment object
+                enrichment_dict = {
+                    "enabled": True,
+                    "level": (request.deep_config.level
+                              if request.deep_config else 0),
+                    "timeout_seconds": (request.deep_config.timeout_seconds
+                                        if request.deep_config else 20),
+                    "missing_before": [],
+                    "missing_after": [],
+                    "provenance": [],
+                    "enriched_context_summary": "All evidence anchors already present; no enrichment needed.",
+                    "cache_hit": False,
+                    "limits": {
+                        "searched": False,
+                        "fetched_urls": 0,
+                        "total_sources_used": 0,
+                        "truncated": False,
+                    },
+                }
+
+        response: Dict[str, Any] = {
             "status":           "success",
             "events":           result.events,
             "active_patterns":  result.active_patterns,
@@ -764,8 +861,13 @@ def analyze_with_evented_pipeline(
                 "event_count":     len(result.events),
                 "pattern_count":   len(result.active_patterns),
                 "derived_count":   len(result.derived_patterns),
+                "deep_mode":       request.deep_mode,
             },
         }
+        if enrichment_dict is not None:
+            response["enrichment"] = enrichment_dict
+
+        return response
 
     except HTTPException:
         raise
