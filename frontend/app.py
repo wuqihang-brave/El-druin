@@ -760,10 +760,12 @@ if page == "🏠 Home":
                 _tab_ev2    = _tabs_ev[1]
                 _tab_ev3    = _tabs_ev[2]
                 _tab_ptree  = _tabs_ev[3]
-                _tab_drv    = _tabs_ev[4] if _ev_drvfact and len(_tabs_ev) > 4 else None
-                _tab_ev4    = _tabs_ev[5] if _ev_enrich and len(_tabs_ev) > 5 else (
-                              _tabs_ev[4] if _ev_enrich and not _ev_drvfact and len(_tabs_ev) > 4 else None
-                              )
+                # Resolve optional tab slots based on which tabs were added
+                _tab_idx    = 4  # starts after the 4 always-present tabs
+                _tab_drv    = _tabs_ev[_tab_idx] if _ev_drvfact and len(_tabs_ev) > _tab_idx else None
+                if _ev_drvfact:
+                    _tab_idx += 1
+                _tab_ev4    = _tabs_ev[_tab_idx] if _ev_enrich and len(_tabs_ev) > _tab_idx else None
 
                 # ── Stage 1: Events ──────────────────────────────────────
                 with _tab_ev1:
@@ -1798,7 +1800,7 @@ elif page == "⚙️ System Status":
     st.subheader("📊 System Information")
     st.info(
         f"**Backend URL:** `{_backend_url}`  \n"
-        f"**Page rendered:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}  \n"
+        f"**Page rendered:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}  \n"
         "**Ontology module:** CAMEO + FIBO fusion | Cartesian pattern library v2  \n"
         "**Reasoning engines:** Evented (three-stage) | Grounded (KG-anchored)  \n"
         "**Explainability:** Probability tree | Bayesian confidence propagation  \n"

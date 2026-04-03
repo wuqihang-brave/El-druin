@@ -37,6 +37,18 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# Dampening factor applied to Beta (counterscenario) path confidence: Beta paths
+# are inherently less certain than Alpha paths because they represent inverse/
+# contingent outcomes; 0.65 reflects ~1/3 reduction in confidence.
+_BETA_CONFIDENCE_DAMPEN: float = 0.65
+
+# Maximum length of evidence text snippets included in tree nodes.
+_TREE_EVIDENCE_MAX_LEN: int = 120
+
+# ---------------------------------------------------------------------------
 # Event type constants
 # ---------------------------------------------------------------------------
 
@@ -1123,7 +1135,7 @@ def _build_beta_path_from_algebra(
             beta_patterns.append({
                 "pattern":          inv_name,
                 "inverts":          alpha_name,
-                "confidence":       round(float(ap.get("confidence", 0.5)) * 0.65, 4),
+                "confidence":       round(float(ap.get("confidence", 0.5)) * _BETA_CONFIDENCE_DAMPEN, 4),
                 "interpretation":   (
                     f"If '{alpha_name}' is reversed/invalidated, "
                     f"the system may shift toward '{inv_name}'."
@@ -1397,7 +1409,7 @@ def _build_probability_tree_from_result(
         "label":       "Input event",
         "type":        "root",
         "probability": 1.0,
-        "evidence":    text[:120] + ("…" if len(text) > 120 else ""),
+        "evidence":    text[:_TREE_EVIDENCE_MAX_LEN] + ("…" if len(text) > _TREE_EVIDENCE_MAX_LEN else ""),
         "verification_gap": credibility.get("missing_evidence", []),
     })
 
