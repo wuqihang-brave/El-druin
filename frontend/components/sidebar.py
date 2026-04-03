@@ -45,7 +45,7 @@ _INLINE_LABELS: list[str] = [
 _EXTERNAL_PAGES: list[tuple[str, str, str]] = [
     ("🔍 Object Explorer", "search",          "pages/3_🔍_Object_Explorer.py"),
     ("🔬 Logic Audit",     "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
-    ("🔮 Oracle Lab ✦Beta","stars",           "pages/10_🔮_Oracle_Laboratory.py"),
+    ("🔮 Oracle Lab (Beta)","stars",           "pages/10_🔮_Oracle_Laboratory.py"),
 ]
 
 _EXTERNAL_LABELS: list[str] = [ep[0] for ep in _EXTERNAL_PAGES]
