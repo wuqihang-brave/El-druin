@@ -52,14 +52,30 @@ _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
 
 # ---------------------------------------------------------------------------
-# Inject Dark Liturgy CSS
+# Shared sidebar navigation
 # ---------------------------------------------------------------------------
-_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles.css")
+try:
+    from components.sidebar import render_sidebar_navigation  # noqa: E402
+    render_sidebar_navigation(is_subpage=True)
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
+# Inject light theme CSS
+# ---------------------------------------------------------------------------
+_CSS_PATH = os.path.join(_FRONTEND_DIR, "assets", "custom_styles_light.css")
 try:
     with open(_CSS_PATH, encoding="utf-8") as _css_f:
         st.markdown(f"<style>{_css_f.read()}</style>", unsafe_allow_html=True)
 except FileNotFoundError:
     pass
+
+# Ensure light background (override any dark theme)
+st.markdown(
+    "<style>.stApp { background-color: #F8FAFB !important; } "
+    "h1,h2,h3,h4 { color: #0047AB !important; }</style>",
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # Session state
@@ -72,11 +88,11 @@ if "selected_tree" not in st.session_state:
     st.session_state.selected_tree: Dict[str, Any] = {}
 
 # ---------------------------------------------------------------------------
-# Page header
+# Page header + onboarding
 # ---------------------------------------------------------------------------
 st.markdown(
     """
-    <div style="margin-bottom:24px;">
+    <div style="margin-bottom:12px;">
         <h1 style="color:#0047AB;font-family:'Inter',sans-serif;font-weight:600;
                    letter-spacing:1px;font-size:1.6rem;margin-bottom:4px;">
             ⚖️ LOGIC AUDIT TRAIL
@@ -87,6 +103,14 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True,
+)
+st.info(
+    "**What this page does:** The Logic Audit Trail runs news text through the "
+    "Bayesian Bridge — a probabilistic reasoning system that tags every inference "
+    "step with a confidence score and flags potential fallacies.\n\n"
+    "**How to use:** Go to the **Submit Report** tab, paste article text, and click "
+    "**Process Report**. Results appear in the **Audit Log** tab as a probability "
+    "tree with reasoning steps. Use the right panel to inspect individual paths."
 )
 
 # ---------------------------------------------------------------------------
