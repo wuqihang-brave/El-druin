@@ -852,6 +852,8 @@ def analyze_with_evented_pipeline(
             "events":           result.events,
             "active_patterns":  result.active_patterns,
             "derived_patterns": result.derived_patterns,
+            "top_transitions":  result.top_transitions,
+            "state_vector":     result.state_vector,
             "conclusion":       result.conclusion,
             "credibility":      result.credibility,
             "probability_tree": result.probability_tree,
@@ -870,8 +872,8 @@ def analyze_with_evented_pipeline(
         # Lie algebra vector space analysis (bounded, optional)
         try:
             from ontology.lie_algebra_space import compute_pattern_trajectory  # type: ignore
-            active_names  = [ap["pattern"] for ap in result.active_patterns]
-            derived_names = [dp["pattern"] for dp in result.derived_patterns]
+            active_names  = [ap.get("pattern", ap.get("pattern_name", "")) for ap in result.active_patterns]
+            derived_names = [dp.get("pattern", dp.get("pattern_name", "")) for dp in result.derived_patterns]
             lie_algebra = compute_pattern_trajectory(active_names, derived_names)
         except Exception as lie_exc:
             logger.debug("Lie algebra computation skipped: %s", lie_exc)

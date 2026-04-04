@@ -930,12 +930,17 @@ def run_evented_pipeline(
     # ── 序列化 ──────────────────────────────────────────────────────
     def _pat_to_dict(p: PatternNode) -> Dict[str, Any]:
         return {
+            # v3 canonical keys
             "pattern_name":     p.pattern_name,
             "domain":           p.domain,
             "mechanism_class":  p.mechanism_class,
             "confidence_prior": round(p.confidence_prior, 3),
             "typical_outcomes": p.typical_outcomes[:3],
             "source_event":     p.source_event,
+            # backward-compatible aliases expected by frontend
+            "pattern":          p.pattern_name,
+            "confidence":       round(p.confidence_prior, 3),
+            "from_event":       p.source_event,
         }
 
     def _trans_to_dict(t: TransitionEdge) -> Dict[str, Any]:
@@ -961,12 +966,15 @@ def run_evented_pipeline(
 
     def _ev_to_dict(e: EventNode) -> Dict[str, Any]:
         return {
+            # v3 canonical keys
             "event_type":   e.event_type,
             "severity":     e.severity,
             "description":  e.description,
             "entities":     e.entities,
             "confidence":   e.confidence,
             "source_quote": e.source_quote,
+            # backward-compatible alias expected by frontend
+            "type":         e.event_type,
         }
 
     active_dicts     = [_pat_to_dict(p)  for p in active]
@@ -975,7 +983,19 @@ def run_evented_pipeline(
     event_dicts      = [_ev_to_dict(e)   for e in events]
 
     # derived_patterns 向后兼容字段（取 top transitions 的目标模式名列表）
-    derived_compat = [{"pattern_name": t.to_pattern} for t in transitions[:3]]
+    derived_compat = [
+        {
+            # v3 canonical key
+            "pattern_name":      t.to_pattern,
+            # backward-compatible aliases expected by frontend
+            "derived":           t.to_pattern,
+            "pattern":           t.to_pattern,
+            "derived_confidence": round(t.posterior_weight, 3),
+            "rule":              t.transition_type,
+            "derived_tier":      "T1",
+        }
+        for t in transitions[:3]
+    ]
 
     # 概率树（供前端条形图）
     prob_tree: Dict[str, Any] = {}

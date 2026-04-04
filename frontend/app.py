@@ -803,7 +803,7 @@ if page == "🏠 Home":
                             st.markdown(
                                 f'<div style="border-left:3px solid {_ap_color};'
                                 f'padding:6px 10px;margin-bottom:6px;background:#FAFAFA;">'
-                                f'<b>{_ap["pattern"]}</b>'
+                                f'<b>{_ap.get("pattern", _ap.get("pattern_name", ""))}</b>'
                                 f'&nbsp;<span style="background:{_ap_color};color:#fff;'
                                 f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
                                 f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
@@ -826,7 +826,7 @@ if page == "🏠 Home":
                             st.markdown(
                                 f'<div style="border-left:3px solid {_dp_color};'
                                 f'padding:6px 10px;margin-bottom:6px;background:#F8F0FF;">'
-                                f'<b>{_dp["derived"]}</b>'
+                                f'<b>{_dp.get("derived", _dp.get("pattern_name", ""))}</b>'
                                 f'&nbsp;<span style="background:{_dp_color};color:#fff;'
                                 f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
                                 f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}'
@@ -852,7 +852,7 @@ if page == "🏠 Home":
                     )
                     _ep_pats = _ev_path.get("patterns", [])
                     if _ep_pats:
-                        st.caption("Supporting patterns: " + ", ".join(p["pattern"] for p in _ep_pats))
+                        st.caption("Supporting patterns: " + ", ".join(p.get("pattern", p.get("pattern_name", "")) for p in _ep_pats))
 
                     # Hypothesis path – controlled by sidebar toggle
                     if _show_hidden:
@@ -883,7 +883,7 @@ if page == "🏠 Home":
                             st.info(_beta_alg.get("summary", ""))
                             for _bp in _beta_alg["patterns"]:
                                 st.markdown(
-                                    f"- **{_bp['pattern']}** ← inverts *{_bp['inverts']}*  "
+                                    f"- **{_bp.get('pattern', _bp.get('pattern_name', ''))}** ← inverts *{_bp['inverts']}*  "
                                     f"(p ≈ {_bp['confidence']:.0%})  \n"
                                     f"  {_bp.get('interpretation', '')}"
                                 )

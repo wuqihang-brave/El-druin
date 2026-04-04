@@ -1208,3 +1208,116 @@ class TestDomainFixtures:
                 f"Expected derived patterns when >=2 active patterns present. "
                 f"Active: {[ap['pattern'] for ap in result.active_patterns]}"
             )
+
+
+# ===========================================================================
+# H. Schema Contract Validation – backward-compatible keys
+# ===========================================================================
+
+class TestPipelineResultSchemaContract:
+    """
+    Verify that PipelineResult serialized dicts always contain the
+    backward-compatible keys that the frontend expects.
+
+    These tests catch schema regressions where backend v3 internal field
+    names (pattern_name, event_type, confidence_prior, source_event) change
+    but the frontend still reads the old aliases (pattern, type, confidence,
+    from_event, derived).
+    """
+
+    # ── Events ──────────────────────────────────────────────────────────
+
+    def test_events_have_type_alias(self):
+        """Each event dict must contain 'type' (frontend alias for event_type)."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for evt in result.events:
+            assert "type" in evt, (
+                f"Event missing backward-compat 'type' key: {evt}"
+            )
+            assert evt.get("type") == evt.get("event_type"), (
+                f"'type' alias must equal 'event_type'. Got: {evt}"
+            )
+
+    def test_events_type_is_not_unknown(self):
+        """'type' must be a non-empty, non-'unknown' string when events exist."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for evt in result.events:
+            assert evt.get("type", "unknown") != "unknown", (
+                f"Event 'type' resolved to 'unknown': {evt}"
+            )
+            assert evt.get("type"), (
+                f"Event 'type' is empty: {evt}"
+            )
+
+    # ── Active patterns ──────────────────────────────────────────────────
+
+    def test_active_patterns_have_pattern_alias(self):
+        """Each active-pattern dict must contain the 'pattern' alias."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for ap in result.active_patterns:
+            assert "pattern" in ap, (
+                f"Active pattern missing backward-compat 'pattern' key: {ap}"
+            )
+            assert ap.get("pattern") == ap.get("pattern_name"), (
+                f"'pattern' alias must equal 'pattern_name'. Got: {ap}"
+            )
+
+    def test_active_patterns_have_confidence_alias(self):
+        """Each active-pattern dict must contain 'confidence' alias."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for ap in result.active_patterns:
+            assert "confidence" in ap, (
+                f"Active pattern missing backward-compat 'confidence' key: {ap}"
+            )
+
+    def test_active_patterns_have_from_event_alias(self):
+        """Each active-pattern dict must contain 'from_event' alias."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for ap in result.active_patterns:
+            assert "from_event" in ap, (
+                f"Active pattern missing backward-compat 'from_event' key: {ap}"
+            )
+
+    # ── Derived patterns ─────────────────────────────────────────────────
+
+    def test_derived_patterns_have_derived_alias(self):
+        """Each derived-pattern dict must contain 'derived' alias."""
+        result = run_evented_pipeline(_FIXTURE_TARIFF_TRADE, llm_service=None)
+        for dp in result.derived_patterns:
+            assert "derived" in dp, (
+                f"Derived pattern missing backward-compat 'derived' key: {dp}"
+            )
+
+    def test_derived_patterns_have_pattern_alias(self):
+        """Each derived-pattern dict must contain 'pattern' alias."""
+        result = run_evented_pipeline(_FIXTURE_TARIFF_TRADE, llm_service=None)
+        for dp in result.derived_patterns:
+            assert "pattern" in dp, (
+                f"Derived pattern missing backward-compat 'pattern' key: {dp}"
+            )
+
+    def test_derived_patterns_have_derived_confidence(self):
+        """Each derived-pattern dict must contain 'derived_confidence'."""
+        result = run_evented_pipeline(_FIXTURE_TARIFF_TRADE, llm_service=None)
+        for dp in result.derived_patterns:
+            assert "derived_confidence" in dp, (
+                f"Derived pattern missing 'derived_confidence' key: {dp}"
+            )
+
+    # ── v3 new fields ────────────────────────────────────────────────────
+
+    def test_result_has_top_transitions_field(self):
+        """PipelineResult must expose top_transitions list."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        assert hasattr(result, "top_transitions"), (
+            "PipelineResult missing 'top_transitions' attribute"
+        )
+        assert isinstance(result.top_transitions, list)
+
+    def test_result_has_state_vector_field(self):
+        """PipelineResult must expose state_vector dict."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        assert hasattr(result, "state_vector"), (
+            "PipelineResult missing 'state_vector' attribute"
+        )
+        assert isinstance(result.state_vector, dict)
