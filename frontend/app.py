@@ -823,6 +823,9 @@ if page == "🏠 Home":
                         or _ev_concl.get("conclusion")
                         or "(No judgement available)"
                     )
+                    # Guard: if backend returns a dict instead of str, convert defensively
+                    if not isinstance(_exec_j, str):
+                        _exec_j = str(_exec_j)
                     st.info(_exec_j)
 
                     # Confidence from Bayesian posterior
@@ -1468,11 +1471,14 @@ elif page == "📝 Custom Analysis":
                         st.metric("Overall Confidence", f"{_ca_conf:.0%}")
 
                     st.markdown("**Executive Judgement**")
-                    st.info(
+                    _ca_exec_j = (
                         _ca_concl.get("executive_judgement")
                         or _ca_concl.get("conclusion")
                         or "(No judgement available)"
                     )
+                    if not isinstance(_ca_exec_j, str):
+                        _ca_exec_j = str(_ca_exec_j)
+                    st.info(_ca_exec_j)
 
                     _ca_ev_path = _ca_concl.get("evidence_path", {})
                     if _ca_ev_path.get("summary"):
@@ -1504,7 +1510,7 @@ elif page == "📝 Custom Analysis":
                                     f'<div style="border-left:3px solid #0047AB;'
                                     f'padding:4px 8px;margin-bottom:4px;background:#F5F5F5;">'
                                     f'<b>{_cn.get("label","")}</b> &nbsp;'
-                                    f'<span style="color:#555;font-size:11px">p={_cn.get("probability",0):.0%}</span>'
+                                    f'<span style="color:#555;font-size:11px">p={_cn.get("probability",0):.2%}</span>'
                                     f'<div style="background:#E0E0E0;height:4px;border-radius:2px;margin-top:3px;">'
                                     f'<div style="background:#0047AB;width:{_bar}%;height:4px;border-radius:2px;"></div>'
                                     f'</div></div>',

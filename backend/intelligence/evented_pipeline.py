@@ -79,6 +79,60 @@ _MIN_QUOTE_LEN: int = 15
 # Maximum confidence assigned to fallback events (clamped before entering the pipeline)
 _FALLBACK_MAX_CONFIDENCE: float = 0.35
 
+# ===========================================================================
+# Outcome catalogue: outcome_id → professional English phrasing
+# ===========================================================================
+
+OUTCOME_CATALOG: Dict[str, str] = {
+    # Geopolitical / coercive
+    "target_isolation":               "Progressive isolation of the primary actor from multilateral frameworks",
+    "collective_defence_formation":   "Formation of coordinated collective defence posture among aligned states",
+    "sanctions_escalation":           "Escalating multilateral sanctions regime with broadening scope",
+    "alliance_consolidation":         "Consolidation of formal and informal alliance commitments",
+    "diplomatic_rupture":             "Severing of diplomatic relations and expulsion of official representatives",
+    "ceasefire_negotiation":          "Movement toward negotiated ceasefire or conflict pause",
+    "military_deterrence_signal":     "Deployment of deterrence signals through military posturing",
+    "proxy_conflict_expansion":       "Expansion of conflict through proxy actor networks",
+    # Technology / economic
+    "standard_adoption_lock_in":      "Lock-in of dominant technology standard, foreclosing competing approaches",
+    "competing_standard_fragmentation": "Fragmentation into competing incompatible technology standards",
+    "licensing_revenue_accumulation": "Accumulation of licensing revenue by standard-holder entities",
+    "parallel_tech_stack_emergence":  "Emergence of parallel technology stacks along geopolitical lines",
+    "innovation_efficiency_loss":     "Reduced innovation efficiency due to market segmentation",
+    "semiconductor_chokepoint":       "Concentration of semiconductor supply chain leverage at strategic chokepoints",
+    "supplier_pricing_power":         "Strengthened pricing power for oligopoly suppliers",
+    "buyer_diversification_effort":   "Accelerated buyer efforts to diversify supply sources",
+    "technology_transfer_leverage":   "Use of technology access as strategic bargaining leverage",
+    "joint_rd_resumption":            "Resumption of joint research and development collaboration",
+    "technology_transfer_flow":       "Renewed cross-border technology transfer flows",
+    "innovation_spillover":           "Positive innovation spillover across previously segmented markets",
+    "price_competition":              "Intensifying price competition reducing margins for incumbent suppliers",
+    "buyer_bargaining_increase":      "Strengthened bargaining position for technology buyers",
+    "innovation_acceleration":        "Accelerated innovation pace driven by competitive market dynamics",
+    "standard_displacement":          "Displacement of incumbent technology standard by emerging alternative",
+    "market_share_redistribution":    "Redistribution of market share across technology ecosystem participants",
+    "technology_fragmentation":       "Technology ecosystem fragmentation along domain or regional lines",
+    # Economic / financial
+    "structural_realignment":         "Structural realignment of economic relationships and trade patterns",
+    "structural_disruption":          "Structural disruption to established institutional or market order",
+    "financial_contagion":            "Cross-border financial contagion affecting counterparty exposures",
+    "capital_flow_restriction":       "Restriction of capital flows between targeted jurisdictions",
+    "supply_chain_restructuring":     "Accelerated supply chain restructuring toward resilience priorities",
+    # Fallback generics
+    "unknown":                        "Outcome trajectory insufficient to determine; additional signals required",
+}
+
+
+def _outcome_phrase(outcome_id: str) -> str:
+    """Return professional English phrasing for a given outcome_id."""
+    if not outcome_id:
+        return "an unspecified structural shift"
+    phrase = OUTCOME_CATALOG.get(outcome_id)
+    if phrase:
+        return phrase
+    # Humanize snake_case fallback
+    return outcome_id.replace("_", " ")
+
 
 class EventType:
     """Canonical event-type string constants (used by rule-based extractor and tests)."""
@@ -1439,37 +1493,66 @@ def _run_stage3(
     else:
         n_outcomes = 2
 
-    # Build outcome lists for the conclusion struct
+    # Build outcome lists for the conclusion struct using the outcome catalog
     ev_outcomes = [
-        {"id": o, "text": o.replace("_", " ").title(), "probability": round(alpha_prob / n_outcomes, 3)}
-        for o in alpha_path.get("typical_outcomes", [alpha_path.get("primary_outcome", "structural_realignment")])[:n_outcomes]
+        {
+            "id": o,
+            "text": _outcome_phrase(o),
+            "probability": round(alpha_prob / n_outcomes, 3),
+        }
+        for o in alpha_path.get(
+            "typical_outcomes", [alpha_path.get("primary_outcome", "structural_realignment")]
+        )[:n_outcomes]
     ]
     hyp_outcomes = [
-        {"id": o, "text": o.replace("_", " ").title(), "probability": round(beta_prob / max(1, min(n_outcomes, len(beta_path.get("typical_outcomes", [])))), 3)}
-        for o in beta_path.get("typical_outcomes", [beta_path.get("primary_outcome", "structural_disruption")])[:n_outcomes]
+        {
+            "id": o,
+            "text": _outcome_phrase(o),
+            "probability": round(
+                beta_prob / max(1, min(n_outcomes, len(beta_path.get("typical_outcomes", [])))), 3
+            ),
+        }
+        for o in beta_path.get(
+            "typical_outcomes", [beta_path.get("primary_outcome", "structural_disruption")]
+        )[:n_outcomes]
     ]
+
+    # Sanitize trigger_condition: strip Chinese characters and internal pattern chain notation
+    _raw_trigger = beta_path.get("trigger_condition", "reversal of dominant pattern node")
+    # Remove bracketed content that may contain raw pattern names, e.g. "[pattern_name]"
+    _trigger_clean = re.sub(r"\[[^\]]*\]", "", _raw_trigger).strip(" ,")
+    # Remove any remaining CJK characters
+    _trigger_clean = re.sub(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+", "", _trigger_clean).strip()
+    if not _trigger_clean:
+        _trigger_clean = "a significant reversal of the current dominant trajectory"
+
+    # Ensure executive_judgement is always a plain string
+    if not isinstance(conclusion_text, str):
+        conclusion_text = str(conclusion_text)
+
+    # Build outcome-first evidence/hypothesis path summaries
+    _alpha_primary_phrase = _outcome_phrase(alpha_path.get("primary_outcome", "structural_realignment"))
+    _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
     conclusion = {
         # ── professional intelligence judgement struct ────────────────────
         "executive_judgement": conclusion_text,
         "evidence_path": {
             "summary": (
-                f"Evidence path (T2 grounded, p={alpha_path['probability']:.0%}): "
-                f"Primary projected outcome — {alpha_path.get('primary_outcome', 'structural_realignment').replace('_', ' ')}. "
-                f"Driven by {alpha_path.get('mechanism', 'composition_derived')} mechanism."
+                f"Primary projected outcome: {_alpha_primary_phrase}. "
+                f"This trajectory is assessed at {alpha_path['probability']:.0%} probability "
+                f"based on corroborating evidence signals from the current event context."
             ),
             "outcomes": ev_outcomes,
         },
         "hypothesis_path": {
             "summary": (
-                f"Hypothesis path (T1 inferred, p={beta_path['probability']:.0%}): "
-                f"Contingent outcome — {beta_path.get('primary_outcome', 'structural_disruption').replace('_', ' ')}. "
-                f"Requires: {beta_path.get('trigger_condition', 'reversal of dominant pattern node')}."
+                f"Contingent outcome: {_beta_primary_phrase}. "
+                f"This scenario is contingent on: {_trigger_clean}. "
+                f"Assessed as a lower-probability but structurally significant alternative."
             ),
             "outcomes": hyp_outcomes,
-            "verification_gaps": [
-                beta_path.get("trigger_condition", "reversal of dominant pattern node")
-            ],
+            "verification_gaps": [_trigger_clean],
         },
         "final": {
             "overall_confidence": composite,
@@ -1534,59 +1617,71 @@ def _generate_conclusion_text(
     llm_service: Any,
 ) -> str:
     """
-    LLM 仅被允许写解释文本，所有数值字段已预先计算并锁定。
-    如果 LLM 调用失败，用模板生成兜底文本。
+    LLM is only allowed to write explanatory text; all numerical fields are
+    pre-computed and locked.  Falls back to a deterministic template when
+    LLM is unavailable.
+
+    The output is ALWAYS a plain English string — never a dict or JSON blob.
     """
-    # 构造严格限制的 prompt
-    df_text = ""
-    for i, df in enumerate(driving_factors[:3], 1):
-        df_text += f"  {i}. {df.factor}\n"
+    alpha_outcome_phrase = _outcome_phrase(
+        alpha_path.get("primary_outcome", "structural_realignment")
+    )
+    beta_outcome_phrase = _outcome_phrase(
+        beta_path.get("primary_outcome", "structural_disruption")
+    )
 
     dominant = state_vector.get("mean_vector", {}).get("dominant_dim", "unknown")
     coercion = state_vector.get("mean_vector", {}).get("coercion", 0.0)
 
     prompt = f"""You are the EL-DRUIN ontological reasoning interpreter.
 
-The following data has been computed by deterministic algorithms. Your task is to
-write 2–3 sentences of professional intelligence-grade English commentary explaining
-these results. Do NOT modify or invent any numerical values.
+The following outcomes have been determined by deterministic algorithms. Your task is
+to write 1-2 sentences of professional, outcome-first intelligence commentary.
 
-[INPUT DATA – DO NOT MODIFY]
-- News excerpt: {text[:150]}
-- State vector dominant dimension: {dominant} (coercion/cooperation index: {coercion:+.2f})
-- Evidence path (T2, p={alpha_path['probability']:.0%}): primary outcome = {alpha_path.get('primary_outcome', 'structural_realignment').replace('_', ' ')}
-- Hypothesis path (T1, p={beta_path['probability']:.0%}): contingent outcome = {beta_path.get('primary_outcome', 'structural_disruption').replace('_', ' ')}
-  trigger condition: {beta_path.get('trigger_condition', 'reversal of dominant pattern node')}
-- Overall confidence: {composite_confidence:.0%} (derived from ontology priors, not LLM-generated)
+[COMPUTED OUTCOMES – DO NOT MODIFY]
+- Primary projected outcome: {alpha_outcome_phrase}
+- Alternative contingent outcome: {beta_outcome_phrase}
+- State vector dominant dimension: {dominant} (coercion index: {coercion:+.2f})
+- Overall confidence: {composite_confidence:.0%} (from ontology priors, not LLM-generated)
 
 [OUTPUT REQUIREMENTS]
-1. Write 1–2 sentences explaining why the Evidence Path outcome is the most probable projection.
-2. Write 1 sentence describing the Hypothesis Path trigger condition and its implications.
-3. Do NOT include probabilities as numbers — refer to them qualitatively (e.g. "most probable", "low-probability high-impact").
-4. Do NOT mention pattern names or composition chains.
-5. Return plain English text only, no JSON.
+1. Begin with the primary projected outcome stated directly (outcome-first).
+2. In 1 sentence, note the alternative contingent outcome and the conditions for its materialisation.
+3. Do NOT mention pattern names, mechanism classes, or composition chains.
+4. Do NOT include probabilities as numbers.
+5. Return plain English text only, no JSON, no markdown, no commentary about your reasoning.
 """
     try:
         response = llm_service.call(
             prompt=prompt,
             system=(
-                "You are a rigorous ontological reasoning interpreter. "
-                "Only explain the given computed results. Do not invent numerical values. "
-                "Write professional intelligence-grade English. Never output probabilities as numbers."
+                "You are a rigorous intelligence analyst. State outcomes directly. "
+                "Never output pattern names, mechanism names, JSON, or probabilities as numbers."
             ),
-            temperature=0.15,
-            max_tokens=400,
+            temperature=0.10,
+            max_tokens=300,
         )
         text_out = str(response).strip()
-        # 剥离可能的 JSON/markdown 包装
+        # Strip any JSON/markdown wrapping that a non-compliant LLM might add
         if text_out.startswith("{") or text_out.startswith("["):
             import json as _json
             try:
                 parsed = _json.loads(text_out)
                 if isinstance(parsed, dict):
                     text_out = parsed.get("text", parsed.get("conclusion", str(parsed)))
+                elif isinstance(parsed, list) and parsed:
+                    first = parsed[0]
+                    if isinstance(first, str):
+                        text_out = first
+                    elif isinstance(first, dict):
+                        text_out = first.get("text", first.get("conclusion", str(first)))
+                    else:
+                        text_out = str(first)
             except Exception:
                 pass
+        # Ensure we return a plain string
+        if not isinstance(text_out, str):
+            text_out = str(text_out)
         return text_out if text_out else _fallback_conclusion_text(
             alpha_path, beta_path, driving_factors, composite_confidence
         )
@@ -1603,21 +1698,23 @@ def _fallback_conclusion_text(
     driving_factors: List[DrivingFactor],
     confidence: float,
 ) -> str:
-    """Template fallback when LLM is unavailable."""
-    df_str = (
-        driving_factors[0].factor
-        if driving_factors
-        else "insufficient pattern activation"
-    )
-    primary = alpha_path.get("primary_outcome", alpha_path["name"]).replace("_", " ")
-    beta_primary = beta_path.get("primary_outcome", beta_path["name"]).replace("_", " ")
-    trigger = beta_path.get("trigger_condition", "reversal of dominant pattern node")
+    """Template fallback when LLM is unavailable.
+
+    Outcome-first, professional intelligence-grade English.
+    No mechanism class names, no pattern chain notation.
+    """
+    primary_id = alpha_path.get("primary_outcome", "structural_realignment")
+    primary = _outcome_phrase(primary_id)
+    beta_id  = beta_path.get("primary_outcome", "structural_disruption")
+    beta_primary = _outcome_phrase(beta_id)
+    alpha_prob = alpha_path.get("probability", confidence)
     return (
-        f"Based on deterministic ontological pattern analysis, the most probable projected outcome "
-        f"is {primary}, supported by the following mechanism: {df_str}. "
-        f"A lower-probability but high-impact alternative outcome ({beta_primary}) "
-        f"may materialise if {trigger}. "
-        f"Overall analytical confidence is derived from ontology priors and Bayesian posterior normalisation."
+        f"The most probable projected outcome is: {primary} "
+        f"(assessed probability {alpha_prob:.0%}). "
+        f"A lower-probability but high-impact alternative scenario — "
+        f"{beta_primary} — remains contingent on a significant shift in the "
+        f"current trajectory. Confidence is calibrated from ontological priors "
+        f"and Bayesian posterior normalisation."
     )
 
 

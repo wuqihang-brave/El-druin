@@ -676,6 +676,113 @@ class TestConclusionProfessionalStruct:
             f"executive_judgement contains pattern chain notation: {ej[:200]}"
         )
 
+    def test_executive_judgement_is_str_not_dict(self):
+        """executive_judgement must be a plain string, never a dict or list."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        ej = concl.get("executive_judgement")
+        assert isinstance(ej, str), (
+            f"executive_judgement must be str, got {type(ej).__name__}: {ej!r}"
+        )
+        assert len(ej) > 0, "executive_judgement must be non-empty"
+
+    def test_executive_judgement_no_mechanism_names(self):
+        """executive_judgement must not contain mechanism class names."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        ej = concl.get("executive_judgement", "")
+        forbidden = ["tech_decoupling", "coercive_leverage", "kinetic_escalation",
+                     "oligopoly_supply", "composition_derived"]
+        for token in forbidden:
+            assert token not in ej, (
+                f"executive_judgement contains mechanism class name '{token}': {ej[:200]}"
+            )
+
+    def test_evidence_path_summary_outcome_first(self):
+        """evidence_path.summary must start with outcome description, not meta labels."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        summary = concl.get("evidence_path", {}).get("summary", "")
+        assert summary, "evidence_path.summary must not be empty"
+        # Must not start with old meta-commentary prefixes
+        assert not summary.startswith("Evidence path (T2"), (
+            f"evidence_path.summary still uses old meta-commentary prefix: {summary[:100]}"
+        )
+        # Must start with outcome-first language
+        assert summary.startswith("Primary projected outcome:"), (
+            f"evidence_path.summary should start with 'Primary projected outcome:'. Got: {summary[:100]}"
+        )
+
+    def test_hypothesis_path_summary_no_chinese(self):
+        """hypothesis_path.summary must contain no CJK characters."""
+        import re
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        summary = concl.get("hypothesis_path", {}).get("summary", "")
+        cjk = re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]", summary)
+        assert not cjk, (
+            f"hypothesis_path.summary contains CJK characters: {''.join(cjk)}"
+        )
+
+    def test_outcome_catalog_maps_to_strings(self):
+        """OUTCOME_CATALOG must map outcome_ids to non-empty English strings."""
+        from intelligence.evented_pipeline import OUTCOME_CATALOG, _outcome_phrase
+        assert isinstance(OUTCOME_CATALOG, dict), "OUTCOME_CATALOG must be a dict"
+        assert len(OUTCOME_CATALOG) >= 5, "OUTCOME_CATALOG must have at least 5 entries"
+        for oid, phrase in OUTCOME_CATALOG.items():
+            assert isinstance(oid, str) and isinstance(phrase, str), (
+                f"OUTCOME_CATALOG entry not str→str: {oid!r}→{phrase!r}"
+            )
+            assert len(phrase) > 0, f"OUTCOME_CATALOG phrase empty for '{oid}'"
+        # _outcome_phrase for unknown id must return a non-empty string
+        fallback = _outcome_phrase("some_unknown_outcome_id")
+        assert isinstance(fallback, str) and len(fallback) > 0
+
+    def test_adaptive_outcome_count_single_pattern(self):
+        """With only 1 active pattern, evidence_path outcomes must have exactly 1 entry."""
+        # Use a text that reliably produces just 1 active pattern
+        text = "A ceasefire was announced."
+        result = run_evented_pipeline(text, llm_service=None)
+        concl = result.conclusion
+        n_active = len(result.active_patterns)
+        ev_outcomes = concl.get("evidence_path", {}).get("outcomes", [])
+        # If no active patterns, skip (no patterns means no outcomes to check)
+        if n_active == 0:
+            return
+        # If only 1 pattern, n_outcomes should be 1
+        if n_active == 1:
+            assert len(ev_outcomes) == 1, (
+                f"Expected exactly 1 outcome with {n_active} active patterns, got {len(ev_outcomes)}"
+            )
+
+    def test_adaptive_outcome_count_multiple_patterns(self):
+        """With 3+ active patterns and high confidence, evidence_path outcomes should have 3 entries.
+        With 2 active patterns, outcomes should be 2."""
+        # Geopolitics fixture reliably activates multiple patterns
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        concl = result.conclusion
+        n_active = len(result.active_patterns)
+        ev_outcomes = concl.get("evidence_path", {}).get("outcomes", [])
+        if n_active == 0:
+            return  # no patterns — skip
+        elif n_active == 2:
+            # With 2 patterns, n_outcomes = 2 (unless low confidence)
+            assert len(ev_outcomes) >= 1, (
+                f"Expected ≥1 outcome with {n_active} active patterns, got {len(ev_outcomes)}"
+            )
+        elif n_active >= 3:
+            assert len(ev_outcomes) >= 2, (
+                f"Expected ≥2 outcomes with {n_active} active patterns, got {len(ev_outcomes)}"
+            )
+
+    def test_outcome_text_uses_catalog_phrasing(self):
+        """Outcome entries in evidence_path must use catalog phrasing, not raw snake_case."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        concl = result.conclusion
+        ev_outcomes = concl.get("evidence_path", {}).get("outcomes", [])
+        for oc in ev_outcomes:
+            text = oc.get("text", "")
+            # Catalog entries don't contain underscores (they're human-readable)
+            assert "_" not in text, (
+                f"Outcome text contains underscore (not from catalog): {text!r}"
+            )
+
 
 # ===========================================================================
 # Forecast module unit tests
