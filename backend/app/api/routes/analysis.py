@@ -849,6 +849,8 @@ def analyze_with_evented_pipeline(
 
         response: Dict[str, Any] = {
             "status":           "success",
+            "contract_version": "evented.v1",
+            "mode":             "evented",
             "events":           result.events,
             "active_patterns":  result.active_patterns,
             "derived_patterns": result.derived_patterns,

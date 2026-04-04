@@ -54,6 +54,7 @@ Stage 3 – 贝叶斯结论生成（替换 LLM 自由写作）
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -64,6 +65,38 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# ===========================================================================
+# 公开契约常量
+# ===========================================================================
+
+# T0: confidence below this → hard-reject (event never enters pipeline)
+_T0_CONF_THRESHOLD: float = 0.20
+# T2: confidence at or above this (and no inferred fields) → T2 tier
+_T2_CONF_THRESHOLD: float = 0.70
+# Minimum quote length for T2 classification (chars)
+_MIN_QUOTE_LEN: int = 15
+
+
+class EventType:
+    """Canonical event-type string constants (used by rule-based extractor and tests)."""
+    SANCTION_IMPOSED       = "sanction_imposed"
+    EXPORT_CONTROL         = "export_control"
+    MILITARY_STRIKE        = "military_strike"
+    CLASHES                = "clashes"
+    MOBILIZATION           = "mobilization"
+    CEASEFIRE              = "ceasefire"
+    COERCIVE_WARNING       = "coercive_warning"
+    WITHDRAWAL             = "withdrawal"
+    DIPLOMATIC_EVENT       = "diplomatic_event"
+    ECONOMIC_CRISIS        = "economic_crisis"
+    TECHNOLOGY_BREAKTHROUGH = "technology_breakthrough"
+    SPACE_MISSION          = "space_mission"
+    MARKET_ENTRY           = "market_entry"
+    PRODUCT_FEATURE_LAUNCH = "product_feature_launch"
+    COMPETITIVE_POSITIONING = "competitive_positioning"
+    PLATFORM_STRATEGY      = "platform_strategy"
+
 
 # ===========================================================================
 # 数据结构
@@ -143,11 +176,634 @@ class PipelineResult:
 
 
 # ===========================================================================
+# 公开工具函数（Public Utility Functions）
+# ===========================================================================
+
+def _stable_id(event_type: str, quote: str) -> str:
+    """Return a stable 8-char hex ID from event_type + quote content."""
+    raw = f"{event_type}::{quote}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+
+
+def infer_entity_type_lightweight(name: str) -> str:
+    """Classify an entity name into a broad type without external dependencies."""
+    if not name or not name.strip():
+        return "unknown"
+    n = name.strip()
+    # Firm / corporation
+    if re.search(r"\b(Inc|Corp|Ltd|Holdings|Group|Co\.|Company)\b", n):
+        return "firm"
+    # Alliances / multilateral bodies
+    if re.search(r"\b(NATO|EU|G7|G20|UN|ASEAN|BRICS|AU|WTO|IMF|SCO)\b", n):
+        return "alliance"
+    # State keywords
+    if re.search(
+        r"\b(government|ministry|department|senate|congress|parliament|"
+        r"China|US|USA|Russia|Germany|France|UK|Japan|India|Iran|Israel)\b",
+        n, re.IGNORECASE,
+    ):
+        return "state"
+    # Person heuristics: 2-3 Title-Case tokens
+    tokens = n.split()
+    if 2 <= len(tokens) <= 3 and all(t[0].isupper() for t in tokens if t):
+        return "person"
+    return "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Trigger-keyword index for rule-based extraction
+# ---------------------------------------------------------------------------
+
+_RULE_EVENT_PATTERNS: List[Tuple[str, str, float]] = [
+    # (regex, EventType constant, base_confidence)
+    (r"\bsanction(s|ed)?\b|\bimpose[sd]?\b.{0,30}\bsanction", EventType.SANCTION_IMPOSED, 0.80),
+    (r"\bexport control\b|\bentity list\b|\btech ban\b|\bchip ban\b", EventType.EXPORT_CONTROL, 0.78),
+    (r"\bairstrike[s]?\b|\bbombing\b|\bmissile strike\b|\bstrike[sd]?.{0,20}target", EventType.MILITARY_STRIKE, 0.82),
+    (r"\bclash(es|ed)?\b|\bfight(ing)?\b|\bskirmish", EventType.CLASHES, 0.75),
+    (r"\bmobiliz(e|ed|ation)\b|\btroops? (deploy|mov|mass)\b", EventType.MOBILIZATION, 0.72),
+    (r"\bceasefire\b|\bpeace (deal|agreement|accord)\b|\btruce\b", EventType.CEASEFIRE, 0.85),
+    (r"\bthreaten(ed|s)?\b|\bwarn(ed|ing)?\b.{0,30}\b(strike|attack|force)", EventType.COERCIVE_WARNING, 0.68),
+    (r"\bwithdraw(al|n|ing|s)?\b|\bwithdrew\b|\bpull(ed|ing)? out\b|\bexit(ed)?\b.{0,20}\btroop", EventType.WITHDRAWAL, 0.75),
+    (r"\blaunch(ed|ing)?\b.{0,40}\b(technolog|space|mission|satellite)\b"
+     r"|\b(space mission|lunar|orbit|astronaut|spacecraft|rocket|liftoff|Kennedy Space|Artemis|SpaceX|NASA.{0,20}launch)\b",
+     EventType.SPACE_MISSION, 0.80),
+    (r"\bbreakthrough\b|\binnovation\b|\b(technolog.{0,20}breakthrough)\b",
+     EventType.TECHNOLOGY_BREAKTHROUGH, 0.70),
+    (r"\bmarket entry\b|\bexpand.{0,20}\bmarket\b|\bexpand.{0,30}\binto\b.{0,30}(hosting|podcast|streaming)\b",
+     EventType.MARKET_ENTRY, 0.68),
+    (r"\b(feature launch|product launch|new (product|feature|service)|launch of a new|new audio|new (tool|capability))\b"
+     r"|\blaunch.{0,50}(creator|monetize|subscri)\b|\bnew.{0,30}(audio|podcast|feature).{0,30}(lets|allow|creat)\b",
+     EventType.PRODUCT_FEATURE_LAUNCH, 0.70),
+    (r"\bcompetitor\b|\bcompetitive\b|\btakes? aim\b|\brival\b|\btaking aim\b", EventType.COMPETITIVE_POSITIONING, 0.65),
+    (r"\bplatform\b.{0,50}(strategy|ecosystem|subscription|tiers?|bundl)\b|\bsubscription tiers?\b",
+     EventType.PLATFORM_STRATEGY, 0.63),
+]
+
+_ACTOR_TARGET_KEYS = {"actor", "target"}
+
+
+def extract_events_rule_based(text: str) -> List[Dict[str, Any]]:
+    """
+    Deterministic rule-based event extraction. Returns a list of event dicts
+    each with keys: id, type, args, evidence, confidence.
+
+    Empty / off-topic text returns [].
+    """
+    if not text or not text.strip():
+        return []
+
+    results: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+
+    for pattern_re, etype, base_conf in _RULE_EVENT_PATTERNS:
+        for m in re.finditer(pattern_re, text, re.IGNORECASE):
+            # Extract a surrounding window as evidence quote
+            start = max(0, m.start() - 30)
+            end   = min(len(text), m.end() + 80)
+            quote = text[start:end].strip()
+
+            eid = _stable_id(etype, quote)
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
+
+            results.append({
+                "id":         eid,
+                "type":       etype,
+                "args":       {},
+                "evidence":   {"quote": quote},
+                "confidence": round(base_conf, 4),
+            })
+
+    return results
+
+
+def extract_events_llm(text: str, llm_service: Any) -> List[Dict[str, Any]]:
+    """
+    LLM-based event extraction. Falls back to [] on any error.
+    Returns list of event dicts with id, type, args, evidence, confidence.
+    """
+    if llm_service is None:
+        return []
+
+    prompt = (
+        "You are an event extractor for geopolitical and economic news.\n"
+        "Extract all significant events from the following text.\n"
+        "Return a JSON array where each item has:\n"
+        '  {{"type": "<event_type>", "args": {{}}, "evidence": {{"quote": "<relevant excerpt>"}}, "confidence": 0.8}}\n'
+        "Event types include: sanction_imposed, export_control, military_strike, ceasefire, "
+        "coercive_warning, withdrawal, clashes, mobilization, diplomatic_event, economic_crisis, "
+        "technology_breakthrough, market_entry, product_feature_launch, competitive_positioning.\n"
+        "Text:\n"
+        f"{text[:1500]}\n"
+        "Return ONLY a JSON array, no other text."
+    )
+    try:
+        raw = llm_service.call(prompt=prompt, temperature=0.1, max_tokens=800)
+        raw_str = str(raw).strip()
+        # Strip markdown code fences if present
+        raw_str = re.sub(r"^```(?:json)?\s*", "", raw_str)
+        raw_str = re.sub(r"\s*```$", "", raw_str)
+        parsed = json.loads(raw_str)
+        if not isinstance(parsed, list):
+            return []
+        out: List[Dict[str, Any]] = []
+        for ev in parsed:
+            if not isinstance(ev, dict):
+                continue
+            etype = str(ev.get("type", "unknown")).strip()
+            quote = str((ev.get("evidence") or {}).get("quote", "")).strip()
+            eid   = ev.get("id") or _stable_id(etype, quote)
+            out.append({
+                "id":         eid,
+                "type":       etype,
+                "args":       ev.get("args") or {},
+                "evidence":   {"quote": quote},
+                "confidence": float(ev.get("confidence", 0.65)),
+            })
+        return out
+    except Exception as exc:
+        logger.debug("extract_events_llm failed: %s", exc)
+        return []
+
+
+def extract_events(text: str, llm_service: Any = None) -> List[Dict[str, Any]]:
+    """
+    Hybrid extraction: rule-based first, LLM fills gaps.
+    Always returns at least [] (never raises).
+    """
+    rule_events = extract_events_rule_based(text)
+    llm_events  = extract_events_llm(text, llm_service) if llm_service else []
+
+    # Merge: prefer rule-based, add unique LLM events
+    seen_ids = {ev["id"] for ev in rule_events}
+    merged   = list(rule_events)
+    for ev in llm_events:
+        if ev.get("id") and ev["id"] not in seen_ids:
+            merged.append(ev)
+            seen_ids.add(ev["id"])
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Event post-processing: T0 reject, confidence folding, tier assignment
+# ---------------------------------------------------------------------------
+
+# Keywords that validate an event type (if present in quote, no penalty)
+_EVENT_TRIGGER_KEYWORDS: Dict[str, List[str]] = {
+    EventType.SANCTION_IMPOSED:       ["sanction", "penalty", "restrict", "ban", "penalt"],
+    EventType.EXPORT_CONTROL:         ["export control", "entity list", "ban", "restrict"],
+    EventType.MILITARY_STRIKE:        ["strike", "airstrike", "bomb", "missile", "attack"],
+    EventType.CLASHES:                ["clash", "fight", "skirmish", "battle", "conflict"],
+    EventType.MOBILIZATION:           ["mobiliz", "deploy", "troops", "forces"],
+    EventType.CEASEFIRE:              ["ceasefire", "truce", "peace", "accord"],
+    EventType.COERCIVE_WARNING:       ["warn", "threaten", "ultimatum", "demand"],
+    EventType.WITHDRAWAL:             ["withdraw", "pull out", "exit", "retreat"],
+    EventType.TECHNOLOGY_BREAKTHROUGH: ["breakthrough", "innovation", "launch", "technolog"],
+    EventType.MARKET_ENTRY:           ["market", "entry", "expand"],
+    EventType.PRODUCT_FEATURE_LAUNCH: ["launch", "feature", "product", "service"],
+    EventType.COMPETITIVE_POSITIONING: ["competitor", "rival", "competit"],
+    EventType.PLATFORM_STRATEGY:      ["platform", "ecosystem", "subscription"],
+}
+
+
+def _has_trigger_keyword(event_type: str, quote: str) -> bool:
+    """Return True if the quote contains at least one trigger keyword for the event type."""
+    triggers = _EVENT_TRIGGER_KEYWORDS.get(event_type, [])
+    ql = quote.lower()
+    return any(kw in ql for kw in triggers)
+
+
+def postprocess_events(
+    candidates: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Post-process a list of raw candidate event dicts:
+      1. Strip whitespace from type, quote, args strings
+      2. Assign stable ID if missing
+      3. Deduplicate by ID
+      4. Fold confidence (inferred_fields → *0.7, actor/target keys → *0.8 each,
+         missing trigger keyword → *0.7)
+      5. Hard-reject (T0) events whose folded confidence < _T0_CONF_THRESHOLD
+      6. Assign tier: T2 if conf >= _T2_CONF_THRESHOLD AND no inferred_fields, else T1
+      7. If quote is empty/short/unverified, add to verification_gap and downgrade to T1
+
+    Returns the filtered and annotated list.
+    """
+    seen_ids: Dict[str, Dict[str, Any]] = {}  # id → best event
+
+    for raw in candidates:
+        if not isinstance(raw, dict):
+            continue
+
+        # ── 1. Normalize strings ─────────────────────────────────────────
+        ev = dict(raw)
+        ev["type"] = str(ev.get("type", "unknown")).strip()
+
+        ev_args = ev.get("args") or {}
+        if isinstance(ev_args, dict):
+            ev["args"] = {k: str(v).strip() if isinstance(v, str) else v
+                          for k, v in ev_args.items()}
+
+        ev_evidence = ev.get("evidence") or {}
+        quote = str(ev_evidence.get("quote", "")).strip()
+        ev["evidence"] = {**ev_evidence, "quote": quote}
+
+        # ── 2. Assign stable ID ──────────────────────────────────────────
+        if not ev.get("id"):
+            ev["id"] = _stable_id(ev["type"], quote)
+
+        # ── 3. Deduplicate (keep first occurrence, we process in order) ──
+        eid = ev["id"]
+        if eid in seen_ids:
+            continue  # already registered
+
+        # ── 4. Confidence folding ────────────────────────────────────────
+        conf = float(ev.get("confidence", 0.0))
+        inferred = ev.get("inferred_fields") or []
+        verification_gap: List[str] = list(ev.get("verification_gap") or [])
+
+        if inferred:
+            conf *= 0.7
+            for key in inferred:
+                if str(key).lower() in _ACTOR_TARGET_KEYS:
+                    conf *= 0.8
+
+        if not _has_trigger_keyword(ev["type"], quote):
+            conf *= 0.7
+
+        conf = round(conf, 4)
+
+        # ── 5. T0 hard-reject ────────────────────────────────────────────
+        if conf <= 0 or conf < _T0_CONF_THRESHOLD:
+            seen_ids[eid] = None  # type: ignore[assignment]  # mark as rejected
+            continue
+
+        # ── 6. Quote quality checks (add gaps, but don't hard-reject) ────
+        if not quote:
+            verification_gap.append("quote missing – event not directly observed")
+            conf = min(conf, _T2_CONF_THRESHOLD - 0.01)
+        elif len(quote) < _MIN_QUOTE_LEN:
+            verification_gap.append(
+                f"quote too short ({len(quote)} < {_MIN_QUOTE_LEN} chars) – limited evidence"
+            )
+            conf = min(conf, _T2_CONF_THRESHOLD - 0.01)
+
+        # ── 7. Tier assignment ───────────────────────────────────────────
+        has_inferred = bool(inferred)
+        if conf >= _T2_CONF_THRESHOLD and not has_inferred:
+            tier = "T2"
+        else:
+            tier = "T1"
+            if has_inferred and not any("inferred" in g for g in verification_gap):
+                verification_gap.append("one or more fields inferred (not directly stated)")
+
+        ev["confidence"]       = conf
+        ev["tier"]             = tier
+        ev["verification_gap"] = verification_gap
+        seen_ids[eid]          = ev
+
+    return [v for v in seen_ids.values() if v is not None]
+
+
+def _fallback_top_events(
+    candidates: List[Dict[str, Any]],
+    max_keep: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    When all candidates are T0-rejected, keep the top max_keep candidates
+    by raw confidence (ignoring folding), clamped to T1 max confidence and
+    tagged with a 'fallback' verification gap.
+
+    Returns [] if candidates is empty or all have confidence <= 0.
+    """
+    valid = [c for c in candidates if float(c.get("confidence", 0)) > 0]
+    if not valid:
+        return []
+
+    top = sorted(valid, key=lambda c: c["confidence"], reverse=True)[:max_keep]
+    result = []
+    for ev in top:
+        ev2 = dict(ev)
+        ev2["confidence"] = round(min(float(ev2.get("confidence", 0.3)), 0.35), 4)
+        ev2["tier"]       = "T1"
+        gap = list(ev2.get("verification_gap") or [])
+        if not any("fallback" in g for g in gap):
+            gap.append("fallback event – all stronger candidates rejected by T0 filter")
+        ev2["verification_gap"] = gap
+        if not ev2.get("id"):
+            ev2["id"] = _stable_id(ev2.get("type", "unknown"), "")
+        result.append(ev2)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# derive_active_patterns: event dicts → active pattern dicts
+# ---------------------------------------------------------------------------
+
+# Tier-aware event-type → pattern name mapping
+# T2 events map to "strong" patterns, T1 events map to "weak" / policy patterns
+_T2_EVENT_TO_PATTERNS: Dict[str, List[str]] = {
+    EventType.SANCTION_IMPOSED:        ["霸權制裁模式"],
+    EventType.EXPORT_CONTROL:          ["實體清單技術封鎖模式"],
+    EventType.MILITARY_STRIKE:         ["國家間武力衝突模式"],
+    EventType.CLASHES:                 ["國家間武力衝突模式", "非國家武裝代理衝突模式"],
+    EventType.MOBILIZATION:            ["大國脅迫 / 威懾模式"],
+    EventType.CEASEFIRE:               ["停火 / 和平協議模式"],
+    EventType.COERCIVE_WARNING:        ["大國脅迫 / 威懾模式"],
+    EventType.WITHDRAWAL:              ["外交讓步 / 去升級模式"],
+    EventType.SPACE_MISSION:           ["技術突破 / 太空探索模式", "技術標準主導模式"],
+    EventType.TECHNOLOGY_BREAKTHROUGH: ["技術標準主導模式", "關鍵零部件寡頭供應模式"],
+    EventType.MARKET_ENTRY:            ["產品能力擴張模式"],
+    EventType.PRODUCT_FEATURE_LAUNCH:  ["產品能力擴張模式", "平台競爭 / 生態位擴張模式"],
+    EventType.COMPETITIVE_POSITIONING: ["平台競爭 / 生態位擴張模式"],
+    EventType.PLATFORM_STRATEGY:       ["平台競爭 / 生態位擴張模式", "創作者經濟整合模式"],
+}
+
+_T1_EVENT_TO_PATTERNS: Dict[str, List[str]] = {
+    EventType.SANCTION_IMPOSED:        ["政策性貿易限制模式"],
+    EventType.EXPORT_CONTROL:          ["跨國監管 / 合規約束模式"],
+    EventType.MILITARY_STRIKE:         ["非國家武裝代理衝突模式"],
+    EventType.CLASHES:                 ["非國家武裝代理衝突模式"],
+    EventType.MOBILIZATION:            ["非國家武裝代理衝突模式"],
+    EventType.CEASEFIRE:               ["停火 / 和平協議模式"],
+    EventType.COERCIVE_WARNING:        ["信息戰 / 敘事操控模式"],
+    EventType.WITHDRAWAL:              ["外交讓步 / 去升級模式"],
+    EventType.SPACE_MISSION:           ["技術突破 / 太空探索模式"],
+    EventType.TECHNOLOGY_BREAKTHROUGH: ["技術標準主導模式"],
+    EventType.MARKET_ENTRY:            ["產品能力擴張模式"],
+    EventType.PRODUCT_FEATURE_LAUNCH:  ["產品能力擴張模式"],
+    EventType.COMPETITIVE_POSITIONING: ["平台競爭 / 生態位擴張模式"],
+    EventType.PLATFORM_STRATEGY:       ["平台競爭 / 生態位擴張模式"],
+}
+
+# Fallback for unknown event types
+_DEFAULT_PATTERNS_T2 = ["雙邊貿易依存模式"]
+_DEFAULT_PATTERNS_T1 = ["雙邊貿易依存模式"]
+
+
+def derive_active_patterns(
+    events: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Map post-processed event dicts to active pattern dicts.
+
+    Each output item has:
+      pattern, from_event (event ID), tier, inferred, confidence
+
+    T2 events activate strong patterns; T1 events activate weak/policy patterns.
+    No duplicate pattern names are emitted.
+    """
+    seen_patterns: set = set()
+    result: List[Dict[str, Any]] = []
+
+    for ev in events:
+        etype    = str(ev.get("type", "unknown")).strip()
+        eid      = ev.get("id", _stable_id(etype, ""))
+        tier     = ev.get("tier", "T2")
+        conf     = float(ev.get("confidence", 0.65))
+        inferred = bool(ev.get("inferred_fields"))
+
+        mapping = _T2_EVENT_TO_PATTERNS if tier == "T2" else _T1_EVENT_TO_PATTERNS
+        patterns = mapping.get(etype)
+        if not patterns:
+            patterns = _DEFAULT_PATTERNS_T2 if tier == "T2" else _DEFAULT_PATTERNS_T1
+
+        for pname in patterns:
+            if pname in seen_patterns:
+                continue
+            seen_patterns.add(pname)
+            result.append({
+                "pattern":    pname,
+                "from_event": eid,
+                "tier":       tier,
+                "inferred":   inferred,
+                "confidence": round(conf * (0.9 if inferred else 1.0), 4),
+            })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# derive_composed_patterns: active pattern dicts → derived pattern dicts
+# ---------------------------------------------------------------------------
+
+def derive_composed_patterns(
+    active: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Look up all (A, B) → C entries in composition_table where A or B is in active.
+
+    Each derived entry has:
+      derived, rule, inputs, derived_tier, derived_inferred, derived_confidence
+
+    derived_confidence = min(conf_A, conf_B) * 0.9 (* 0.8 if any input is inferred)
+    derived_tier: T2 if derived_confidence >= _T2_CONF_THRESHOLD else T1
+    """
+    try:
+        from ontology.relation_schema import composition_table as _ctable
+    except ImportError:
+        logger.warning("derive_composed_patterns: relation_schema unavailable")
+        return []
+
+    active_map: Dict[str, Dict[str, Any]] = {
+        ap["pattern"]: ap for ap in active if ap.get("pattern")
+    }
+    active_names = set(active_map.keys())
+    seen_derived: set = set()
+    result: List[Dict[str, Any]] = []
+
+    for (pa, pb), pc in _ctable.items():
+        if pa not in active_names and pb not in active_names:
+            continue
+        if pc in seen_derived:
+            continue
+
+        ap_a = active_map.get(pa) or {}
+        ap_b = active_map.get(pb) or {}
+        conf_a = float(ap_a.get("confidence", 0.60))
+        conf_b = float(ap_b.get("confidence", 0.60))
+        inferred_a = bool(ap_a.get("inferred"))
+        inferred_b = bool(ap_b.get("inferred"))
+        any_inferred = inferred_a or inferred_b
+
+        derived_conf = round(min(conf_a, conf_b) * 0.9 * (0.8 if any_inferred else 1.0), 4)
+        derived_tier = "T2" if derived_conf >= _T2_CONF_THRESHOLD else "T1"
+
+        seen_derived.add(pc)
+        result.append({
+            "derived":           pc,
+            "rule":              f"{pa} + {pb} -> {pc}",
+            "inputs":            [pa, pb],
+            "derived_tier":      derived_tier,
+            "derived_inferred":  any_inferred,
+            "derived_confidence": derived_conf,
+            # backward-compatible aliases
+            "pattern":           pc,
+            "pattern_name":      pc,
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# compute_credibility: standalone credibility computation
+# ---------------------------------------------------------------------------
+
+def compute_credibility(
+    text: str,
+    active: List[Dict[str, Any]],
+    derived: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Compute a credibility report from the text and active/derived patterns.
+
+    Returns a dict with:
+      verifiability_score, kg_consistency_score, missing_evidence,
+      contradictions, supporting_paths, hypothesis_ratio, overall_score
+    """
+    # ── Verifiability anchors ────────────────────────────────────────────
+    has_date = bool(re.search(
+        r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}|\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b",
+        text, re.IGNORECASE,
+    ))
+    has_inst = bool(re.search(
+        r"\b(NASA|ESA|Pentagon|NATO|UN|Congress|Senate|Ministry|Reuters|BBC|OFAC|Treasury)\b",
+        text, re.IGNORECASE,
+    ))
+    has_url  = bool(re.search(r"https?://\S+|official|report|document", text, re.IGNORECASE))
+    verifiability_score = round(0.30 + 0.25 * has_date + 0.25 * has_inst + 0.20 * has_url, 4)
+
+    missing_evidence: List[str] = []
+    if not has_date:
+        missing_evidence.append("specific_date")
+    if not has_inst:
+        missing_evidence.append("named_institution_or_official_source")
+    if not has_url:
+        missing_evidence.append("official_document_or_url_reference")
+
+    # ── KG consistency (contradiction detection) ─────────────────────────
+    try:
+        from ontology.relation_schema import inverse_table as _itable
+        active_names = [ap.get("pattern", "") for ap in active]
+        contradictions = []
+        for name in active_names:
+            inv = _itable.get(name)
+            if inv and inv in active_names:
+                pair = tuple(sorted([name, inv]))
+                if pair not in [tuple(sorted(c)) for c in contradictions]:
+                    contradictions.append([name, inv])
+    except ImportError:
+        contradictions = []
+
+    kg_consistency_score = round(1.0 - 0.3 * min(len(contradictions), 3), 4)
+
+    # ── Hypothesis ratio ─────────────────────────────────────────────────
+    n_active = len(active)
+    n_t1 = sum(1 for ap in active if ap.get("tier") == "T1")
+    hypothesis_ratio = round(n_t1 / n_active, 4) if n_active > 0 else 0.0
+
+    # ── Overall score ────────────────────────────────────────────────────
+    overall_score = round(
+        verifiability_score * kg_consistency_score * (1.0 - 0.4 * hypothesis_ratio),
+        4,
+    )
+
+    # ── Supporting paths ─────────────────────────────────────────────────
+    supporting_paths = [ap.get("pattern", "") for ap in active if ap.get("tier") == "T2"]
+
+    return {
+        "verifiability_score":  verifiability_score,
+        "kg_consistency_score": kg_consistency_score,
+        "missing_evidence":     missing_evidence,
+        "contradictions":       contradictions,
+        "supporting_paths":     supporting_paths,
+        "hypothesis_ratio":     hypothesis_ratio,
+        "overall_score":        overall_score,
+    }
+
+
+# ---------------------------------------------------------------------------
+# generate_conclusion: events + patterns → conclusion dict
+# ---------------------------------------------------------------------------
+
+def generate_conclusion(
+    text: str,
+    events: List[Dict[str, Any]],
+    active: List[Dict[str, Any]],
+    derived: List[Dict[str, Any]],
+    llm_service: Any,
+) -> Dict[str, Any]:
+    """
+    Generate a structured conclusion from events and patterns.
+
+    Returns a dict with at least:
+      conclusion (str), evidence_path, hypothesis_path, mode
+    """
+    t2_active = [ap for ap in active if ap.get("tier") == "T2"]
+    t1_active = [ap for ap in active if ap.get("tier") != "T2"]
+
+    evidence_summary = (
+        "T2 grounded patterns activated: "
+        + ", ".join(ap["pattern"] for ap in t2_active[:3])
+        if t2_active
+        else "No T2-grounded patterns found."
+    )
+    hypothesis_summary = (
+        "Inferred / T1 patterns: "
+        + ", ".join(ap["pattern"] for ap in t1_active[:3])
+        if t1_active
+        else "No hypothesis-only patterns."
+    )
+
+    if llm_service is None:
+        conclusion_text = (
+            f"Deterministic analysis: {evidence_summary}. "
+            f"Hypothesis path: {hypothesis_summary}. "
+            f"Derived patterns: {', '.join(d['derived'] for d in derived[:2]) or 'none'}."
+        )
+        mode = "deterministic_fallback"
+    else:
+        prompt = (
+            f"Summarize the following geopolitical analysis in 2-3 sentences:\n"
+            f"Evidence path: {evidence_summary}\n"
+            f"Hypothesis path: {hypothesis_summary}\n"
+            f"Text excerpt: {text[:300]}\n"
+            "Return plain text only."
+        )
+        try:
+            conclusion_text = str(llm_service.call(prompt=prompt, temperature=0.1, max_tokens=250)).strip()
+            mode = "llm_constrained"
+        except Exception as exc:
+            logger.warning("generate_conclusion LLM call failed: %s", exc)
+            conclusion_text = (
+                f"Deterministic analysis: {evidence_summary}. "
+                f"Hypothesis path: {hypothesis_summary}."
+            )
+            mode = "deterministic_fallback"
+
+    return {
+        "conclusion": conclusion_text,
+        "evidence_path": {
+            "summary":  evidence_summary,
+            "patterns": t2_active[:5],
+        },
+        "hypothesis_path": {
+            "summary":           hypothesis_summary,
+            "verification_gaps": [ap["pattern"] for ap in t1_active[:3]],
+        },
+        "beta_path_algebra": {"algebra_used": False},
+        "mode": mode,
+    }
+
+
+# ===========================================================================
 # Stage 1: 事件提取
 # ===========================================================================
 
 def _run_stage1(text: str, llm_service: Any) -> List[EventNode]:
     """调用 EventExtractor（含复合规则）提取事件节点。"""
+    raw_events: List[Dict[str, Any]] = []
     try:
         from app.data_ingestion.event_extractor import EventExtractor
         extractor = EventExtractor()
@@ -158,7 +814,22 @@ def _run_stage1(text: str, llm_service: Any) -> List[EventNode]:
             extractor = EventExtractor()
             raw_events = extractor.extract_events(text)
         except ImportError:
-            raw_events = _rule_fallback_events(text)
+            raw_events = []
+
+    # If no events from the external extractor, use the built-in rule-based extractor
+    if not raw_events:
+        rule_evs = extract_events_rule_based(text)
+        for rev in rule_evs:
+            raw_events.append({
+                "event_type": rev.get("type", "其他事件"),
+                "severity":   "medium",
+                "description": rev.get("evidence", {}).get("quote", text[:200]),
+                "entities":   {},
+                "confidence": rev.get("confidence", 0.65),
+            })
+
+    if not raw_events:
+        raw_events = _rule_fallback_events(text)
 
     nodes: List[EventNode] = []
     for ev in raw_events:
@@ -748,19 +1419,50 @@ def _run_stage3(
     )
 
     conclusion = {
+        # ── canonical frontend keys ──────────────────────────────────────
+        "conclusion": conclusion_text,
+        "evidence_path": {
+            "summary": (
+                f"Alpha path 「{alpha_path['name']}」"
+                f"（概率={alpha_path['probability']:.0%}）: {alpha_path.get('causal_chain', '')}"
+            ),
+            "patterns": [{"pattern": alpha_path["name"], "mechanism": alpha_path.get("mechanism", "")}],
+        },
+        "hypothesis_path": {
+            "summary": (
+                f"Beta path 「{beta_path['name']}」"
+                f"（概率={beta_path['probability']:.0%}）: {beta_path.get('causal_chain', '')}"
+            ),
+            "verification_gaps": [
+                beta_path.get("trigger_condition", "关键节点发生逆转")
+            ],
+        },
+        "beta_path_algebra": {"algebra_used": False},
+        # ── backward-compatible internal fields ──────────────────────────
         "text":       conclusion_text,
         "alpha_path": alpha_path,
         "beta_path":  beta_path,
         "confidence": composite,
+        "mode":       "llm_constrained" if llm_service is not None else "deterministic_fallback",
     }
 
+    # Compute credibility with canonical field names
+    hypothesis_ratio = 0.0  # no T1/T2 distinction at this stage (EventNode level)
     credibility = {
+        # ── canonical frontend keys ──────────────────────────────────────
+        "verifiability_score":  round(verifiability, 3),
+        "kg_consistency_score": round(kg_consistency, 3),
+        "overall_score":        composite,
+        "hypothesis_ratio":     hypothesis_ratio,
+        "missing_evidence":     missing_evidence,
+        "contradictions":       [],
+        "supporting_paths":     [],
+        # ── backward-compatible keys ─────────────────────────────────────
         "verifiability":        round(verifiability, 3),
         "kg_consistency":       round(kg_consistency, 3),
         "composite_score":      composite,
         "active_pattern_count": len(active),
         "transition_count":     len(transitions),
-        "missing_evidence":     missing_evidence,
         "confidence_source":    "ontology_prior × bayesian_posterior",
         "note": (
             "置信度来自本体先验 × 贝叶斯后验归一化，"
@@ -882,7 +1584,7 @@ def _fallback_conclusion_text(
 
 def run_evented_pipeline(
     text: str,
-    llm_service: Any,
+    llm_service: Any = None,
 ) -> PipelineResult:
     """
     执行完整的五阶段本体推演管线。
@@ -912,6 +1614,17 @@ def run_evented_pipeline(
 
     # ── Stage 2c ─────────────────────────────────────────────────────
     state_vector = _run_stage2c(active)
+    # Ensure mean_vector is a list[float] of length 8 (contract requirement)
+    _sv_mean = state_vector.get("mean_vector", {})
+    if isinstance(_sv_mean, dict) and "dim_values" in _sv_mean:
+        _dim_list = list(_sv_mean["dim_values"].values())
+    elif isinstance(_sv_mean, list):
+        _dim_list = _sv_mean
+    else:
+        _dim_list = [0.0] * 8
+    # Pad / truncate to exactly 8 floats
+    _dim_list = [float(v) for v in _dim_list[:8]] + [0.0] * max(0, 8 - len(_dim_list))
+    state_vector["mean_vector_list"] = _dim_list
 
     # ── Stage 2d ─────────────────────────────────────────────────────
     driving_factors = _run_stage2d(active, transitions)
@@ -937,10 +1650,12 @@ def run_evented_pipeline(
             "confidence_prior": round(p.confidence_prior, 3),
             "typical_outcomes": p.typical_outcomes[:3],
             "source_event":     p.source_event,
-            # backward-compatible aliases expected by frontend
+            # canonical frontend keys
             "pattern":          p.pattern_name,
+            "tier":             "T2",   # active patterns derived from ontology are T2 by default
             "confidence":       round(p.confidence_prior, 3),
             "from_event":       p.source_event,
+            "inferred":         False,
         }
 
     def _trans_to_dict(t: TransitionEdge) -> Dict[str, Any]:
@@ -953,18 +1668,28 @@ def run_evented_pipeline(
             "lie_similarity":   t.lie_similarity,
             "typical_outcomes": t.typical_outcomes,
             "description":      t.description,
+            "tier":             "T1" if t.transition_type == "inverse" else "T2",
         }
 
     def _df_to_dict(d: DrivingFactor) -> Dict[str, Any]:
         return {
+            # canonical backend keys
             "factor":              d.factor,
             "mechanism_class":     d.mechanism_class,
             "supporting_patterns": d.supporting_patterns,
             "weight":              d.weight,
             "outcomes":            d.outcomes,
+            # canonical frontend alias keys
+            "label":      d.factor,
+            "count":      len(d.supporting_patterns),
+            "confidence": round(min(d.weight, 1.0), 3),
+            "evidence":   d.outcomes[:2],
         }
 
     def _ev_to_dict(e: EventNode) -> Dict[str, Any]:
+        # Determine tier from confidence
+        tier = "T2" if e.confidence >= _T2_CONF_THRESHOLD else "T1"
+        quote = e.source_quote or e.description[:120]
         return {
             # v3 canonical keys
             "event_type":   e.event_type,
@@ -972,9 +1697,13 @@ def run_evented_pipeline(
             "description":  e.description,
             "entities":     e.entities,
             "confidence":   e.confidence,
-            "source_quote": e.source_quote,
-            # backward-compatible alias expected by frontend
-            "type":         e.event_type,
+            "source_quote": quote,
+            # canonical frontend keys
+            "type":             e.event_type,
+            "tier":             tier,
+            "evidence":         {"quote": quote, "source": ""},
+            "inferred_fields":  [],
+            "verification_gap": [] if tier == "T2" else ["tier downgraded by confidence threshold"],
         }
 
     active_dicts     = [_pat_to_dict(p)  for p in active]
@@ -985,14 +1714,15 @@ def run_evented_pipeline(
     # derived_patterns 向后兼容字段（取 top transitions 的目标模式名列表）
     derived_compat = [
         {
-            # v3 canonical key
+            # canonical keys
             "pattern_name":      t.to_pattern,
-            # backward-compatible aliases expected by frontend
             "derived":           t.to_pattern,
             "pattern":           t.to_pattern,
             "derived_confidence": round(t.posterior_weight, 3),
             "rule":              t.transition_type,
-            "derived_tier":      "T1",
+            "derived_tier":      "T1" if t.transition_type == "inverse" else "T2",
+            "derived_inferred":  t.transition_type == "inverse",
+            "inputs":            [t.from_pattern_a, t.from_pattern_b],
         }
         for t in transitions[:3]
     ]
