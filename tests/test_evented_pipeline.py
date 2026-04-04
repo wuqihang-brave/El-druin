@@ -1234,7 +1234,7 @@ class TestPipelineResultSchemaContract:
             assert "type" in evt, (
                 f"Event missing backward-compat 'type' key: {evt}"
             )
-            assert evt["type"] == evt.get("event_type"), (
+            assert evt.get("type") == evt.get("event_type"), (
                 f"'type' alias must equal 'event_type'. Got: {evt}"
             )
 
@@ -1258,7 +1258,7 @@ class TestPipelineResultSchemaContract:
             assert "pattern" in ap, (
                 f"Active pattern missing backward-compat 'pattern' key: {ap}"
             )
-            assert ap["pattern"] == ap.get("pattern_name"), (
+            assert ap.get("pattern") == ap.get("pattern_name"), (
                 f"'pattern' alias must equal 'pattern_name'. Got: {ap}"
             )
 

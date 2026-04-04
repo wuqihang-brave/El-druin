@@ -57,7 +57,7 @@ _FIXTURE_TARIFF_TRADE = (
 class TestEventDictContract:
     """Verify keys of each event dict returned by run_evented_pipeline."""
 
-    def _events(self, text: str):
+    def _events(self, text: str) -> list:
         return run_evented_pipeline(text, llm_service=None).events
 
     def test_event_has_type_alias(self):
@@ -65,7 +65,7 @@ class TestEventDictContract:
         events = self._events(_FIXTURE_GEOPOLITICS)
         for evt in events:
             assert "type" in evt, f"Event missing 'type' alias: {evt}"
-            assert evt["type"] == evt.get("event_type"), (
+            assert evt.get("type") == evt.get("event_type"), (
                 f"'type' must equal 'event_type'. Got: {evt}"
             )
 
@@ -92,14 +92,14 @@ class TestEventDictContract:
 class TestActivePatternDictContract:
     """Verify keys of each active-pattern dict."""
 
-    def _patterns(self, text: str):
+    def _patterns(self, text: str) -> list:
         return run_evented_pipeline(text, llm_service=None).active_patterns
 
     def test_has_pattern_alias(self):
         """'pattern' backward-compat key must equal 'pattern_name'."""
         for ap in self._patterns(_FIXTURE_GEOPOLITICS):
             assert "pattern" in ap, f"Active pattern missing 'pattern': {ap}"
-            assert ap["pattern"] == ap.get("pattern_name"), (
+            assert ap.get("pattern") == ap.get("pattern_name"), (
                 f"'pattern' must equal 'pattern_name'. Got: {ap}"
             )
 
@@ -121,7 +121,7 @@ class TestActivePatternDictContract:
 class TestDerivedPatternDictContract:
     """Verify keys of each derived-pattern dict."""
 
-    def _derived(self, text: str):
+    def _derived(self, text: str) -> list:
         return run_evented_pipeline(text, llm_service=None).derived_patterns
 
     def test_has_derived_alias(self):
