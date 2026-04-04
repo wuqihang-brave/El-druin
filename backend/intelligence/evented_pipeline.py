@@ -1049,11 +1049,14 @@ def _run_stage2b(
             lie_sim = 0.5
         else:
             lie_sim = float(np.dot(v_sum / n_sum, v_tgt / n_tgt))
-            lie_sim = max(0.0, lie_sim)  # clip negative
+            # Clip negative but keep a minimum epsilon so posterior is never 0
+            lie_sim = max(0.05, lie_sim)
 
         posterior = prior_a * prior_b * lie_sim
+        # Ensure posterior is never rounded to exactly 0
+        posterior = max(posterior, 1e-4)
 
-        # 目标模式的典型后果
+        # Typical outcomes for target pattern
         outcomes: List[str] = []
         for pat in CARTESIAN_PATTERN_REGISTRY.values():
             if pat.pattern_name == pc:
@@ -1073,8 +1076,8 @@ def _run_stage2b(
             posterior_weight=round(posterior, 4),
             typical_outcomes=outcomes[:3],
             description=(
-                f"「{pa}」⊕「{pb}」→「{pc}」"
-                f"（后验={posterior:.3f}，Lie相似度={lie_sim:.2f}）"
+                f"{pa} \u2295 {pb} \u2192 [{pc}] "
+                f"(posterior={posterior:.4f}, lie_sim={lie_sim:.3f})"
             ),
         ))
 
@@ -1089,8 +1092,12 @@ def _run_stage2b(
             n_tgt    = np.linalg.norm(v_tgt)
             lie_sim  = float(np.dot(v_inv / max(n_inv, 1e-9), v_tgt / max(n_tgt, 1e-9)))
             lie_sim  = max(0.0, lie_sim)
-            # 逆转置信度打折（逆模式发生概率低）
+            # Use epsilon floor to prevent zero posterior for inverse paths
+            lie_sim  = max(0.05, lie_sim)
+            # Inverse-mode confidence discount (low-probability high-impact)
             posterior = prior_a * 0.35 * lie_sim
+            # Ensure posterior is never exactly 0
+            posterior = max(posterior, 1e-4)
 
             outcomes = []
             for pat in CARTESIAN_PATTERN_REGISTRY.values():
@@ -1100,7 +1107,7 @@ def _run_stage2b(
 
             edges.append(TransitionEdge(
                 from_pattern_a=pa,
-                from_pattern_b="（逆元）",
+                from_pattern_b="(inverse)",
                 to_pattern=pc,
                 transition_type="inverse",
                 prior_a=round(prior_a, 3),
@@ -1109,8 +1116,8 @@ def _run_stage2b(
                 posterior_weight=round(posterior, 4),
                 typical_outcomes=outcomes[:3],
                 description=(
-                    f"「{pa}」的逆模式：「{pc}」"
-                    f"（后验={posterior:.3f}，低概率高冲击）"
+                    f"Inverse of [{pa}] \u2192 [{pc}] "
+                    f"(posterior={posterior:.4f}, low-probability high-impact)"
                 ),
             ))
 
@@ -1203,7 +1210,7 @@ def _run_stage2d(
                         mclass = pat.mechanism_class or "transition_derived"
                         g = groups[mclass]
                         if edge.to_pattern not in g["patterns"]:
-                            g["patterns"].append(edge.to_pattern + "（衍生）")
+                            g["patterns"].append(edge.to_pattern + " (derived)")
                         g["total_weight"] += edge.posterior_weight * 0.5
                         for outcome in edge.typical_outcomes:
                             g["outcome_weights"][outcome] += edge.posterior_weight * 0.5
@@ -1224,7 +1231,7 @@ def _run_stage2d(
         outcomes_list = [o for o, _ in top_outcomes]
 
         # 构造可读的驱动力陈述
-        patterns_str = "、".join(gdata["patterns"][:2])
+        patterns_str = ", ".join(gdata["patterns"][:2])
         factor_text  = _mechanism_to_statement(mclass, patterns_str, outcomes_list)
 
         factors.append(DrivingFactor(
@@ -1246,31 +1253,31 @@ def _mechanism_to_statement(
     patterns: str,
     outcomes: List[str],
 ) -> str:
-    """将机制类 + 模式名 → 可读的驱动力陈述（不依赖 LLM）。"""
+    """Map mechanism class + pattern names → readable English driving statement (no LLM)."""
     _MCLASS_TEMPLATES = {
-        "coercive_leverage":      "强制杠杆机制激活（{patterns}），推动 {outcome0}",
-        "tech_denial":            "技术封锁机制激活（{patterns}），推动 {outcome0}",
-        "kinetic_escalation":     "动能升级机制激活（{patterns}），推动 {outcome0}",
-        "proxy_warfare":          "代理战争机制激活（{patterns}），推动 {outcome0}",
-        "economic_interdependence":"经济相互依存机制（{patterns}），制约 {outcome0}",
-        "monetary_transmission":  "货币政策传导机制（{patterns}），导致 {outcome0}",
-        "financial_exclusion":    "金融排斥机制激活（{patterns}），推动 {outcome0}",
-        "supply_chain_resilience":"供应链韧性压力（{patterns}），触发 {outcome0}",
-        "resource_leverage":      "资源杠杆机制激活（{patterns}），推动 {outcome0}",
-        "tech_governance":        "技术治理机制（{patterns}），推动 {outcome0}",
-        "tech_decoupling":        "技术脱钩机制加速（{patterns}），推动 {outcome0}",
-        "oligopoly_supply":       "寡头供应格局（{patterns}），制约 {outcome0}",
-        "epistemic_warfare":      "认知战争机制（{patterns}），导致 {outcome0}",
-        "regulatory_pressure":    "监管约束机制（{patterns}），触发 {outcome0}",
-        "alliance_dynamics":      "联盟动态机制（{patterns}），形成 {outcome0}",
-        "norm_diffusion":         "规范扩散机制（{patterns}），强化 {outcome0}",
-        "multilateral_pressure":  "多边压力机制（{patterns}），推动 {outcome0}",
+        "coercive_leverage":       "Coercive leverage mechanism active ({patterns}), driving {outcome0}",
+        "tech_denial":             "Technology denial mechanism active ({patterns}), driving {outcome0}",
+        "kinetic_escalation":      "Kinetic escalation mechanism active ({patterns}), driving {outcome0}",
+        "proxy_warfare":           "Proxy warfare mechanism active ({patterns}), driving {outcome0}",
+        "economic_interdependence":"Economic interdependence mechanism ({patterns}), constraining toward {outcome0}",
+        "monetary_transmission":   "Monetary policy transmission mechanism ({patterns}), leading to {outcome0}",
+        "financial_exclusion":     "Financial exclusion mechanism active ({patterns}), driving {outcome0}",
+        "supply_chain_resilience": "Supply chain resilience pressure ({patterns}), triggering {outcome0}",
+        "resource_leverage":       "Resource leverage mechanism active ({patterns}), driving {outcome0}",
+        "tech_governance":         "Technology governance mechanism ({patterns}), driving {outcome0}",
+        "tech_decoupling":         "Technology decoupling mechanism accelerating ({patterns}), driving {outcome0}",
+        "oligopoly_supply":        "Oligopoly supply structure ({patterns}), constraining toward {outcome0}",
+        "epistemic_warfare":       "Epistemic warfare mechanism ({patterns}), leading to {outcome0}",
+        "regulatory_pressure":     "Regulatory constraint mechanism ({patterns}), triggering {outcome0}",
+        "alliance_dynamics":       "Alliance dynamics mechanism ({patterns}), forming {outcome0}",
+        "norm_diffusion":          "Norm diffusion mechanism ({patterns}), reinforcing {outcome0}",
+        "multilateral_pressure":   "Multilateral pressure mechanism ({patterns}), driving {outcome0}",
     }
     template = _MCLASS_TEMPLATES.get(
         mclass,
-        "{mclass} 机制激活（{patterns}），推动 {outcome0}",
+        "{mclass} mechanism active ({patterns}), driving {outcome0}",
     )
-    outcome0 = outcomes[0] if outcomes else "结构性重组"
+    outcome0 = outcomes[0].replace("_", " ") if outcomes else "structural realignment"
     return template.format(
         patterns=patterns,
         outcome0=outcome0,
@@ -1354,7 +1361,7 @@ def _run_stage3(
     if not re.search(r"https?://\S+|official|report|document", text, re.IGNORECASE):
         missing_evidence.append("official_document_or_url_reference")
 
-    # ── D. 构造结构化 Alpha / Beta 路径（确定性）──────────────────────
+    # ── D. Construct structured Alpha / Beta paths (deterministic) ─────
     if alpha_transition:
         alpha_outcomes = alpha_transition.typical_outcomes
         alpha_path = {
@@ -1362,22 +1369,22 @@ def _run_stage3(
             "probability":    round(alpha_prob, 3),
             "mechanism":      _get_transition_mechanism(alpha_transition),
             "typical_outcomes": alpha_outcomes,
-            "causal_chain": (
-                f"{alpha_transition.from_pattern_a} "
-                f"⊕ {alpha_transition.from_pattern_b} "
-                f"→ [{alpha_transition.to_pattern}] "
-                f"→ {alpha_outcomes[0] if alpha_outcomes else '结构性调整'}"
+            "primary_outcome": alpha_outcomes[0] if alpha_outcomes else "structural_realignment",
+            "evidence_basis": (
+                f"Derived via composition table "
+                f"(posterior_weight={alpha_transition.posterior_weight:.4f}, "
+                f"prior_a={alpha_transition.prior_a:.3f}, prior_b={alpha_transition.prior_b:.3f}, "
+                f"lie_sim={alpha_transition.lie_similarity:.3f})"
             ),
-            "evidence_basis": f"composition_table 精确推导（后验权重={alpha_transition.posterior_weight:.3f}）",
         }
     else:
         alpha_path = {
-            "name": "现状延续路径",
+            "name": "Status Quo Continuation",
             "probability": 0.60,
-            "mechanism": "无足够模式激活",
+            "mechanism": "insufficient_pattern_activation",
             "typical_outcomes": ["structural_realignment"],
-            "causal_chain": "事件 → [现有格局延续] → 渐进演变",
-            "evidence_basis": "无直接本体路径，CoT 兜底",
+            "primary_outcome": "structural_realignment",
+            "evidence_basis": "No ontological path found; CoT fallback applied",
         }
 
     if beta_transition:
@@ -1387,27 +1394,26 @@ def _run_stage3(
             "probability":    round(beta_prob, 3),
             "mechanism":      _get_transition_mechanism(beta_transition),
             "typical_outcomes": beta_outcomes,
-            "causal_chain": (
-                f"{beta_transition.from_pattern_a} "
-                f"[逆转/断裂] → [{beta_transition.to_pattern}] "
-                f"→ {beta_outcomes[0] if beta_outcomes else '极端博弈'}"
-            ),
+            "primary_outcome": beta_outcomes[0] if beta_outcomes else "structural_disruption",
             "trigger_condition": (
-                "关键模式节点发生逆转"
+                "reversal of dominant pattern node"
                 if beta_transition.transition_type == "inverse"
-                else f"「{beta_transition.from_pattern_b}」同时激活"
+                else f"co-activation of [{beta_transition.from_pattern_b}]"
             ),
-            "evidence_basis": f"{'inverse_table 逆元推导' if beta_transition.transition_type == 'inverse' else 'composition_table 精确推导'}（后验权重={beta_transition.posterior_weight:.3f}）",
+            "evidence_basis": (
+                f"{'inverse_table path' if beta_transition.transition_type == 'inverse' else 'composition_table path'} "
+                f"(posterior_weight={beta_transition.posterior_weight:.4f})"
+            ),
         }
     else:
         beta_path = {
-            "name": "结构性断裂路径",
+            "name": "Structural Fracture Path",
             "probability": round(1 - alpha_prob, 3),
-            "mechanism": "逆模式激活",
+            "mechanism": "inverse_pattern_activation",
             "typical_outcomes": ["structural_realignment"],
-            "causal_chain": "关键节点失效 → [极端博弈] → 格局重组",
-            "trigger_condition": "外部冲击触发逆模式",
-            "evidence_basis": "基于 inverse_table 的低概率高冲击路径",
+            "primary_outcome": "structural_disruption",
+            "trigger_condition": "external shock triggering inverse pattern",
+            "evidence_basis": "Low-probability high-impact path based on inverse_table",
         }
 
     # ── E. LLM 调用：仅写解释文本，数值已锁定 ──────────────────────────
@@ -1421,27 +1427,57 @@ def _run_stage3(
         llm_service=llm_service,
     )
 
+    # ── Determine adaptive number of outcomes based on reliability ──────
+    # Dense reliable: ≥3 active patterns + high confidence → 3 outcomes
+    # Low reliability: ≤1 pattern or low confidence → 1 outcome
+    # Normal: 2 outcomes
+    n_active = len(active)
+    if n_active >= 3 and composite >= 0.5:
+        n_outcomes = 3
+    elif n_active <= 1 or composite < 0.25:
+        n_outcomes = 1
+    else:
+        n_outcomes = 2
+
+    # Build outcome lists for the conclusion struct
+    ev_outcomes = [
+        {"id": o, "text": o.replace("_", " ").title(), "probability": round(alpha_prob / n_outcomes, 3)}
+        for o in alpha_path.get("typical_outcomes", [alpha_path.get("primary_outcome", "structural_realignment")])[:n_outcomes]
+    ]
+    hyp_outcomes = [
+        {"id": o, "text": o.replace("_", " ").title(), "probability": round(beta_prob / max(1, min(n_outcomes, len(beta_path.get("typical_outcomes", [])))), 3)}
+        for o in beta_path.get("typical_outcomes", [beta_path.get("primary_outcome", "structural_disruption")])[:n_outcomes]
+    ]
+
     conclusion = {
-        # ── canonical frontend keys ──────────────────────────────────────
-        "conclusion": conclusion_text,
+        # ── professional intelligence judgement struct ────────────────────
+        "executive_judgement": conclusion_text,
         "evidence_path": {
             "summary": (
-                f"Alpha path 「{alpha_path['name']}」"
-                f"（概率={alpha_path['probability']:.0%}）: {alpha_path.get('causal_chain', '')}"
+                f"Evidence path (T2 grounded, p={alpha_path['probability']:.0%}): "
+                f"Primary projected outcome — {alpha_path.get('primary_outcome', 'structural_realignment').replace('_', ' ')}. "
+                f"Driven by {alpha_path.get('mechanism', 'composition_derived')} mechanism."
             ),
-            "patterns": [{"pattern": alpha_path["name"], "mechanism": alpha_path.get("mechanism", "")}],
+            "outcomes": ev_outcomes,
         },
         "hypothesis_path": {
             "summary": (
-                f"Beta path 「{beta_path['name']}」"
-                f"（概率={beta_path['probability']:.0%}）: {beta_path.get('causal_chain', '')}"
+                f"Hypothesis path (T1 inferred, p={beta_path['probability']:.0%}): "
+                f"Contingent outcome — {beta_path.get('primary_outcome', 'structural_disruption').replace('_', ' ')}. "
+                f"Requires: {beta_path.get('trigger_condition', 'reversal of dominant pattern node')}."
             ),
+            "outcomes": hyp_outcomes,
             "verification_gaps": [
-                beta_path.get("trigger_condition", "关键节点发生逆转")
+                beta_path.get("trigger_condition", "reversal of dominant pattern node")
             ],
         },
+        "final": {
+            "overall_confidence": composite,
+            "compute_trace_ref": f"bayesian_posterior|Z={sum(t.posterior_weight for t in transitions):.4f}",
+        },
         "beta_path_algebra": {"algebra_used": False},
-        # ── backward-compatible internal fields ──────────────────────────
+        # ── canonical frontend keys (backward compat) ────────────────────
+        "conclusion": conclusion_text,
         "text":       conclusion_text,
         "alpha_path": alpha_path,
         "beta_path":  beta_path,
@@ -1468,8 +1504,8 @@ def _run_stage3(
         "transition_count":     len(transitions),
         "confidence_source":    "ontology_prior × bayesian_posterior",
         "note": (
-            "置信度来自本体先验 × 贝叶斯后验归一化，"
-            "非 LLM 自报。缺失证据锚点会降低 verifiability。"
+            "Confidence derived from ontology priors × Bayesian posterior normalisation. "
+            "Missing evidence anchors reduce verifiability score."
         ),
     }
 
@@ -1509,33 +1545,34 @@ def _generate_conclusion_text(
     dominant = state_vector.get("mean_vector", {}).get("dominant_dim", "unknown")
     coercion = state_vector.get("mean_vector", {}).get("coercion", 0.0)
 
-    prompt = f"""
-你是 EL-DRUIN 本体论推演解释器。
+    prompt = f"""You are the EL-DRUIN ontological reasoning interpreter.
 
-以下数据已由确定性算法计算完成，你的任务是：
-用 2-3 句话解释这些数据的含义，不允许修改任何数值。
+The following data has been computed by deterministic algorithms. Your task is to
+write 2–3 sentences of professional intelligence-grade English commentary explaining
+these results. Do NOT modify or invent any numerical values.
 
-【输入数据（不可修改）】
-- 新闻原文摘要: {text[:150]}
-- 状态向量主导维度: {dominant}（强制/合作指数: {coercion:+.2f}）
-- Alpha 路径（概率={alpha_path['probability']:.0%}）: {alpha_path['causal_chain']}
-- Beta 路径（概率={beta_path['probability']:.0%}）: {beta_path['causal_chain']}
-- 驱动因素:
-{df_text}
-- 综合置信度: {composite_confidence:.0%}（来自本体先验，非 LLM 自报）
+[INPUT DATA – DO NOT MODIFY]
+- News excerpt: {text[:150]}
+- State vector dominant dimension: {dominant} (coercion/cooperation index: {coercion:+.2f})
+- Evidence path (T2, p={alpha_path['probability']:.0%}): primary outcome = {alpha_path.get('primary_outcome', 'structural_realignment').replace('_', ' ')}
+- Hypothesis path (T1, p={beta_path['probability']:.0%}): contingent outcome = {beta_path.get('primary_outcome', 'structural_disruption').replace('_', ' ')}
+  trigger condition: {beta_path.get('trigger_condition', 'reversal of dominant pattern node')}
+- Overall confidence: {composite_confidence:.0%} (derived from ontology priors, not LLM-generated)
 
-【输出要求】
-1. 用 2-3 句中文解释 Alpha 路径为何是最可能路径（引用驱动因素）
-2. 用 1 句话描述 Beta 路径的触发条件
-3. 不要编造新的数值或实体
-4. 只返回解释文本，不加 JSON 格式
+[OUTPUT REQUIREMENTS]
+1. Write 1–2 sentences explaining why the Evidence Path outcome is the most probable projection.
+2. Write 1 sentence describing the Hypothesis Path trigger condition and its implications.
+3. Do NOT include probabilities as numbers — refer to them qualitatively (e.g. "most probable", "low-probability high-impact").
+4. Do NOT mention pattern names or composition chains.
+5. Return plain English text only, no JSON.
 """
     try:
         response = llm_service.call(
             prompt=prompt,
             system=(
-                "你是严谨的本体论推演解释器。"
-                "只解释已给定的计算结果，不编造数值，不超出提供的数据范围。"
+                "You are a rigorous ontological reasoning interpreter. "
+                "Only explain the given computed results. Do not invent numerical values. "
+                "Write professional intelligence-grade English. Never output probabilities as numbers."
             ),
             temperature=0.15,
             max_tokens=400,
@@ -1566,18 +1603,21 @@ def _fallback_conclusion_text(
     driving_factors: List[DrivingFactor],
     confidence: float,
 ) -> str:
-    """LLM 失败时的模板兜底文本。"""
+    """Template fallback when LLM is unavailable."""
     df_str = (
         driving_factors[0].factor
         if driving_factors
-        else "模式激活不足，驱动力未明确"
+        else "insufficient pattern activation"
     )
+    primary = alpha_path.get("primary_outcome", alpha_path["name"]).replace("_", " ")
+    beta_primary = beta_path.get("primary_outcome", beta_path["name"]).replace("_", " ")
+    trigger = beta_path.get("trigger_condition", "reversal of dominant pattern node")
     return (
-        f"基于本体模式库的确定性推演，Alpha 路径「{alpha_path['name']}」"
-        f"（概率={alpha_path['probability']:.0%}）由以下驱动力支撑：{df_str}。"
-        f"Beta 路径「{beta_path['name']}」（概率={beta_path['probability']:.0%}）"
-        f"需要{beta_path.get('trigger_condition', '关键节点发生逆转')}才能激活。"
-        f"综合置信度={confidence:.0%}（来自本体先验，非 LLM 自报）。"
+        f"Based on deterministic ontological pattern analysis, the most probable projected outcome "
+        f"is {primary}, supported by the following mechanism: {df_str}. "
+        f"A lower-probability but high-impact alternative outcome ({beta_primary}) "
+        f"may materialise if {trigger}. "
+        f"Overall analytical confidence is derived from ontology priors and Bayesian posterior normalisation."
     )
 
 
@@ -1714,7 +1754,7 @@ def run_evented_pipeline(
     df_dicts         = [_df_to_dict(d)   for d in driving_factors]
     event_dicts      = [_ev_to_dict(e)   for e in events]
 
-    # derived_patterns 向后兼容字段（取 top transitions 的目标模式名列表）
+    # derived_patterns backward-compat field (top transitions → derived pattern list)
     derived_compat = [
         {
             # canonical keys
@@ -1730,22 +1770,89 @@ def run_evented_pipeline(
         for t in transitions[:3]
     ]
 
-    # 概率树（供前端条形图）
+    # ── Probability tree: nodes/edges format with Bayesian compute trace ─
     prob_tree: Dict[str, Any] = {}
     if transitions:
-        Z = sum(t.posterior_weight for t in transitions) or 1.0
+        Z = sum(t.posterior_weight for t in transitions)
+        if Z < 1e-9:
+            Z = 1.0
+        credibility_overall = round(
+            credibility.get("overall_score", 0.4), 3
+        )
+
+        # Root node
+        pt_nodes = [{
+            "id":          "root",
+            "label":       "Ontological Analysis",
+            "type":        "root",
+            "probability": 1.0,
+            "evidence":    f"{len(active)} active patterns | {len(transitions)} transitions | Z={Z:.4f}",
+        }]
+        pt_edges = []
+
+        for idx, t in enumerate(transitions[:5]):
+            node_id = f"t{idx}"
+            prob = round(t.posterior_weight / Z, 4)
+            pt_nodes.append({
+                "id":                node_id,
+                "label":             t.to_pattern,
+                "type":              "T2" if t.transition_type != "inverse" else "T1",
+                "probability":       prob,
+                "evidence":          (
+                    f"prior_a={t.prior_a:.3f} × prior_b={t.prior_b:.3f} "
+                    f"× lie_sim={t.lie_similarity:.3f} = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.4f}"
+                ),
+                "verification_gap":  "low-probability high-impact path" if t.transition_type == "inverse" else "",
+                "typical_outcomes":  t.typical_outcomes[:2],
+            })
+            pt_edges.append({
+                "from":             "root",
+                "to":               node_id,
+                "weight":           prob,
+                "transition_type":  t.transition_type,
+                "posterior_weight": t.posterior_weight,
+                "posterior_contribution": round(t.posterior_weight / Z, 4),
+                "compute_trace":    (
+                    f"prior_a({t.from_pattern_a})={t.prior_a:.3f} "
+                    f"× prior_b({t.from_pattern_b})={t.prior_b:.3f} "
+                    f"× lie_sim={t.lie_similarity:.3f} = {t.posterior_weight:.4f}"
+                ),
+            })
+
+        selected = f"t0" if transitions else None
+
         prob_tree = {
+            # Frontend nodes/edges format
+            "nodes":               pt_nodes,
+            "edges":               pt_edges,
+            "selected_branch":     selected,
+            "overall_credibility": credibility_overall,
+            "summary": (
+                f"Bayesian posterior: Z={Z:.4f} | "
+                f"Evidence path p={round(transitions[0].posterior_weight / Z, 3):.0%} | "
+                f"Overall confidence={credibility_overall:.0%}"
+            ),
+            # Backward-compat alpha/beta keys
             "alpha": {
                 "name":        transitions[0].to_pattern,
                 "probability": round(transitions[0].posterior_weight / Z, 3),
                 "outcomes":    transitions[0].typical_outcomes[:2],
             },
             "beta": {
-                "name":        transitions[1].to_pattern if len(transitions) >= 2 else "结构性断裂",
+                "name": transitions[1].to_pattern if len(transitions) >= 2 else "Structural Fracture",
                 "probability": round(
-                    (transitions[1].posterior_weight / Z if len(transitions) >= 2 else 0.3), 3
+                    transitions[1].posterior_weight / Z if len(transitions) >= 2 else 0.3, 3
                 ),
-                "outcomes":    (transitions[1].typical_outcomes[:2] if len(transitions) >= 2 else []),
+                "outcomes": (transitions[1].typical_outcomes[:2] if len(transitions) >= 2 else []),
+            },
+            # Bayesian compute trace
+            "compute_trace": {
+                "Z":               round(Z, 6),
+                "n_transitions":   len(transitions),
+                "n_active":        len(active),
+                "normalization":   "sum of all posterior_weights",
+                "posterior_formula": "prior_a × prior_b × lie_similarity",
+                "epsilon_floor":   1e-4,
             },
         }
 
