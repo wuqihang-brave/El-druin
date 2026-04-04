@@ -1,1675 +1,1017 @@
 """
-intelligence/evented_pipeline.py
-=================================
-Three-stage evented reasoning pipeline for EL'druin.
+intelligence/evented_pipeline.py  –  v3
+=========================================
+Evented Ontological Reasoning Pipeline
 
-Stage 1 – Event Extraction
-    Rule-based extraction of Regulatory/Coercive and Kinetic events from text.
-    If rule-based yields nothing, optionally falls back to an LLM that must
-    output strict JSON.  LangChain-style prompt templates are NOT used; instead
-    double-brace escaping is applied manually so no "missing variables" errors
-    can arise.
+架构变更说明 (v3)：
 
-Stage 2 – Pattern Derivation (deterministic)
-    a) Active patterns  – event-type → relation_schema pattern lookup
-    b) Derived patterns – semigroup composition via composition_table
+问题：原版 Stage 3 让 LLM 从零开始写推演结论，confidence 是幻觉值。
+     结果等同于"阅读文章后写摘要"，没有超出普通阅读范畴。
 
-Stage 3 – Conclusion + Credibility
-    LLM is constrained to select/sort/explain among *candidate* patterns and
-    cite event evidence.  Falls back to a deterministic summary when LLM is
-    disabled.
+核心修复：引入「轨道+可达集合+贝叶斯」三层确定性推理
 
-Public entry-point
-------------------
-    run_evented_pipeline(text, llm_service=None) -> EventedPipelineResult
+Stage 1 – 事件提取（不变）
+  输入: text → 输出: events[]（至少 1 条，带 event_type / severity）
+
+Stage 2a – 模式激活（增强）
+  输入: events[] → 查 CARTESIAN_PATTERN_REGISTRY
+  输出: active_patterns[]（每条带 confidence_prior, typical_outcomes）
+
+Stage 2b – 转移枚举（新增）
+  输入: active_patterns[] → 查 composition_table + inverse_table
+  枚举全部可达模式集合 R = { C : (A,B)→C ∈ composition_table, A∈active }
+  输出: top_transitions[]（按贝叶斯后验概率排序）
+
+Stage 2c – Lie 代数状态向量（新增）
+  输入: active_patterns[] → lie_algebra_space.compute_pattern_trajectory()
+  输出: state_vector（8维 mean_vector，代表当前动力状态）
+
+Stage 2d – 驱动因素聚合（新增，关键！）
+  输入: active_patterns[] + their mechanism_class + typical_outcomes
+  不依赖 LLM：从 relations 代数聚合 driving_factors[]
+  逻辑：对每个 active_pattern 的 typical_outcomes 按 confidence_prior 加权
+       → 取 top-3 outcome，构造 "因为 [mechanism_class]，导致 [outcome]" 陈述
+
+Stage 3 – 贝叶斯结论生成（替换 LLM 自由写作）
+  输入: state_vector + top_transitions + driving_factors
+  确定性贝叶斯：
+    P(alpha) = softmax(top_transitions[0].posterior_weight)
+    P(beta)  = softmax(top_transitions[1].posterior_weight) if len>=2
+  LLM 只被允许：填写 conclusion.text（解释已计算好的字段）
+               不允许修改任何数值字段
+  输出: conclusion{text, alpha_path, beta_path}
+       credibility{verifiability, kg_consistency, composite_score, missing_evidence}
+
+数据契约（response schema）：
+  events[]           至少 1，来自 Stage 1
+  active_patterns[]  至少 1（或附 explanation 说明为何 0）
+  state_vector       8维 mean_vector（来自 Lie 代数）
+  top_transitions[]  来自 composition_table / inverse_table（确定性）
+  driving_factors[]  从 mechanism_class + typical_outcomes 聚合（确定性）
+  conclusion         LLM 对上述字段的解释文本（不含数值）
+  credibility        置信度来源：本体先验 × 贝叶斯后验（不是幻觉）
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
-import unicodedata
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
-
-# Dampening factor applied to Beta (counterscenario) path confidence: Beta paths
-# are inherently less certain than Alpha paths because they represent inverse/
-# contingent outcomes; 0.65 reflects ~1/3 reduction in confidence.
-_BETA_CONFIDENCE_DAMPEN: float = 0.65
-
-# Maximum length of evidence text snippets included in tree nodes.
-_TREE_EVIDENCE_MAX_LEN: int = 120
-
-# ---------------------------------------------------------------------------
-# Event type constants
-# ---------------------------------------------------------------------------
-
-class EventType:
-    # Regulatory / Coercive
-    SANCTION_IMPOSED     = "sanction_imposed"
-    SANCTION_LIFTED      = "sanction_lifted"
-    EXPORT_CONTROL       = "export_control"
-    ASSET_FREEZE         = "asset_freeze"
-    LEGAL_REGULATORY     = "legal_regulatory_action"
-    COERCIVE_WARNING     = "coercive_warning"
-    # Kinetic
-    MILITARY_STRIKE      = "military_strike"
-    CLASHES              = "clashes"
-    CEASEFIRE            = "ceasefire"
-    MOBILIZATION         = "mobilization"
-    WITHDRAWAL           = "withdrawal"
-    # Business / Tech / Product Strategy
-    MARKET_ENTRY              = "market_entry"
-    PRODUCT_FEATURE_LAUNCH    = "product_feature_launch"
-    COMPETITIVE_POSITIONING   = "competitive_positioning"
-    PLATFORM_STRATEGY         = "platform_strategy"
-    # Space / Technology
-    SPACE_MISSION             = "space_mission"
-
-
-# ---------------------------------------------------------------------------
-# Rule-based event extraction
-# ---------------------------------------------------------------------------
-
-_RULES: List[Dict[str, Any]] = [
-    {
-        "type": EventType.SANCTION_IMPOSED,
-        "patterns": [
-            r"\bsanction(?:ed|s|ing)\b",
-            r"\bimpose[sd]?\s+(?:new\s+)?sanction",
-            r"\bblackli(?:st|sted)\b",
-            r"\bembargo\b",
-            r"\beconomic\s+(?:penalty|penalties|restriction)",
-        ],
-        "confidence": 0.85,
-    },
-    {
-        "type": EventType.SANCTION_LIFTED,
-        "patterns": [
-            r"\bsanction[s]?\s+(?:lifted|removed|eased|waived|suspended)",
-            r"\blift(?:ed|ing)?\s+sanction",
-            r"\bsanction\s+relief\b",
-            r"\bnormaliz(?:e|ation)\b",
-        ],
-        "confidence": 0.85,
-    },
-    {
-        "type": EventType.EXPORT_CONTROL,
-        "patterns": [
-            r"\bexport\s+control[s]?\b",
-            r"\bexport\s+restriction[s]?\b",
-            r"\bentity\s+list\b",
-            r"\btech(?:nology)?\s+ban\b",
-            r"\bchip\s+(?:ban|export|restriction)",
-            r"\btechnology\s+(?:ban|restriction|denial)\b",
-        ],
-        "confidence": 0.85,
-    },
-    {
-        "type": EventType.ASSET_FREEZE,
-        "patterns": [
-            r"\basset[s]?\s+fro(?:zen|ze)\b",
-            r"\bfreez(?:e|ing)\s+(?:of\s+)?asset",
-            r"\bseiz(?:e|ure|ing)\s+(?:of\s+)?asset",
-        ],
-        "confidence": 0.80,
-    },
-    {
-        "type": EventType.LEGAL_REGULATORY,
-        "patterns": [
-            r"\blegal\s+action\b",
-            r"\bregulatory\s+(?:action|measure|enforcement)\b",
-            r"\bindictment\b",
-            r"\bprosecution\b",
-            r"\bfine[sd]?\s+\$?[\d,]+",
-            r"\bcompliance\s+(?:order|requirement)\b",
-        ],
-        "confidence": 0.75,
-    },
-    {
-        "type": EventType.COERCIVE_WARNING,
-        "patterns": [
-            r"\bthreaten(?:ed|s|ing)?\b",
-            r"\bwarning[s]?\b",
-            r"\bultimatum\b",
-            r"\bcoercive\b",
-            r"\bcross\s+(?:the\s+)?(?:red\s+)?line\b",
-            r"\bdeadline\b.{0,30}\b(?:or|else|otherwise)\b",
-        ],
-        "confidence": 0.70,
-    },
-    {
-        "type": EventType.MILITARY_STRIKE,
-        "patterns": [
-            r"\bair\s*strike[s]?\b",
-            r"\bbombing\b",
-            r"\bmissile[s]?\s+(?:attack|strike|launch)\b",
-            r"\bdrone[s]?\s+(?:attack|strike)\b",
-            r"\blaunch(?:ed|ing)?\s+(?:an?\s+)?attack",
-            r"\bshell(?:ing|ed)\b",
-            r"\bkilled\s+in\s+(?:an?\s+)?(?:air|military|drone)\b",
-        ],
-        "confidence": 0.88,
-    },
-    {
-        "type": EventType.CLASHES,
-        "patterns": [
-            r"\bclash(?:es|ed)?\b",
-            r"\bfighting\b",
-            r"\bgunfire\b",
-            r"\bskirmish(?:es)?\b",
-            r"\bbattle[s]?\b",
-            r"\boffensive\b",
-            r"\bground\s+(?:assault|incursion|operation)\b",
-        ],
-        "confidence": 0.80,
-    },
-    {
-        "type": EventType.CEASEFIRE,
-        "patterns": [
-            r"\bceasefire\b",
-            r"\btruce\b",
-            r"\barmistice\b",
-            r"\bpeace\s+(?:deal|agreement|talks|process)\b",
-            r"\bcease\s+fire\b",
-            r"\bstop\s+(?:the\s+)?fighting\b",
-        ],
-        "confidence": 0.88,
-    },
-    {
-        "type": EventType.MOBILIZATION,
-        "patterns": [
-            r"\bmobiliz(?:e|ation|ing)\b",
-            r"\btroop[s]?\s+(?:deployment|deployed|massed)\b",
-            r"\bmilitary\s+buildup\b",
-            r"\bconscription\b",
-            r"\bpartial\s+mobilization\b",
-            r"\bsent\s+troops\b",
-        ],
-        "confidence": 0.80,
-    },
-    {
-        "type": EventType.WITHDRAWAL,
-        "patterns": [
-            r"\bwithdraw(?:al|n|ing|s|drew)?\b",
-            r"\bwithdrew\b",
-            r"\bpull(?:ed|ing)?\s+(?:back|out|troops)\b",
-            r"\bretreat(?:ed|ing)?\b",
-            r"\btroops?\s+(?:out|leave|left|depart)",
-        ],
-        "confidence": 0.78,
-    },
-    # Business / Tech / Product Strategy
-    {
-        "type": EventType.MARKET_ENTRY,
-        "patterns": [
-            r"\bexpand(?:ing|s|ed)?\s+into\b",
-            r"\bentering?\s+(?:the\s+)?(?:new\s+)?market\b",
-            r"\blaunch(?:es|ed|ing)?\s+in\b",
-            r"\broll(?:s|ed|ing)?\s+out\b",
-            r"\bintroduc(?:e|es|ed|ing)\s+(?:new\s+)?(?:service|product|offering|feature)\b",
-            r"\bexpand(?:s|ed|ing)?\s+(?:its\s+)?(?:service|platform|product|offering)\b",
-            r"\benters?\s+(?:the\s+)?(?:space|sector|market|arena|industry)\b",
-            r"\bmov(?:e|es|ed|ing)\s+into\s+(?:the\s+)?(?:new\s+)?market\b",
-        ],
-        "confidence": 0.80,
-    },
-    {
-        "type": EventType.PRODUCT_FEATURE_LAUNCH,
-        "patterns": [
-            r"\blaunch(?:es|ed|ing)?\s+(?:new\s+)?(?:product|feature|service|tool|app|platform)\b",
-            r"\bannounce(?:s|d|ing)?\s+(?:new\s+)?(?:product|feature|service|offering)\b",
-            r"\breleas(?:e|es|ed|ing)?\s+(?:new\s+)?(?:product|feature|version|update)\b",
-            r"\bintroduc(?:e|es|ed|ing)\s+(?:new\s+)?(?:product|feature|service|tool)\b",
-            r"\bdebut(?:s|ed|ing)?\b",
-            r"\bunveil(?:s|ed|ing)?\b",
-            r"\broll(?:s|ed|ing)\s+out\s+(?:new\s+)?(?:feature|service|product)\b",
-            r"\bpilot(?:s|ed|ing)?\s+(?:new\s+)?(?:program|feature|service)\b",
-        ],
-        "confidence": 0.78,
-    },
-    {
-        "type": EventType.COMPETITIVE_POSITIONING,
-        "patterns": [
-            r"\btake(?:s|n)?\s+aim\s+at\b",
-            r"\bchalleng(?:e|es|ed|ing)\s+(?:the\s+)?(?:dominan|incumbent|rival|leader)\b",
-            r"\brival(?:s|ed|ing|ling)?\b",
-            r"\bcompet(?:e|es|ed|ing|ition|itor)\b",
-            r"\bdisrupt(?:s|ed|ing|or|ive)?\b",
-            r"\bchalleng(?:e|es|er)\s+to\b",
-            r"\bvs\.\s+\w+|versus\s+\w+",
-            r"\bgain(?:s|ed|ing)?\s+(?:market\s+)?share\b",
-            r"\bovert(?:ake|akes|aking|ook)\b",
-            r"\balternative\s+to\b",
-        ],
-        "confidence": 0.72,
-    },
-    {
-        "type": EventType.PLATFORM_STRATEGY,
-        "patterns": [
-            r"\bplatform\s+(?:strateg|expan|ecosys|monetiz|business)\b",
-            r"\becosystem\b",
-            r"\bmonetiz(?:e|es|ed|ing|ation)\b",
-            r"\bsubscription\s+(?:model|business|tier|plan|revenue)\b",
-            r"\bcreator\s+(?:economy|platform|tool|monetiz)\b",
-            r"\bmarketplace\b",
-            r"\bconsolidat(?:e|es|ed|ing|ion)\b",
-            r"\bvertical\s+integrat(?:e|ion)\b",
-            r"\bbundl(?:e|es|ed|ing)\b",
-        ],
-        "confidence": 0.72,
-    },
-    # Space / Technology breakthrough
-    {
-        "type": EventType.SPACE_MISSION,
-        "patterns": [
-            r"\borbit(?:s|ed|ing|al)?\b",
-            r"\bastronauts?\b",
-            r"\b(?:NASA|ESA|JAXA|SpaceX|Roscosmos|ISRO)\b",
-            r"\blaunch(?:es|ed|ing)?\s+(?:a\s+)?(?:rocket|spacecraft|satellite|probe|mission)\b",
-            r"\blunar\b",
-            r"\bmoon\s+(?:mission|landing|orbit|probe)\b",
-            r"\brocket\s+(?:launch|test|engine)\b",
-            r"\bspacecraft\b",
-            r"\bsatellite\s+(?:launch|deploy|orbit)\b",
-            r"\bspace\s+(?:station|mission|launch|exploration|agency)\b",
-            r"\bliftoff\b",
-            r"\bsplashdown\b",
-            r"\binterplanetary\b",
-        ],
-        "confidence": 0.82,
-    },
-]
-
-# Pre-compile regexes for performance
-_COMPILED_RULES: List[Dict[str, Any]] = [
-    {
-        "type": rule["type"],
-        "compiled": [re.compile(p, re.IGNORECASE) for p in rule["patterns"]],
-        "confidence": rule["confidence"],
-    }
-    for rule in _RULES
-]
-
-
-# ---------------------------------------------------------------------------
-# Event post-processing constants and helpers
-# ---------------------------------------------------------------------------
-
-_MIN_QUOTE_LEN    = 10     # minimum meaningful evidence quote length (chars)
-_T0_CONF_THRESHOLD = 0.2   # below this (after folding) → reject (T0)
-_T2_CONF_THRESHOLD = 0.7   # at or above this (+ no inferred_fields) → T2
-_ACTOR_TARGET_KEYS = frozenset(["actor", "target"])
-
-# Trigger keywords per event type – used to validate evidence quotes.
-# If the quote contains none of these keywords the confidence is penalised.
-_EVENT_TRIGGER_KEYWORDS: Dict[str, List[str]] = {
-    EventType.SANCTION_IMPOSED:  ["sanction", "blacklist", "embargo", "restrict", "penalt"],
-    EventType.SANCTION_LIFTED:   ["lift", "ease", "remov", "relief", "normaliz", "sanction"],
-    EventType.EXPORT_CONTROL:    ["export", "control", "restrict", "ban", "chip", "entity list"],
-    EventType.ASSET_FREEZE:      ["asset", "frozen", "freeze", "seize"],
-    EventType.LEGAL_REGULATORY:  ["legal", "regulat", "fine", "prosecution", "compliance", "indictment"],
-    EventType.COERCIVE_WARNING:  ["threat", "warn", "ultimatum", "coercive", "deadline", "line"],
-    EventType.MILITARY_STRIKE:   ["strike", "bombing", "missile", "attack", "shell", "drone", "air"],
-    EventType.CLASHES:           ["clash", "fight", "battle", "gunfire", "offensive", "skirmish"],
-    EventType.CEASEFIRE:         ["ceasefire", "truce", "peace", "armistice", "cease"],
-    EventType.MOBILIZATION:      ["mobiliz", "troop", "buildup", "deployment", "conscription"],
-    EventType.WITHDRAWAL:        ["withdraw", "retreat", "pull"],
-    # Business / Tech
-    EventType.MARKET_ENTRY:           ["expand", "enter", "launch", "roll out", "introduc", "mov"],
-    EventType.PRODUCT_FEATURE_LAUNCH: ["launch", "announc", "releas", "introduc", "debut", "unveil", "pilot", "roll"],
-    EventType.COMPETITIVE_POSITIONING:["compet", "rival", "challenge", "disrupt", "share", "overtake", "alternative", "vs"],
-    EventType.PLATFORM_STRATEGY:      ["platform", "ecosystem", "monetiz", "subscription", "creator", "marketplace", "bundl", "consolidat"],
-    EventType.SPACE_MISSION:          ["orbit", "astronaut", "NASA", "ESA", "SpaceX", "lunar", "moon", "rocket", "spacecraft", "satellite", "space", "liftoff"],
-}
-
-# T1 weak / generic pattern overrides – used when an event is tiered T1 to
-# avoid activating strong (kinetic) patterns on low-confidence evidence.
-_T1_WEAK_PATTERNS: Dict[str, str] = {
-    EventType.SANCTION_IMPOSED:  "政策性貿易限制模式",
-    EventType.SANCTION_LIFTED:   "政策性貿易限制模式",
-    EventType.EXPORT_CONTROL:    "政策性貿易限制模式",
-    EventType.ASSET_FREEZE:      "潛在強制信號模式",
-    EventType.LEGAL_REGULATORY:  "潛在強制信號模式",
-    EventType.COERCIVE_WARNING:  "潛在強制信號模式",
-    EventType.MILITARY_STRIKE:   "潛在強制信號模式",
-    EventType.CLASHES:           "潛在強制信號模式",
-    EventType.CEASEFIRE:         "政策性貿易限制模式",
-    EventType.MOBILIZATION:      "潛在強制信號模式",
-    EventType.WITHDRAWAL:        "政策性貿易限制模式",
-    # Business / Tech weak patterns
-    EventType.MARKET_ENTRY:            "產品能力擴張模式",
-    EventType.PRODUCT_FEATURE_LAUNCH:  "產品能力擴張模式",
-    EventType.COMPETITIVE_POSITIONING: "平台競爭 / 生態位擴張模式",
-    EventType.PLATFORM_STRATEGY:       "創作者經濟整合模式",
-    EventType.SPACE_MISSION:           "技術突破 / 太空探索模式",
-}
-
-
-def _quote_has_trigger(quote: str, event_type: str) -> bool:
-    """Return True if the evidence quote contains a trigger keyword for *event_type*.
-
-    If the event type is unknown (no keywords defined) we return True to avoid
-    penalising events whose type is outside our fixed vocabulary.
-    """
-    keywords = _EVENT_TRIGGER_KEYWORDS.get(event_type, [])
-    if not keywords:
-        return True
-    q_lower = quote.lower()
-    return any(kw in q_lower for kw in keywords)
-
-
-def postprocess_events(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Post-process candidate events: filter (T0), normalise, tier, fold confidence.
-
-    Filtering (T0 – rejected, dropped)
-    ------------------------------------
-    An event is rejected (T0) if ANY of the following hold:
-      - ``confidence <= 0``
-      - ``confidence < _T0_CONF_THRESHOLD`` (before *or* after folding)
-
-    Missing or short evidence quotes are **not** hard-rejected; instead a
-    ``verification_gap`` entry is added and the event is kept as T1.  This
-    avoids mass-rejection for otherwise plausible events whose quote was
-    simply not extracted cleanly.
-
-    Normalisation
-    -------------
-    - Strip whitespace from ``type`` and all string values in ``args``.
-    - De-duplicate: the first occurrence with a given stable ID is kept.
-
-    Confidence folding
-    ------------------
-    Applied in order *after* the initial T0 check:
-      1. ``inferred_fields`` non-empty → multiply by 0.7
-      2. ``actor`` or ``target`` among inferred_fields → additional × 0.8
-      3. Evidence quote lacks trigger keywords for the event type → × 0.7
-
-    After folding, events whose confidence drops below ``_T0_CONF_THRESHOLD``
-    are also rejected.
-
-    Tiering
-    -------
-    - T2 (grounded): ``confidence >= _T2_CONF_THRESHOLD`` **and** ``inferred_fields`` empty.
-    - T1 (hypothesis): everything else that survives the T0 filter.
-
-    New fields added to each surviving event
-    ----------------------------------------
-    ``tier``                "T1" | "T2"
-    ``inferred_fields``     list[str]  (may be empty)
-    ``inference_rationale`` str        (<= 200 chars)
-    ``verification_gap``    list[str]
-    """
-    result: List[Dict[str, Any]] = []
-    seen_ids: set = set()
-
-    for _evt in candidates:
-        evt = dict(_evt)  # shallow copy to avoid mutating caller's data
-
-        # --- Normalisation: strip whitespace ---
-        evt["type"] = (evt.get("type") or "").strip()
-        evidence = evt.get("evidence")
-        if isinstance(evidence, dict):
-            q = (evidence.get("quote") or "").strip()
-            evt["evidence"] = dict(evidence)
-            evt["evidence"]["quote"] = q
-        else:
-            evt["evidence"] = {"quote": ""}
-            q = ""
-        args = evt.get("args", {})
-        if isinstance(args, dict):
-            evt["args"] = {
-                k: (v.strip() if isinstance(v, str) else v)
-                for k, v in args.items()
-            }
-
-        confidence = float(evt.get("confidence", 0.0))
-
-        # --- Initial T0 check: reject zero/negative confidence ---
-        if confidence <= 0:
-            continue
-        if confidence < _T0_CONF_THRESHOLD:
-            continue
-
-        # --- Inference metadata ---
-        inferred_fields: List[str] = list(evt.get("inferred_fields") or [])
-        inference_rationale: str = str(evt.get("inference_rationale") or "")[:200]
-        verification_gap: List[str] = list(evt.get("verification_gap") or [])
-
-        # --- Missing quote: add gap but do not hard-reject ---
-        if not q:
-            if "evidence quote missing; event trigger inferred from context" not in verification_gap:
-                verification_gap.append(
-                    "evidence quote missing; event trigger inferred from context"
-                )
-
-        # --- Short-quote handling: keep as T1 with verification_gap ---
-        force_t1_short_quote = False
-        if len(q) < _MIN_QUOTE_LEN:
-            force_t1_short_quote = True
-            if _quote_has_trigger(q, evt["type"]):
-                if "need more context: quote too short for full verification" not in verification_gap:
-                    verification_gap.append(
-                        "need more context: quote too short for full verification"
-                    )
-            else:
-                if "evidence quote missing or too short; trigger keywords absent" not in verification_gap:
-                    verification_gap.append(
-                        "evidence quote missing or too short; trigger keywords absent"
-                    )
-
-        # --- Confidence folding ---
-        if inferred_fields:
-            confidence *= 0.7
-            if any(k in _ACTOR_TARGET_KEYS for k in inferred_fields):
-                confidence *= 0.8
-        if not _quote_has_trigger(q, evt["type"]):
-            confidence *= 0.7
-
-        confidence = round(min(1.0, max(0.0, confidence)), 4)
-
-        # --- Post-folding T0 check ---
-        if confidence < _T0_CONF_THRESHOLD:
-            continue
-
-        # --- Tiering ---
-        if force_t1_short_quote:
-            tier = "T1"
-        else:
-            tier = "T2" if (confidence >= _T2_CONF_THRESHOLD and not inferred_fields) else "T1"
-
-        evt["confidence"] = confidence
-        evt["tier"] = tier
-        evt["inferred_fields"] = inferred_fields
-        evt["inference_rationale"] = inference_rationale
-        evt["verification_gap"] = verification_gap
-
-        # --- De-duplication ---
-        eid = evt.get("id") or _stable_id(evt["type"], q)
-        if eid in seen_ids:
-            continue
-        seen_ids.add(eid)
-        evt["id"] = eid
-
-        result.append(evt)
-
-    return result
-
-
-def _fallback_top_events(
-    candidates: List[Dict[str, Any]],
-    max_keep: int = 2,
-) -> List[Dict[str, Any]]:
-    """Return up to *max_keep* highest-confidence candidates as low-confidence T1 events.
-
-    Called by :func:`extract_events` when :func:`postprocess_events` rejects
-    all candidates.  Each returned event receives a ``verification_gap`` entry
-    documenting the fallback reason and has its confidence clamped to at most
-    0.35 to signal low reliability.
-    """
-    valid = [c for c in candidates if float(c.get("confidence", 0)) > 0]
-    if not valid:
-        return []
-
-    valid_sorted = sorted(
-        valid, key=lambda c: float(c.get("confidence", 0)), reverse=True
-    )
-
-    result: List[Dict[str, Any]] = []
-    seen_ids: set = set()
-
-    for _evt in valid_sorted[:max_keep]:
-        evt = dict(_evt)
-        evt["type"] = (evt.get("type") or "").strip()
-        evidence = evt.get("evidence")
-        if isinstance(evidence, dict):
-            q = (evidence.get("quote") or "").strip()
-            evt["evidence"] = dict(evidence)
-            evt["evidence"]["quote"] = q
-        else:
-            evt["evidence"] = {"quote": ""}
-            q = ""
-
-        raw_conf = float(evt.get("confidence", 0.1))
-        evt["confidence"] = round(min(0.35, max(0.1, raw_conf * 0.5)), 4)
-        evt["tier"] = "T1"
-        evt["inferred_fields"] = list(evt.get("inferred_fields") or [])
-        evt["inference_rationale"] = str(evt.get("inference_rationale") or "")[:200]
-        gaps = list(evt.get("verification_gap") or [])
-        if "low-confidence fallback: all candidates rejected by T0 filter" not in gaps:
-            gaps.append("low-confidence fallback: all candidates rejected by T0 filter")
-        evt["verification_gap"] = gaps
-
-        eid = evt.get("id") or _stable_id(evt.get("type", "unknown"), q)
-        if eid in seen_ids:
-            continue
-        seen_ids.add(eid)
-        evt["id"] = eid
-
-        result.append(evt)
-
-    return result
-
-
-def _extract_quote(text: str, match: re.Match, window: int = 80) -> str:
-    """Return a short quote centred on the match.
-
-    Guarantees a non-empty result by using the matched text itself as the
-    fallback when context expansion produces an empty string.
-    """
-    start = max(0, match.start() - window // 2)
-    end   = min(len(text), match.end() + window // 2)
-    snippet = text[start:end].strip()
-    # Collapse whitespace
-    snippet = re.sub(r"\s+", " ", snippet)
-    # Fallback: always return at least the matched text
-    if not snippet:
-        snippet = match.group(0)
-    return snippet
-
-
-def _stable_id(event_type: str, quote: str) -> str:
-    """Generate a stable short ID for an event within a request."""
-    raw = f"{event_type}:{quote[:40]}"
-    return hashlib.sha1(raw.encode()).hexdigest()[:8]
-
-
-def extract_events_rule_based(text: str) -> List[Dict[str, Any]]:
-    """
-    Rule-based event extraction.
-
-    Returns a list of event dicts with keys:
-        id, type, args, evidence ({"quote": ...}), confidence
-    """
-    events: List[Dict[str, Any]] = []
-    seen_ids: set = set()
-
-    for rule in _COMPILED_RULES:
-        for regex in rule["compiled"]:
-            for m in regex.finditer(text):
-                quote = _extract_quote(text, m)
-                eid   = _stable_id(rule["type"], quote)
-                if eid in seen_ids:
-                    continue
-                seen_ids.add(eid)
-                events.append({
-                    "id":       eid,
-                    "type":     rule["type"],
-                    "args":     {},
-                    "evidence": {"quote": quote},
-                    "confidence": rule["confidence"],
-                })
-
-    return events
-
-
-def extract_events_llm(text: str, llm_service: Any) -> List[Dict[str, Any]]:
-    """
-    LLM fallback event extraction.  Prompt braces are escaped to avoid
-    'missing variables {entities}'-style errors with template engines.
-    Returns a list of event dicts (may be empty if parsing fails).
-    """
-    # Double-brace all literal braces so no template engine can misinterpret them
-    focus_types = (
-        "sanction_imposed, sanction_lifted, export_control, asset_freeze, "
-        "legal_regulatory_action, coercive_warning, "
-        "military_strike, clashes, ceasefire, mobilization, withdrawal, "
-        "market_entry, product_feature_launch, competitive_positioning, "
-        "platform_strategy, space_mission"
-    )
-    prompt = (
-        "You are an event-extraction engine.  Read the news text below and "
-        "extract structured events.\n\n"
-        f"NEWS TEXT:\n{text}\n\n"
-        "Focus ONLY on these event types: " + focus_types + ".\n\n"
-        "Output a JSON array.  Each element must have EXACTLY these keys:\n"
-        '  "type"       : one of the event types listed above\n'
-        '  "args"       : object with any relevant named arguments (actor, target, item, etc.)\n'
-        '  "evidence"   : object with key "quote" containing a verbatim short quote from the text\n'
-        '  "confidence" : float 0-1\n\n'
-        "If no relevant events are found output an empty array: []\n"
-        "Output ONLY the JSON array, no explanation."
-    )
-    try:
-        raw = llm_service.call(
-            prompt=prompt,
-            system=(
-                "You are a precise structured event extractor. "
-                "Return ONLY a valid JSON array."
-            ),
-            temperature=0.0,
-            max_tokens=1200,
-        )
-        text_resp = raw if isinstance(raw, str) else json.dumps(raw)
-        start = text_resp.find("[")
-        end   = text_resp.rfind("]")
-        if start == -1 or end < start:
-            return []
-        parsed = json.loads(text_resp[start : end + 1])
-        result = []
-        for item in parsed:
-            if not isinstance(item, dict) or "type" not in item:
-                continue
-            quote = item.get("evidence", {}).get("quote", text[:80])
-            eid   = _stable_id(item["type"], quote)
-            result.append({
-                "id":       eid,
-                "type":     item["type"],
-                "args":     item.get("args", {}),
-                "evidence": {"quote": quote},
-                "confidence": float(item.get("confidence", 0.5)),
-            })
-        return result
-    except Exception as exc:
-        logger.warning("LLM event extraction failed: %s", exc)
-        return []
-
-
-def extract_events(
-    text: str,
-    llm_service: Optional[Any] = None,
-) -> List[Dict[str, Any]]:
-    """
-    Primary event extraction entry-point.
-
-    Tries rule-based first; if nothing found and llm_service is available,
-    falls back to LLM.  Compound multi-event rules are always applied to
-    supplement extracted candidates.  Candidate events are always
-    post-processed (tiered, filtered, normalised) before being returned.
-
-    If post-processing rejects every candidate, :func:`_fallback_top_events`
-    is called to rescue the top-2 by confidence as low-confidence T1 events,
-    reducing spurious "0 events" outcomes for news items with weak evidence.
-    """
-    candidates = extract_events_rule_based(text)
-    if not candidates and llm_service is not None:
-        logger.info("Rule-based extraction yielded 0 events; trying LLM fallback")
-        candidates = extract_events_llm(text, llm_service)
-    # Supplement with compound rules (always deterministic, no LLM needed)
-    compound = _apply_compound_rules(text, candidates)
-    # Merge compound events that aren't already covered
-    existing_types = {e["type"] for e in candidates}
-    for evt in compound:
-        if evt["type"] not in existing_types:
-            candidates.append(evt)
-            existing_types.add(evt["type"])
-    result = postprocess_events(candidates)
-    if not result and candidates:
-        logger.info(
-            "EventedPipeline: all %d candidates rejected by T0 filter; "
-            "applying top-event fallback",
-            len(candidates),
-        )
-        result = _fallback_top_events(candidates)
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Compound multi-event rules
-# ---------------------------------------------------------------------------
-
-# Co-occurrence trigger sets: when multiple trigger sets are all present in
-# text, generate synthetic supplemental events to ensure distinct event types.
-_COMPOUND_RULES: List[Dict[str, Any]] = [
-    # Market entry + competitive positioning → generate both if only one detected
-    {
-        "requires_any": [EventType.MARKET_ENTRY, EventType.PRODUCT_FEATURE_LAUNCH],
-        "if_text_matches": [
-            r"\bcompet\w*\b",
-            r"\brival\w*\b",
-            r"\balternative\s+to\b",
-            r"\btake\s+aim\b",
-        ],
-        "emit": EventType.COMPETITIVE_POSITIONING,
-        "confidence": 0.65,
-    },
-    # Platform strategy + product launch → emit platform_strategy
-    {
-        "requires_any": [EventType.PRODUCT_FEATURE_LAUNCH, EventType.MARKET_ENTRY],
-        "if_text_matches": [
-            r"\bmonetiz\w*\b",
-            r"\bsubscription\b",
-            r"\bcreator\s+economy\b",
-            r"\bplatform\b",
-            r"\becosystem\b",
-        ],
-        "emit": EventType.PLATFORM_STRATEGY,
-        "confidence": 0.65,
-    },
-    # Sanction + export_control → compound tech decoupling signal
-    {
-        "requires_any": [EventType.SANCTION_IMPOSED, EventType.EXPORT_CONTROL],
-        "if_text_matches": [
-            r"\btrade\s+war\b",
-            r"\bdecoupl\w*\b",
-            r"\bchip\b",
-            r"\bsemiconductor\b",
-        ],
-        "emit": EventType.EXPORT_CONTROL,
-        "confidence": 0.75,
-    },
-]
-
-_COMPOUND_RULE_COMPILED: List[Dict[str, Any]] = [
-    {
-        **rule,
-        "if_text_compiled": [re.compile(p, re.IGNORECASE) for p in rule["if_text_matches"]],
-    }
-    for rule in _COMPOUND_RULES
-]
-
-
-def _apply_compound_rules(
-    text: str,
-    existing_candidates: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Apply compound multi-event rules to supplement rule-based extraction.
-
-    Returns additional candidate events (may be empty).  Each emitted event
-    has the required evented fields: id, type, args, evidence.quote, confidence.
-    """
-    existing_types = {e["type"] for e in existing_candidates}
-    added: List[Dict[str, Any]] = []
-
-    for rule in _COMPOUND_RULE_COMPILED:
-        # Skip if emit type already present
-        if rule["emit"] in existing_types:
-            continue
-        # Check that at least one required event type is present
-        if not any(t in existing_types for t in rule["requires_any"]):
-            continue
-        # Check that at least one text pattern matches
-        for compiled_re in rule["if_text_compiled"]:
-            m = compiled_re.search(text)
-            if m:
-                quote = _extract_quote(text, m)
-                eid = _stable_id(rule["emit"], quote)
-                added.append({
-                    "id":         eid,
-                    "type":       rule["emit"],
-                    "args":       {},
-                    "evidence":   {"quote": quote},
-                    "confidence": rule["confidence"],
-                })
-                break  # only emit once per rule
-
-    return added
-
-
-# ---------------------------------------------------------------------------
-# Lightweight entity typing (no DB write)
-# ---------------------------------------------------------------------------
-
-_ALLIANCE_KEYWORDS = frozenset([
-    "eu", "nato", "asean", "g7", "g20", "au", "un", "arab league",
-    "oas", "sco", "brics", "quad", "aukus", "five eyes",
-])
-_STATE_KEYWORDS = frozenset([
-    "usa", "us", "uk", "china", "russia", "iran", "israel", "ukraine",
-    "france", "germany", "japan", "india", "pakistan", "turkey", "brazil",
-    "north korea", "south korea", "saudi arabia", "qatar", "egypt", "taiwan",
-    "government", "ministry", "state", "country", "nation", "republic",
-    "administration", "cabinet", "parliament", "congress", "senate",
-    "president", "premier", "chancellor",
-])
-# Use word-boundary patterns to avoid substring false positives
-# (e.g. "un" matching "samsung", "us" matching "musk")
-_ALLIANCE_RE = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in sorted(_ALLIANCE_KEYWORDS, key=len, reverse=True)) + r")\b",
-    re.IGNORECASE,
-)
-_STATE_RE = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in sorted(_STATE_KEYWORDS, key=len, reverse=True)) + r")\b",
-    re.IGNORECASE,
-)
-_CORP_SUFFIXES = re.compile(
-    r"\b(inc|ltd|corp|llc|gmbh|s\.a\.|plc|holdings?|group|co\.\s*ltd|co\.,?\s*inc)\b",
-    re.IGNORECASE,
-)
-_TITLE_HINTS_EN = re.compile(
-    r"\b(ceo|cfo|cto|chairman|president|minister|secretary|director|"
-    r"general|admiral|senator|governor|ambassador|chancellor|premier|"
-    r"prime\s+minister|foreign\s+minister|defence\s+minister)\b",
-    re.IGNORECASE,
-)
-_TITLE_HINTS_ZH = re.compile(
-    r"(总统|部长|主席|总理|总裁|创始人|首席执行官|外长|防长|CEO|总书记|省长|市长)",
-)
-_HAN_BLOCK = re.compile(r"[\u4e00-\u9fff]{2,4}")
-
-
-def infer_entity_type_lightweight(name: str) -> str:
-    """
-    Infer a high-level entity type without any DB lookup.
-
-    Returns one of: "person", "state", "alliance", "firm", "unknown".
-
-    Word-boundary matching is used throughout to avoid false positives
-    (e.g. "un" in "samsung", "us" in "musk").
-    """
-    if not name:
-        return "unknown"
-
-    # Alliance check (word-boundary regex)
-    if _ALLIANCE_RE.search(name):
-        return "alliance"
-
-    # State / government check (word-boundary regex)
-    if _STATE_RE.search(name):
-        return "state"
-
-    # Company suffix → firm
-    if _CORP_SUFFIXES.search(name):
-        return "firm"
-
-    # Chinese person heuristic: 2-4 Han chars + nearby title hint
-    if _HAN_BLOCK.fullmatch(name.strip()):
-        # We only have the name, not surrounding context; mark as person
-        return "person"
-
-    # English person heuristic: Title Case 2-4 tokens, no corp suffix
-    tokens = name.split()
-    if 2 <= len(tokens) <= 4:
-        all_title_case = all(
-            len(t) >= 2 and t[0].isupper() and t[1:].islower()
-            for t in tokens if t.isalpha()
-        )
-        if all_title_case and not _CORP_SUFFIXES.search(name):
-            return "person"
-
-    return "unknown"
-
-
-# ---------------------------------------------------------------------------
-# Event → Pattern mapping (deterministic)
-# ---------------------------------------------------------------------------
-
-# Maps (event_type, optional_entity_types) → pattern_name
-# Priority: more-specific rules first (checked in order)
-_EVENT_TO_PATTERN: List[Tuple[str, str]] = [
-    # Regulatory / Coercive
-    (EventType.SANCTION_IMPOSED,  "霸權制裁模式"),
-    (EventType.SANCTION_LIFTED,   "制裁解除 / 正常化模式"),
-    (EventType.EXPORT_CONTROL,    "實體清單技術封鎖模式"),
-    (EventType.ASSET_FREEZE,      "金融孤立 / SWIFT 切斷模式"),
-    (EventType.LEGAL_REGULATORY,  "跨國監管 / 合規約束模式"),
-    (EventType.COERCIVE_WARNING,  "大國脅迫 / 威懾模式"),
-    # Kinetic
-    (EventType.MILITARY_STRIKE,   "國家間武力衝突模式"),
-    (EventType.CLASHES,           "非國家武裝代理衝突模式"),
-    (EventType.CEASEFIRE,         "停火 / 和平協議模式"),
-    (EventType.MOBILIZATION,      "正式軍事同盟模式"),
-    (EventType.WITHDRAWAL,        "外交讓步 / 去升級模式"),
-    # Business / Tech / Product Strategy
-    (EventType.MARKET_ENTRY,            "產品能力擴張模式"),
-    (EventType.PRODUCT_FEATURE_LAUNCH,  "產品能力擴張模式"),
-    (EventType.COMPETITIVE_POSITIONING, "平台競爭 / 生態位擴張模式"),
-    (EventType.PLATFORM_STRATEGY,       "創作者經濟整合模式"),
-    (EventType.SPACE_MISSION,           "技術突破 / 太空探索模式"),
-]
-
-_EVENT_TYPE_TO_PATTERN: Dict[str, str] = {
-    event_type: pattern for event_type, pattern in _EVENT_TO_PATTERN
-}
-
-
-def derive_active_patterns(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Deterministically map extracted events to relation_schema pattern names.
-
-    Events tiered T1 are mapped to generic/weak placeholder patterns to avoid
-    activating strong kinetic patterns on low-confidence or inferred evidence.
-
-    If an event has no ``tier`` field (e.g. raw rule-based output passed
-    directly in tests), the tier is inferred from ``confidence``.
-
-    Returns a list of dicts with keys:
-        pattern, from_event, tier, inferred, confidence
-    """
-    active: List[Dict[str, Any]] = []
-    seen: set = set()
-    for evt in events:
-        confidence = float(evt.get("confidence", 0.5))
-        evt_tier = evt.get("tier")
-        # Backward-compat: infer tier when not set
-        if evt_tier is None:
-            evt_tier = "T2" if confidence >= _T2_CONF_THRESHOLD else "T1"
-        inferred = bool(evt.get("inferred_fields"))
-
-        if evt_tier == "T1":
-            pattern = (
-                _T1_WEAK_PATTERNS.get(evt["type"])
-                or _EVENT_TYPE_TO_PATTERN.get(evt["type"])
-            )
-        else:
-            pattern = _EVENT_TYPE_TO_PATTERN.get(evt["type"])
-
-        if pattern:
-            pattern = pattern.strip()
-            if pattern not in seen:
-                seen.add(pattern)
-                active.append({
-                    "pattern":    pattern,
-                    "from_event": evt["id"],
-                    "tier":       evt_tier,
-                    "inferred":   inferred,
-                    "confidence": round(confidence, 4),
-                })
-    return active
-
-
-# ---------------------------------------------------------------------------
-# Semigroup / Composition-based derived patterns
-# ---------------------------------------------------------------------------
-
-def derive_composed_patterns(
-    active_patterns: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """
-    Apply composition_table to derive higher-order patterns.
-
-    S_next = S ∪ {compose(a, b)} for all a, b in S.
-
-    Returns list of dicts with keys:
-        derived, rule, inputs,
-        derived_tier, derived_inferred, derived_confidence
-    """
-    try:
-        from ontology.relation_schema import composition_table
-    except ImportError:
-        logger.warning("relation_schema not importable; skipping composition")
-        return []
-
-    # Build per-pattern metadata lookup
-    pattern_meta: Dict[str, Dict[str, Any]] = {}
-    for ap in active_patterns:
-        name = ap["pattern"].strip()
-        pattern_meta[name] = {
-            "tier":       ap.get("tier", "T2"),
-            "inferred":   bool(ap.get("inferred", False)),
-            "confidence": float(ap.get("confidence", 0.5)),
-        }
-
-    active_names = list(pattern_meta.keys())
-    derived: List[Dict[str, Any]] = []
-    seen: set = set(active_names)
-
-    for a in active_names:
-        for b in active_names:
-            comp_result = composition_table.get((a, b))
-            if comp_result and comp_result not in seen:
-                seen.add(comp_result)
-                meta_a = pattern_meta.get(a, {})
-                meta_b = pattern_meta.get(b, {})
-                conf_a = float(meta_a.get("confidence", 0.5))
-                conf_b = float(meta_b.get("confidence", 0.5))
-                derived_inferred = (
-                    meta_a.get("inferred", False) or meta_b.get("inferred", False)
-                )
-                # Confidence composition: min(A, B) * 0.9; penalty if any input inferred
-                derived_conf = min(conf_a, conf_b) * 0.9
-                if derived_inferred:
-                    derived_conf *= 0.8
-                derived_conf = round(derived_conf, 4)
-                # Derived tier: T1 if either input is T1 or confidence < threshold
-                input_t1 = (
-                    meta_a.get("tier") == "T1" or meta_b.get("tier") == "T1"
-                )
-                derived_tier = (
-                    "T1"
-                    if (input_t1 or derived_conf < _T2_CONF_THRESHOLD or derived_inferred)
-                    else "T2"
-                )
-                derived.append({
-                    "derived":            comp_result,
-                    "rule":               f"compose({a},{b})->{comp_result}",
-                    "inputs":             [a, b],
-                    "derived_tier":       derived_tier,
-                    "derived_inferred":   derived_inferred,
-                    "derived_confidence": derived_conf,
-                })
-
-    return derived
-
-
-# ---------------------------------------------------------------------------
-# Conclusion generation (LLM constrained or deterministic fallback)
-# ---------------------------------------------------------------------------
-
-def generate_conclusion(
-    text: str,
-    events: List[Dict[str, Any]],
-    active_patterns: List[Dict[str, Any]],
-    derived_patterns: List[Dict[str, Any]],
-    llm_service: Optional[Any] = None,
-) -> Dict[str, Any]:
-    """
-    Stage 3a: Conclusion generation with forced dual-path output.
-
-    Dual-path structure
-    -------------------
-    ``evidence_path``   – based only on T2 patterns/events (grounded).
-    ``hypothesis_path`` – may draw on T1 evidence; must list verification gaps.
-
-    The LLM receives the event list and candidate patterns (active + derived)
-    and must cite event evidence.  If LLM is disabled, returns a deterministic
-    fallback summary.
-    """
-    all_candidates = (
-        [ap["pattern"] for ap in active_patterns]
-        + [dp["derived"] for dp in derived_patterns]
-    )
-
-    if not llm_service or not all_candidates:
-        return _deterministic_conclusion(events, active_patterns, derived_patterns)
-
-    # Separate T2 (grounded) from T1 (hypothesis) patterns for the dual-path prompt
-    t2_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
-    t1_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T1"]
-    t2_derived  = [dp for dp in derived_patterns if dp.get("derived_tier", "T2") == "T2"]
-    t1_derived  = [dp for dp in derived_patterns if dp.get("derived_tier", "T2") == "T1"]
-
-    # Aggregate verification gaps from all events
-    all_gaps: List[str] = []
-    for evt in events:
-        all_gaps.extend(evt.get("verification_gap", []))
-
-    events_block   = json.dumps(events, ensure_ascii=False, indent=2)
-    t2_block       = json.dumps({"t2_active": t2_patterns, "t2_derived": t2_derived},
-                                ensure_ascii=False, indent=2)
-    t1_block       = json.dumps({"t1_active": t1_patterns, "t1_derived": t1_derived},
-                                ensure_ascii=False, indent=2)
-    candidates_list = "\n".join(f"  - {c}" for c in all_candidates)
-
-    prompt = (
-        "You are a geopolitical intelligence analyst using an ontology-grounded "
-        "reasoning system.\n\n"
-        "NEWS TEXT:\n"
-        f"{text}\n\n"
-        "EXTRACTED EVENTS (with evidence quotes and tiers):\n"
-        f"{events_block}\n\n"
-        "T2 GROUNDED PATTERNS (high-confidence, no inferred args):\n"
-        f"{t2_block}\n\n"
-        "T1 HYPOTHESIS PATTERNS (lower-confidence or inferred args):\n"
-        f"{t1_block}\n\n"
-        "CANDIDATE PATTERN NAMES (for reference):\n"
-        f"{candidates_list}\n\n"
-        "TASK:\n"
-        "Produce a dual-path analysis:\n"
-        "1. evidence_path: Use ONLY T2 grounded patterns/events. "
-        "Select 1-3 patterns, cite specific event IDs.\n"
-        "2. hypothesis_path: May use T1 patterns and events. "
-        "Must list at least one verification_gap explaining what additional "
-        "evidence would upgrade this to grounded.\n"
-        "3. Write a 2-3 sentence conclusion synthesising both paths.\n"
-        "4. Do NOT invent patterns outside the candidate list.\n\n"
-        "Output strict JSON with keys:\n"
-        '  "evidence_path": {"patterns": [{"pattern": str, "supporting_event_id": str}], '
-        '"summary": str}\n'
-        '  "hypothesis_path": {"patterns": [{"pattern": str, "supporting_event_id": str}], '
-        '"summary": str, "verification_gaps": [str]}\n'
-        '  "conclusion": str\n'
-        '  "confidence": float 0-1\n\n'
-        "Output ONLY the JSON object."
-    )
-
-    try:
-        raw = llm_service.call(
-            prompt=prompt,
-            system=(
-                "You are a rigorous geopolitical analyst. "
-                "Select only from provided pattern candidates. "
-                "Cite event evidence. Output only JSON."
-            ),
-            temperature=0.15,
-            max_tokens=1000,
-        )
-        text_resp = raw if isinstance(raw, str) else json.dumps(raw)
-        start = text_resp.find("{")
-        end   = text_resp.rfind("}")
-        if start == -1 or end < start:
-            raise ValueError("No JSON object found in LLM response")
-        parsed = json.loads(text_resp[start : end + 1])
-        evidence_path   = parsed.get("evidence_path", {})
-        hypothesis_path = parsed.get("hypothesis_path", {})
-        conclusion_text = parsed.get("conclusion", "")
-        # Back-compat: selected_patterns = evidence_path patterns + hypothesis_path patterns
-        selected = (
-            evidence_path.get("patterns", []) + hypothesis_path.get("patterns", [])
-        )
-        return {
-            "selected_patterns": selected,
-            "conclusion":        conclusion_text,
-            "confidence":        float(parsed.get("confidence", 0.5)),
-            "mode":              "llm_constrained",
-            "evidence_path":     evidence_path,
-            "hypothesis_path":   hypothesis_path,
-            "beta_path_algebra": _build_beta_path_from_algebra(active_patterns),
-        }
-    except Exception as exc:
-        logger.warning("LLM conclusion generation failed: %s", exc)
-        return _deterministic_conclusion(events, active_patterns, derived_patterns)
-
-
-def _build_beta_path_from_algebra(
-    active_patterns: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """Construct a Beta (counterscenario) path using relation-algebra inverses.
-
-    For each Alpha (T2-grounded) pattern, look up its inverse in the relation
-    schema.  If an inverse exists, the Beta path is "what happens if the inverse
-    operation is triggered instead."
-
-    Args:
-        active_patterns: Stage-2 active pattern dicts.
-
-    Returns:
-        Dict with keys ``patterns`` (list of inverse-pattern names),
-        ``summary`` (human-readable description), and
-        ``algebra_used`` (bool flag).
-    """
-    try:
-        from ontology.relation_schema import get_inverse_pattern, validate_inverses
-    except ImportError:
-        return {
-            "patterns": [],
-            "summary": "Relation algebra unavailable (import error).",
-            "algebra_used": False,
-        }
-
-    # Surface any inverse-symmetry violations (log only; non-blocking)
-    inv_errors = validate_inverses()
-    if inv_errors:
-        logger.warning(
-            "Relation algebra: %d inverse-symmetry violation(s): %s",
-            len(inv_errors),
-            "; ".join(inv_errors[:3]),
-        )
-
-    t2_patterns = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
-    if not t2_patterns:
-        return {
-            "patterns": [],
-            "summary": "No T2-grounded patterns; Beta path via algebra not constructible.",
-            "algebra_used": True,
-        }
-
-    beta_patterns: List[Dict[str, Any]] = []
-    for ap in t2_patterns[:3]:
-        alpha_name = ap["pattern"]
-        inv_name   = get_inverse_pattern(alpha_name)
-        if inv_name:
-            beta_patterns.append({
-                "pattern":          inv_name,
-                "inverts":          alpha_name,
-                "confidence":       round(float(ap.get("confidence", 0.5)) * _BETA_CONFIDENCE_DAMPEN, 4),
-                "interpretation":   (
-                    f"If '{alpha_name}' is reversed/invalidated, "
-                    f"the system may shift toward '{inv_name}'."
-                ),
-            })
-
-    if beta_patterns:
-        summary = (
-            "Beta path (algebra-derived): Key Alpha assumptions could be invalidated by: "
-            + "; ".join(
-                f"{bp['pattern']} (inverse of {bp['inverts']})"
-                for bp in beta_patterns
-            )
-        )
-    else:
-        summary = (
-            "No registered inverse patterns found for active T2 patterns. "
-            "Beta path cannot be algebraically derived."
-        )
-
-    return {
-        "patterns":    beta_patterns,
-        "summary":     summary,
-        "algebra_used": True,
-        "inverse_violations": len(inv_errors),
-    }
-
-
-def _deterministic_conclusion(
-    events: List[Dict[str, Any]],
-    active_patterns: List[Dict[str, Any]],
-    derived_patterns: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """Deterministic fallback when LLM is disabled or fails."""
-    t2_active = [ap for ap in active_patterns if ap.get("tier", "T2") == "T2"]
-    t1_active = [ap for ap in active_patterns if ap.get("tier", "T2") == "T1"]
-
-    # Build evidence_path from T2 patterns
-    evidence_selected = [
-        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
-        for ap in t2_active[:3]
-    ]
-    evidence_summary = (
-        "Grounded evidence supports: " + ", ".join(ap["pattern"] for ap in t2_active[:2])
-        if t2_active else "No grounded (T2) patterns available."
-    )
-
-    # Build hypothesis_path from T1 patterns
-    all_gaps: List[str] = []
-    for evt in events:
-        all_gaps.extend(evt.get("verification_gap", []))
-    if not all_gaps:
-        all_gaps = ["Additional source confirmation required"]
-    hypothesis_selected = [
-        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
-        for ap in t1_active[:2]
-    ]
-    hypothesis_summary = (
-        "Hypothesis-level signals: " + ", ".join(ap["pattern"] for ap in t1_active[:2])
-        if t1_active else "No hypothesis (T1) patterns active."
-    )
-
-    # Overall conclusion text
-    all_names = [ap["pattern"] for ap in active_patterns[:2]]
-    derived_names = [dp["derived"] for dp in derived_patterns[:1]]
-    if all_names:
-        conclusion = f"The text exhibits the following dynamics: {', '.join(all_names)}."
-        if derived_names:
-            conclusion += f" Compositional analysis further suggests: {', '.join(derived_names)}."
-    else:
-        conclusion = (
-            "No strong pattern signals detected. "
-            "LLM analysis is disabled; deterministic fallback applied."
-        )
-
-    selected = [
-        {"pattern": ap["pattern"], "supporting_event_id": ap["from_event"]}
-        for ap in active_patterns[:3]
-    ]
-    # Construct Beta path using relation algebra (inverse patterns)
-    beta_algebra = _build_beta_path_from_algebra(active_patterns)
-    return {
-        "selected_patterns": selected,
-        "conclusion":        conclusion,
-        "confidence":        0.40,
-        "mode":              "deterministic_fallback",
-        "evidence_path": {
-            "patterns": evidence_selected,
-            "summary":  evidence_summary,
-        },
-        "hypothesis_path": {
-            "patterns":          hypothesis_selected,
-            "summary":           hypothesis_summary,
-            "verification_gaps": list(dict.fromkeys(all_gaps))[:5],
-        },
-        "beta_path_algebra": beta_algebra,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Credibility assessment
-# ---------------------------------------------------------------------------
-
-# Scoring constants
-_VERIFIABILITY_ANCHOR_COUNT = 3.0     # number of anchors for max verifiability score
-_CONTRADICTION_PENALTY      = 0.3     # score deduction per contradicting pattern pair
-
-_DATE_RE     = re.compile(
-    r"\b(\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
-    r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|"
-    r"Dec(?:ember)?)\s+\d{4}|"
-    r"\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})\b",
-    re.IGNORECASE,
-)
-_URL_RE      = re.compile(r"https?://\S+", re.IGNORECASE)
-_FILING_RE   = re.compile(
-    r"\b(?:resolution|directive|case\s+no\.?|docket|ref\.?\s*(?:no\.?)?\s*[\w\-]+|"
-    r"un\s+security\s+council\s+resolution\s+\d+|unsc\s+\d+)\b",
-    re.IGNORECASE,
-)
-_INSTITUTION_RE = re.compile(
-    r"\b(UN|NATO|EU|IMF|WTO|IAEA|World\s+Bank|Federal\s+Reserve|"
-    r"US\s+Treasury|US\s+State\s+Department|European\s+Commission|"
-    r"OFAC|BIS|Congress|Senate|Parliament|Ministry|Pentagon|Kremlin|"
-    r"White\s+House)\b",
-    re.IGNORECASE,
-)
-
-# Mutually inverse pattern pairs → activate both → contradiction signal
-_CONTRADICTING_PAIRS: List[Tuple[str, str]] = [
-    ("霸權制裁模式",              "制裁解除 / 正常化模式"),
-    ("實體清單技術封鎖模式",      "技術許可 / 解禁模式"),
-    ("國家間武力衝突模式",        "停火 / 和平協議模式"),
-    ("非國家武裝代理衝突模式",    "代理武裝解除模式"),
-    ("多邊聯盟制裁模式",          "多邊制裁解除模式"),
-]
-
-
-def compute_credibility(
-    text: str,
-    active_patterns: List[Dict[str, Any]],
-    derived_patterns: List[Dict[str, Any]],
-    events: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    """
-    Compute a credibility report for the pipeline run.
-
-    Fields returned
-    ---------------
-    verifiability_score   float 0-1  additive scoring on verifiable anchor presence
-    missing_evidence      list[str]  types of anchor that are absent
-    kg_consistency_score  float 0-1  based on absence of contradicting patterns
-    contradictions        list[str]  co-activated contradicting pattern pairs
-    supporting_paths      list       populated by KG infra when available
-    hypothesis_ratio      float 0-1  fraction of patterns that are T1 (hypothesis)
-    overall_score         float 0-1  composite: (0.6*verifiability + 0.4*kg_consistency)
-                                     * (1 - 0.5*hypothesis_ratio)
-
-    Verifiability is additive: each anchor type contributes independently,
-    so short but evidence-containing texts don't always yield 0.
-    Anchor weights (sum to 1.0 at max):
-      - specific_date:            0.30
-      - named_institution:        0.30
-      - official_document_or_url: 0.25
-      - named_person_or_source:   0.15
-    """
-    # --- Verifiability (additive scoring) ---
-    has_date        = bool(_DATE_RE.search(text))
-    has_url         = bool(_URL_RE.search(text))
-    has_filing      = bool(_FILING_RE.search(text))
-    has_institution = bool(_INSTITUTION_RE.search(text))
-    # Named person / source heuristic (simple: quoted speech or "said"/"according to" attribution)
-    has_named_source = bool(re.search(
-        r'(?:"\s*,?\s*(?:said|according\s+to|stated|told|confirmed|announced)'
-        r'|\baccording\s+to\b)',
-        text, re.IGNORECASE,
-    ))
-
-    verifiability_score = (
-        (0.30 if has_date else 0.0)
-        + (0.30 if has_institution else 0.0)
-        + (0.25 if (has_filing or has_url) else 0.0)
-        + (0.15 if has_named_source else 0.0)
-    )
-    verifiability_score = min(1.0, verifiability_score)
-
-    missing_evidence: List[str] = []
-    if not has_date:
-        missing_evidence.append("specific_date")
-    if not has_institution:
-        missing_evidence.append("named_institution_or_official_source")
-    if not has_filing and not has_url:
-        missing_evidence.append("official_document_or_url_reference")
-
-    # --- KG Consistency ---
-    active_names = {ap["pattern"] for ap in active_patterns}
-    active_names |= {dp["derived"] for dp in derived_patterns}
-
-    contradictions: List[str] = []
-    for a, b in _CONTRADICTING_PAIRS:
-        if a in active_names and b in active_names:
-            contradictions.append(f"Contradicting co-activation: {a} + {b}")
-
-    kg_consistency_score = max(0.0, 1.0 - _CONTRADICTION_PENALTY * len(contradictions))
-
-    # --- Hypothesis ratio ---
-    all_tiers: List[str] = (
-        [ap.get("tier", "T2") for ap in active_patterns]
-        + [dp.get("derived_tier", "T2") for dp in derived_patterns]
-    )
-    if all_tiers:
-        t1_count = sum(1 for t in all_tiers if t == "T1")
-        hypothesis_ratio = t1_count / len(all_tiers)
-    else:
-        hypothesis_ratio = 0.0
-
-    overall_score = (
-        (0.6 * verifiability_score + 0.4 * kg_consistency_score)
-        * (1.0 - 0.5 * hypothesis_ratio)
-    )
-
-    return {
-        "verifiability_score":   round(verifiability_score, 3),
-        "missing_evidence":      missing_evidence,
-        "kg_consistency_score":  round(kg_consistency_score, 3),
-        "contradictions":        contradictions,
-        "supporting_paths":      [],   # populated by KG infra when available
-        "hypothesis_ratio":      round(hypothesis_ratio, 3),
-        "overall_score":         round(overall_score, 3),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Public entry-point
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 数据结构
+# ===========================================================================
 
 @dataclass
-class EventedPipelineResult:
-    events:           List[Dict[str, Any]] = field(default_factory=list)
-    active_patterns:  List[Dict[str, Any]] = field(default_factory=list)
-    derived_patterns: List[Dict[str, Any]] = field(default_factory=list)
-    conclusion:       Dict[str, Any]       = field(default_factory=dict)
-    credibility:      Dict[str, Any]       = field(default_factory=dict)
-    probability_tree: Dict[str, Any]       = field(default_factory=dict)
-    driving_factors:  List[Dict[str, Any]] = field(default_factory=list)
+class EventNode:
+    """Stage 1 输出：单条事件节点。"""
+    event_type:  str
+    severity:    str
+    description: str
+    entities:    Dict[str, List[str]] = field(default_factory=dict)
+    confidence:  float = 0.70
+    source_quote: str = ""      # 原文支撑片段
+    compound:    bool = False   # 是否来自复合规则
 
 
-def _build_probability_tree_from_result(
-    text: str,
-    events: List[Dict[str, Any]],
-    active_patterns: List[Dict[str, Any]],
-    derived_patterns: List[Dict[str, Any]],
-    credibility: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Build a lightweight probability-tree / Bayesian-style explanation.
+@dataclass
+class PatternNode:
+    """Stage 2a 输出：激活的本体模式节点。"""
+    pattern_name:     str
+    domain:           str
+    mechanism_class:  str
+    confidence_prior: float
+    typical_outcomes: List[str]
+    source_event:     str        # 触发该模式的事件类型
+    # Stage 2c 附加：向量坐标
+    vector_coords:    Optional[List[float]] = None
+    dominant_dims:    Optional[List[str]]   = None
 
-    The tree has one root node (the analysed text) and child nodes for each
-    active pattern.  Each node carries a probability derived from the
-    pattern's event-level confidence, propagated through the credibility
-    score so that overall credibility dampens all branch probabilities.
 
-    The structure is self-contained (no external ML library required).
+@dataclass
+class TransitionEdge:
+    """Stage 2b 输出：composition_table 中的一条转移边。"""
+    from_pattern_a:   str
+    from_pattern_b:   str
+    to_pattern:       str          # composition_table[(A,B)] = C
+    transition_type:  str          # "compose" | "inverse" | "self"
+    # 贝叶斯后验权重 = confidence_prior(A) × confidence_prior(B) × lie_similarity
+    prior_a:          float
+    prior_b:          float
+    lie_similarity:   float        # 向量加法与目标模式的余弦相似度
+    posterior_weight: float        # = prior_a × prior_b × lie_similarity
+    typical_outcomes: List[str]    # 目标模式的典型后果
+    description:      str          # 人类可读描述
+
+
+@dataclass
+class DrivingFactor:
+    """Stage 2d 输出：聚合驱动因素。"""
+    factor:           str          # 驱动力陈述
+    mechanism_class:  str          # 来源机制类
+    supporting_patterns: List[str] # 支撑该驱动力的模式名
+    weight:           float        # 聚合权重（加权 confidence_prior 之和）
+    outcomes:         List[str]    # 该驱动力的典型后果（top 3）
+
+
+@dataclass
+class PipelineResult:
+    """完整 pipeline 输出。"""
+    # Stage 1
+    events:          List[Dict[str, Any]]
+    # Stage 2a
+    active_patterns: List[Dict[str, Any]]
+    # Stage 2b
+    derived_patterns: List[Dict[str, Any]]    # 向后兼容：= top_transitions[0].to_pattern
+    top_transitions: List[Dict[str, Any]]      # 新增：完整转移列表
+    # Stage 2c
+    state_vector:    Dict[str, Any]            # 新增：8维状态向量
+    # Stage 2d
+    driving_factors: List[Dict[str, Any]]      # 新增：聚合驱动因素
+    # Stage 3
+    conclusion:      Dict[str, Any]
+    credibility:     Dict[str, Any]
+    # 兼容字段
+    probability_tree: Dict[str, Any] = field(default_factory=dict)
+
+
+# ===========================================================================
+# Stage 1: 事件提取
+# ===========================================================================
+
+def _run_stage1(text: str, llm_service: Any) -> List[EventNode]:
+    """调用 EventExtractor（含复合规则）提取事件节点。"""
+    try:
+        from app.data_ingestion.event_extractor import EventExtractor
+        extractor = EventExtractor()
+        raw_events = extractor.extract_events(text)
+    except ImportError:
+        try:
+            from intelligence.event_extractor import EventExtractor
+            extractor = EventExtractor()
+            raw_events = extractor.extract_events(text)
+        except ImportError:
+            raw_events = _rule_fallback_events(text)
+
+    nodes: List[EventNode] = []
+    for ev in raw_events:
+        nodes.append(EventNode(
+            event_type=ev.get("event_type", "其他事件"),
+            severity=ev.get("severity", "medium"),
+            description=ev.get("description", text[:200]),
+            entities=ev.get("entities", {}),
+            confidence=float(ev.get("confidence", 0.65)),
+            source_quote=ev.get("description", "")[:120],
+            compound=ev.get("compound", False),
+        ))
+
+    if not nodes:
+        # 保证至少 1 个事件
+        nodes.append(EventNode(
+            event_type="其他事件",
+            severity="medium",
+            description=text[:200],
+            confidence=0.50,
+            source_quote=text[:120],
+        ))
+        logger.warning("Stage1: no events extracted, using fallback")
+
+    logger.info("Stage1: %d events extracted", len(nodes))
+    return nodes
+
+
+def _rule_fallback_events(text: str) -> List[Dict[str, Any]]:
+    """极简规则兜底，不依赖任何外部模块。"""
+    kw_map = {
+        "military": "军事行动", "strike": "军事行动", "sanction": "贸易摩擦",
+        "inflation": "经济危机", "election": "政治冲突", "earthquake": "自然灾害",
+    }
+    tl = text.lower()
+    for kw, et in kw_map.items():
+        if kw in tl:
+            return [{"event_type": et, "severity": "high",
+                     "description": text[:200], "confidence": 0.60}]
+    return [{"event_type": "其他事件", "severity": "medium",
+             "description": text[:200], "confidence": 0.50}]
+
+
+# ===========================================================================
+# Stage 2a: 模式激活（事件 → 本体模式）
+# ===========================================================================
+
+# 事件类型 → 可能激活的 (EntityType 粗粒度, RelationType 粗粒度) 对
+_EVENT_TO_PATTERN_HINTS: Dict[str, List[Tuple[str, str, str]]] = {
+    "军事行动": [
+        ("state", "military_strike", "state"),
+        ("paramilitary", "military_strike", "state"),
+        ("state", "coerce", "state"),
+    ],
+    "贸易摩擦": [
+        ("state", "sanction", "state"),
+        ("state", "sanction", "firm"),
+        ("alliance", "sanction", "state"),
+        ("state", "trade_flow", "state"),
+    ],
+    "政治冲突": [
+        ("state", "coerce", "state"),
+        ("media", "propaganda", "trust"),
+        ("state", "ally", "state"),
+    ],
+    "经济危机": [
+        ("financial_org", "regulate", "currency"),
+        ("state", "sanction", "financial_org"),
+        ("state", "trade_flow", "state"),
+        ("firm", "dependency", "supply_chain"),
+    ],
+    "外交事件": [
+        ("state", "ally", "state"),
+        ("state", "legitimize", "norm"),
+        ("institution", "regulate", "firm"),
+    ],
+    "人道危机": [
+        ("paramilitary", "military_strike", "state"),
+        ("state", "military_strike", "state"),
+        ("resource", "dependency", "state"),
+    ],
+    "技术突破": [
+        ("state", "standardize", "tech"),
+        ("firm", "supply", "firm"),
+        ("state", "exclude", "tech"),
+    ],
+    "恐怖袭击": [
+        ("paramilitary", "military_strike", "state"),
+        ("state", "coerce", "state"),
+    ],
+    "自然灾害": [
+        ("resource", "dependency", "state"),
+        ("institution", "regulate", "firm"),
+    ],
+    "其他事件": [
+        ("state", "trade_flow", "state"),
+    ],
+}
+
+
+def _run_stage2a(events: List[EventNode]) -> List[PatternNode]:
     """
-    overall_cred = float(credibility.get("overall_score", 0.5))
-    nodes: List[Dict[str, Any]] = []
-    edges: List[Dict[str, Any]] = []
+    将事件节点映射到本体模式节点。
 
-    root_id = "root"
-    nodes.append({
-        "id":          root_id,
-        "label":       "Input event",
-        "type":        "root",
-        "probability": 1.0,
-        "evidence":    text[:_TREE_EVIDENCE_MAX_LEN] + ("…" if len(text) > _TREE_EVIDENCE_MAX_LEN else ""),
-        "verification_gap": credibility.get("missing_evidence", []),
-    })
+    策略：
+    1. 根据 event_type 查 _EVENT_TO_PATTERN_HINTS 获候选 (e_src, r, e_tgt)
+    2. 用 lookup_pattern_by_strings 精确查询 CARTESIAN_PATTERN_REGISTRY
+    3. 失败则用 fuzzy_lookup_pattern
+    """
+    try:
+        from ontology.relation_schema import (
+            lookup_pattern_by_strings,
+            fuzzy_lookup_pattern,
+        )
+    except ImportError:
+        logger.warning("Stage2a: relation_schema not available")
+        return []
 
-    all_patterns = active_patterns + derived_patterns
-    if not all_patterns:
+    activated: List[PatternNode] = []
+    seen: set = set()
+
+    for ev in events:
+        hints = _EVENT_TO_PATTERN_HINTS.get(ev.event_type, [("state", "sanction", "state")])
+        for e_src, r, e_tgt in hints:
+            pat = lookup_pattern_by_strings(e_src, r, e_tgt)
+            if pat is None:
+                fuzzy = fuzzy_lookup_pattern(e_src, r, e_tgt)
+                if fuzzy and fuzzy[0][2] >= 0.4:
+                    pat = fuzzy[0][1]
+
+            if pat and pat.pattern_name not in seen:
+                seen.add(pat.pattern_name)
+                activated.append(PatternNode(
+                    pattern_name=pat.pattern_name,
+                    domain=pat.domain,
+                    mechanism_class=pat.mechanism_class,
+                    confidence_prior=pat.confidence_prior * ev.confidence,
+                    typical_outcomes=pat.typical_outcomes,
+                    source_event=ev.event_type,
+                ))
+
+    if not activated:
+        logger.warning("Stage2a: no patterns activated from events")
+
+    logger.info("Stage2a: %d patterns activated", len(activated))
+    return activated
+
+
+# ===========================================================================
+# Stage 2b: 转移枚举（composition_table + inverse_table）
+# ===========================================================================
+
+def _run_stage2b(
+    active: List[PatternNode],
+) -> List[TransitionEdge]:
+    """
+    枚举所有从 active_patterns 可达的转移。
+
+    可达集合 R = {
+      C : (A, B) → C ∈ composition_table,
+          A ∈ active_patterns 或 B ∈ active_patterns
+    }
+
+    后验权重 = prior_A × prior_B × lie_similarity
+    其中 lie_similarity 来自向量空间的余弦相似度。
+    """
+    if not active:
+        return []
+
+    try:
+        from ontology.relation_schema import (
+            composition_table,
+            inverse_table,
+            CARTESIAN_PATTERN_REGISTRY,
+        )
+        from ontology.lie_algebra_space import LieAlgebraSpace, _vec
+    except ImportError as exc:
+        logger.warning("Stage2b: import failed: %s", exc)
+        return []
+
+    space       = LieAlgebraSpace()
+    active_names= {p.pattern_name for p in active}
+    prior_map   = {p.pattern_name: p.confidence_prior for p in active}
+
+    # 默认 prior（用于不在 active 中但出现在 composition 右边的模式）
+    def _get_prior(name: str) -> float:
+        if name in prior_map:
+            return prior_map[name]
+        # 从 registry 查
+        for pat in CARTESIAN_PATTERN_REGISTRY.values():
+            if pat.pattern_name == name:
+                return pat.confidence_prior
+        return 0.50
+
+    edges: List[TransitionEdge] = []
+    seen_target: set = set()
+
+    # ── A. composition_table 中涉及 active 模式的所有 (A,B)→C ──────────
+    for (pa, pb), pc in composition_table.items():
+        a_active = pa in active_names
+        b_active = pb in active_names
+        if not (a_active or b_active):
+            continue
+
+        prior_a   = _get_prior(pa)
+        prior_b   = _get_prior(pb)
+
+        # Lie 代数：向量加法与目标向量的余弦相似度
+        v_sum = _vec(pa) + _vec(pb)
+        v_tgt = _vec(pc)
+        n_sum = np.linalg.norm(v_sum)
+        n_tgt = np.linalg.norm(v_tgt)
+        if n_sum < 1e-9 or n_tgt < 1e-9:
+            lie_sim = 0.5
+        else:
+            lie_sim = float(np.dot(v_sum / n_sum, v_tgt / n_tgt))
+            lie_sim = max(0.0, lie_sim)  # clip negative
+
+        posterior = prior_a * prior_b * lie_sim
+
+        # 目标模式的典型后果
+        outcomes: List[str] = []
+        for pat in CARTESIAN_PATTERN_REGISTRY.values():
+            if pat.pattern_name == pc:
+                outcomes = pat.typical_outcomes
+                break
+
+        t_type = "self" if pc == pa or pc == pb else "compose"
+
+        edges.append(TransitionEdge(
+            from_pattern_a=pa,
+            from_pattern_b=pb,
+            to_pattern=pc,
+            transition_type=t_type,
+            prior_a=round(prior_a, 3),
+            prior_b=round(prior_b, 3),
+            lie_similarity=round(lie_sim, 3),
+            posterior_weight=round(posterior, 4),
+            typical_outcomes=outcomes[:3],
+            description=(
+                f"「{pa}」⊕「{pb}」→「{pc}」"
+                f"（后验={posterior:.3f}，Lie相似度={lie_sim:.2f}）"
+            ),
+        ))
+
+    # ── B. inverse_table 中 active 模式的逆（低概率但高冲击 = beta 路径候选）─
+    for pa in active_names:
+        pc = inverse_table.get(pa)
+        if pc and pc not in active_names:
+            prior_a  = prior_map[pa]
+            v_inv    = -_vec(pa)          # 逆元 ≈ 负向量
+            v_tgt    = _vec(pc)
+            n_inv    = np.linalg.norm(v_inv)
+            n_tgt    = np.linalg.norm(v_tgt)
+            lie_sim  = float(np.dot(v_inv / max(n_inv, 1e-9), v_tgt / max(n_tgt, 1e-9)))
+            lie_sim  = max(0.0, lie_sim)
+            # 逆转置信度打折（逆模式发生概率低）
+            posterior = prior_a * 0.35 * lie_sim
+
+            outcomes = []
+            for pat in CARTESIAN_PATTERN_REGISTRY.values():
+                if pat.pattern_name == pc:
+                    outcomes = pat.typical_outcomes
+                    break
+
+            edges.append(TransitionEdge(
+                from_pattern_a=pa,
+                from_pattern_b="（逆元）",
+                to_pattern=pc,
+                transition_type="inverse",
+                prior_a=round(prior_a, 3),
+                prior_b=0.35,
+                lie_similarity=round(lie_sim, 3),
+                posterior_weight=round(posterior, 4),
+                typical_outcomes=outcomes[:3],
+                description=(
+                    f"「{pa}」的逆模式：「{pc}」"
+                    f"（后验={posterior:.3f}，低概率高冲击）"
+                ),
+            ))
+
+    # 按后验权重排序，返回 top 5
+    edges.sort(key=lambda e: e.posterior_weight, reverse=True)
+    result = edges[:5]
+    logger.info("Stage2b: %d transitions enumerated, top: %s",
+                len(edges), [e.to_pattern for e in result])
+    return result
+
+
+# ===========================================================================
+# Stage 2c: Lie 代数状态向量
+# ===========================================================================
+
+def _run_stage2c(active: List[PatternNode]) -> Dict[str, Any]:
+    """计算 8D 状态向量 + PCA 坐标。"""
+    if not active:
         return {
-            "nodes": nodes,
-            "edges": edges,
-            "overall_credibility": overall_cred,
-            "selected_branch": None,
-            "summary": "No patterns derived; insufficient evidence for branching.",
+            "enabled": False,
+            "reason": "no_active_patterns",
+            "mean_vector": {},
+            "dominant_dim": "unknown",
+            "coercion": 0.0,
+            "cooperation": 0.0,
         }
 
-    # Collect raw weights from pattern confidence × overall credibility
-    raw_weights: List[float] = []
-    for pat in all_patterns:
-        conf = float(pat.get("confidence", 0.5))
-        raw_weights.append(conf * overall_cred)
+    try:
+        from ontology.lie_algebra_space import (
+            compute_pattern_trajectory,
+            SEMANTIC_DIMS,
+            _vec,
+        )
+        result = compute_pattern_trajectory(
+            active_pattern_names=[p.pattern_name for p in active],
+        )
+        return result
+    except Exception as exc:
+        logger.warning("Stage2c: Lie algebra failed: %s", exc)
+        return {"enabled": False, "reason": str(exc)}
 
-    total_w = sum(raw_weights) or 1.0
-    best_prob = -1.0
-    best_node_id: Optional[str] = None
 
-    for i, (pat, raw_w) in enumerate(zip(all_patterns, raw_weights)):
-        node_id  = f"pat_{i}"
-        prob     = round(raw_w / total_w, 4)
-        pat_type = pat.get("type") or pat.get("pattern") or f"pattern_{i}"
-        is_derived = i >= len(active_patterns)
-        evts_anchored = [
-            e.get("type", "") for e in pat.get("events", [])
-        ] if "events" in pat else []
+# ===========================================================================
+# Stage 2d: 驱动因素聚合（确定性，不依赖 LLM）
+# ===========================================================================
 
-        nodes.append({
-            "id":          node_id,
-            "label":       pat_type,
-            "type":        "derived_pattern" if is_derived else "active_pattern",
-            "probability": prob,
-            "confidence":  float(pat.get("confidence", 0.5)),
-            "evidence":    pat.get("description") or pat.get("summary") or pat_type,
-            "event_anchors": evts_anchored,
-            "verification_gap": pat.get("verification_gap") or "",
-        })
-        edges.append({
-            "from":   root_id,
-            "to":     node_id,
-            "label":  "causes" if not is_derived else "composed_via",
-            "weight": prob,
-        })
-        if prob > best_prob:
-            best_prob    = prob
-            best_node_id = node_id
+def _run_stage2d(
+    active: List[PatternNode],
+    transitions: List[TransitionEdge],
+) -> List[DrivingFactor]:
+    """
+    从 active_patterns 的 mechanism_class + typical_outcomes 聚合驱动因素。
 
-    return {
-        "nodes":                nodes,
-        "edges":                edges,
-        "overall_credibility":  overall_cred,
-        "selected_branch":      best_node_id,
-        "summary": (
-            f"Highest-probability branch: {best_node_id} "
-            f"(p={best_prob:.2f}). "
-            f"Overall credibility: {overall_cred:.0%}."
+    算法：
+    1. 按 mechanism_class 对所有 active_patterns 分组
+    2. 对每组：加权 confidence_prior 求和 → group_weight
+    3. 对每组的 typical_outcomes 按 confidence_prior 加权计数
+    4. 取 top-3 outcomes 构造 DrivingFactor
+    5. 额外：若 transitions 中有高后验的目标模式，其 typical_outcomes 也注入
+
+    关键：所有驱动因素均来自关系代数（mechanism_class + outcomes），
+         不依赖 LLM 臆造。
+    """
+    if not active:
+        return []
+
+    # ── A. 按 mechanism_class 聚合 ──────────────────────────────────────
+    groups: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+        "patterns": [],
+        "total_weight": 0.0,
+        "outcome_weights": defaultdict(float),
+    })
+
+    for pat in active:
+        mclass = pat.mechanism_class or "unknown"
+        g = groups[mclass]
+        g["patterns"].append(pat.pattern_name)
+        g["total_weight"] += pat.confidence_prior
+        for outcome in pat.typical_outcomes:
+            g["outcome_weights"][outcome] += pat.confidence_prior
+
+    # ── B. 从高后验 transitions 注入额外 outcomes ───────────────────────
+    for edge in transitions[:3]:
+        if edge.posterior_weight >= 0.15:
+            # 找目标模式的 mechanism_class
+            try:
+                from ontology.relation_schema import CARTESIAN_PATTERN_REGISTRY
+                for pat in CARTESIAN_PATTERN_REGISTRY.values():
+                    if pat.pattern_name == edge.to_pattern:
+                        mclass = pat.mechanism_class or "transition_derived"
+                        g = groups[mclass]
+                        if edge.to_pattern not in g["patterns"]:
+                            g["patterns"].append(edge.to_pattern + "（衍生）")
+                        g["total_weight"] += edge.posterior_weight * 0.5
+                        for outcome in edge.typical_outcomes:
+                            g["outcome_weights"][outcome] += edge.posterior_weight * 0.5
+                        break
+            except ImportError:
+                pass
+
+    # ── C. 构造 DrivingFactor 列表 ──────────────────────────────────────
+    factors: List[DrivingFactor] = []
+    for mclass, gdata in groups.items():
+        if gdata["total_weight"] < 0.1:
+            continue
+        # top-3 outcomes by weight
+        top_outcomes = sorted(
+            gdata["outcome_weights"].items(),
+            key=lambda x: x[1], reverse=True,
+        )[:3]
+        outcomes_list = [o for o, _ in top_outcomes]
+
+        # 构造可读的驱动力陈述
+        patterns_str = "、".join(gdata["patterns"][:2])
+        factor_text  = _mechanism_to_statement(mclass, patterns_str, outcomes_list)
+
+        factors.append(DrivingFactor(
+            factor=factor_text,
+            mechanism_class=mclass,
+            supporting_patterns=gdata["patterns"][:3],
+            weight=round(gdata["total_weight"], 3),
+            outcomes=outcomes_list,
+        ))
+
+    # 按权重排序
+    factors.sort(key=lambda f: f.weight, reverse=True)
+    logger.info("Stage2d: %d driving factors aggregated", len(factors))
+    return factors[:4]
+
+
+def _mechanism_to_statement(
+    mclass: str,
+    patterns: str,
+    outcomes: List[str],
+) -> str:
+    """将机制类 + 模式名 → 可读的驱动力陈述（不依赖 LLM）。"""
+    _MCLASS_TEMPLATES = {
+        "coercive_leverage":      "强制杠杆机制激活（{patterns}），推动 {outcome0}",
+        "tech_denial":            "技术封锁机制激活（{patterns}），推动 {outcome0}",
+        "kinetic_escalation":     "动能升级机制激活（{patterns}），推动 {outcome0}",
+        "proxy_warfare":          "代理战争机制激活（{patterns}），推动 {outcome0}",
+        "economic_interdependence":"经济相互依存机制（{patterns}），制约 {outcome0}",
+        "monetary_transmission":  "货币政策传导机制（{patterns}），导致 {outcome0}",
+        "financial_exclusion":    "金融排斥机制激活（{patterns}），推动 {outcome0}",
+        "supply_chain_resilience":"供应链韧性压力（{patterns}），触发 {outcome0}",
+        "resource_leverage":      "资源杠杆机制激活（{patterns}），推动 {outcome0}",
+        "tech_governance":        "技术治理机制（{patterns}），推动 {outcome0}",
+        "tech_decoupling":        "技术脱钩机制加速（{patterns}），推动 {outcome0}",
+        "oligopoly_supply":       "寡头供应格局（{patterns}），制约 {outcome0}",
+        "epistemic_warfare":      "认知战争机制（{patterns}），导致 {outcome0}",
+        "regulatory_pressure":    "监管约束机制（{patterns}），触发 {outcome0}",
+        "alliance_dynamics":      "联盟动态机制（{patterns}），形成 {outcome0}",
+        "norm_diffusion":         "规范扩散机制（{patterns}），强化 {outcome0}",
+        "multilateral_pressure":  "多边压力机制（{patterns}），推动 {outcome0}",
+    }
+    template = _MCLASS_TEMPLATES.get(
+        mclass,
+        "{mclass} 机制激活（{patterns}），推动 {outcome0}",
+    )
+    outcome0 = outcomes[0] if outcomes else "结构性重组"
+    return template.format(
+        patterns=patterns,
+        outcome0=outcome0,
+        mclass=mclass,
+    )
+
+
+# ===========================================================================
+# Stage 3: 贝叶斯结论生成
+# ===========================================================================
+
+def _run_stage3(
+    text: str,
+    events:          List[EventNode],
+    active:          List[PatternNode],
+    transitions:     List[TransitionEdge],
+    state_vector:    Dict[str, Any],
+    driving_factors: List[DrivingFactor],
+    llm_service:     Any,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    贝叶斯后验推演 + LLM 解释文本生成。
+
+    确定性部分（不依赖 LLM）：
+      P(alpha) = transitions[0].posterior_weight / Z
+      P(beta)  = transitions[1].posterior_weight / Z（若存在）
+      Z        = sum(posterior_weights)
+      composite_confidence = mean([active patterns' confidence_prior])
+
+    LLM 部分（仅限填写解释文本）：
+      只被允许写 conclusion.text，解释已计算好的 alpha/beta 路径。
+      所有数值字段在 LLM 调用前已确定，LLM 无法修改。
+    """
+    # ── A. 贝叶斯归一化概率计算 ─────────────────────────────────────────
+    weights   = [t.posterior_weight for t in transitions if t.posterior_weight > 0]
+    Z         = sum(weights) if weights else 1.0
+
+    alpha_prob = round(transitions[0].posterior_weight / Z, 3) if transitions else 0.6
+    beta_prob  = round(transitions[1].posterior_weight / Z, 3) if len(transitions) >= 2 else (1 - alpha_prob)
+
+    # Alpha 路径 = 最高后验转移
+    alpha_transition = transitions[0] if transitions else None
+    beta_transition  = transitions[1] if len(transitions) >= 2 else None
+
+    # 若 beta 是 inverse 类型，提高其主观权重（低概率但高冲击）
+    if beta_transition and beta_transition.transition_type == "inverse":
+        beta_prob = min(beta_prob * 1.5, 0.45)
+        alpha_prob = max(alpha_prob - (beta_prob - (1 - alpha_prob)), 0.3)
+
+    # ── B. 置信度计算（来自本体先验，不是幻觉）──────────────────────────
+    if active:
+        base_confidence = float(np.mean([p.confidence_prior for p in active]))
+    else:
+        base_confidence = 0.40
+
+    # KG 一致性（有无图谱路径）
+    kg_consistency = min(1.0, len(active) / max(1, len(events)) * 0.8)
+
+    # 可验证性（有无具体证据锚点）
+    text_has_date = bool(re.search(
+        r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}|\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b",
+        text, re.IGNORECASE,
+    ))
+    text_has_inst = bool(re.search(
+        r"\b(NASA|ESA|Pentagon|NATO|UN|Congress|Senate|Ministry|Reuters|BBC)\b",
+        text, re.IGNORECASE,
+    ))
+    verifiability = 0.3 + 0.35 * text_has_date + 0.35 * text_has_inst
+
+    # 综合置信度 = 本体先验 × √(可验证性 × KG一致性)
+    composite = round(
+        base_confidence * (verifiability * kg_consistency) ** 0.5, 3
+    )
+
+    # ── C. 缺失证据锚点检测 ─────────────────────────────────────────────
+    missing_evidence: List[str] = []
+    if not text_has_date:
+        missing_evidence.append("specific_date")
+    if not text_has_inst:
+        missing_evidence.append("named_institution_or_official_source")
+    if not re.search(r"https?://\S+|official|report|document", text, re.IGNORECASE):
+        missing_evidence.append("official_document_or_url_reference")
+
+    # ── D. 构造结构化 Alpha / Beta 路径（确定性）──────────────────────
+    if alpha_transition:
+        alpha_outcomes = alpha_transition.typical_outcomes
+        alpha_path = {
+            "name":           alpha_transition.to_pattern,
+            "probability":    round(alpha_prob, 3),
+            "mechanism":      _get_transition_mechanism(alpha_transition),
+            "typical_outcomes": alpha_outcomes,
+            "causal_chain": (
+                f"{alpha_transition.from_pattern_a} "
+                f"⊕ {alpha_transition.from_pattern_b} "
+                f"→ [{alpha_transition.to_pattern}] "
+                f"→ {alpha_outcomes[0] if alpha_outcomes else '结构性调整'}"
+            ),
+            "evidence_basis": f"composition_table 精确推导（后验权重={alpha_transition.posterior_weight:.3f}）",
+        }
+    else:
+        alpha_path = {
+            "name": "现状延续路径",
+            "probability": 0.60,
+            "mechanism": "无足够模式激活",
+            "typical_outcomes": ["structural_realignment"],
+            "causal_chain": "事件 → [现有格局延续] → 渐进演变",
+            "evidence_basis": "无直接本体路径，CoT 兜底",
+        }
+
+    if beta_transition:
+        beta_outcomes = beta_transition.typical_outcomes
+        beta_path = {
+            "name":           beta_transition.to_pattern,
+            "probability":    round(beta_prob, 3),
+            "mechanism":      _get_transition_mechanism(beta_transition),
+            "typical_outcomes": beta_outcomes,
+            "causal_chain": (
+                f"{beta_transition.from_pattern_a} "
+                f"[逆转/断裂] → [{beta_transition.to_pattern}] "
+                f"→ {beta_outcomes[0] if beta_outcomes else '极端博弈'}"
+            ),
+            "trigger_condition": (
+                "关键模式节点发生逆转"
+                if beta_transition.transition_type == "inverse"
+                else f"「{beta_transition.from_pattern_b}」同时激活"
+            ),
+            "evidence_basis": f"{'inverse_table 逆元推导' if beta_transition.transition_type == 'inverse' else 'composition_table 精确推导'}（后验权重={beta_transition.posterior_weight:.3f}）",
+        }
+    else:
+        beta_path = {
+            "name": "结构性断裂路径",
+            "probability": round(1 - alpha_prob, 3),
+            "mechanism": "逆模式激活",
+            "typical_outcomes": ["structural_realignment"],
+            "causal_chain": "关键节点失效 → [极端博弈] → 格局重组",
+            "trigger_condition": "外部冲击触发逆模式",
+            "evidence_basis": "基于 inverse_table 的低概率高冲击路径",
+        }
+
+    # ── E. LLM 调用：仅写解释文本，数值已锁定 ──────────────────────────
+    conclusion_text = _generate_conclusion_text(
+        text=text,
+        alpha_path=alpha_path,
+        beta_path=beta_path,
+        driving_factors=driving_factors,
+        state_vector=state_vector,
+        composite_confidence=composite,
+        llm_service=llm_service,
+    )
+
+    conclusion = {
+        "text":       conclusion_text,
+        "alpha_path": alpha_path,
+        "beta_path":  beta_path,
+        "confidence": composite,
+    }
+
+    credibility = {
+        "verifiability":        round(verifiability, 3),
+        "kg_consistency":       round(kg_consistency, 3),
+        "composite_score":      composite,
+        "active_pattern_count": len(active),
+        "transition_count":     len(transitions),
+        "missing_evidence":     missing_evidence,
+        "confidence_source":    "ontology_prior × bayesian_posterior",
+        "note": (
+            "置信度来自本体先验 × 贝叶斯后验归一化，"
+            "非 LLM 自报。缺失证据锚点会降低 verifiability。"
         ),
     }
 
+    return conclusion, credibility
 
-def _extract_driving_factors_from_events(
-    events: List[Dict[str, Any]],
-    active_patterns: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Aggregate repeated event/pattern types into driving-factor summaries.
 
-    Groups events by their type, then maps each group to a human-readable
-    driving-factor label with supporting evidence.
+def _get_transition_mechanism(edge: TransitionEdge) -> str:
+    """从转移边提取机制描述。"""
+    try:
+        from ontology.relation_schema import CARTESIAN_PATTERN_REGISTRY
+        for pat in CARTESIAN_PATTERN_REGISTRY.values():
+            if pat.pattern_name == edge.to_pattern:
+                return pat.mechanism_class
+    except ImportError:
+        pass
+    return "composition_derived"
 
-    Args:
-        events:          Stage-1 extracted event dicts.
-        active_patterns: Stage-2 pattern dicts.
 
-    Returns:
-        List of driving-factor dicts, each with ``type``, ``label``,
-        ``count``, ``confidence``, and ``evidence`` keys.
+def _generate_conclusion_text(
+    text: str,
+    alpha_path: Dict[str, Any],
+    beta_path: Dict[str, Any],
+    driving_factors: List[DrivingFactor],
+    state_vector: Dict[str, Any],
+    composite_confidence: float,
+    llm_service: Any,
+) -> str:
     """
-    from collections import defaultdict
+    LLM 仅被允许写解释文本，所有数值字段已预先计算并锁定。
+    如果 LLM 调用失败，用模板生成兜底文本。
+    """
+    # 构造严格限制的 prompt
+    df_text = ""
+    for i, df in enumerate(driving_factors[:3], 1):
+        df_text += f"  {i}. {df.factor}\n"
 
-    # Aggregate event types
-    type_groups: dict = defaultdict(list)
-    for evt in events:
-        etype = evt.get("type", "unknown")
-        type_groups[etype].append(evt)
+    dominant = state_vector.get("mean_vector", {}).get("dominant_dim", "unknown")
+    coercion = state_vector.get("mean_vector", {}).get("coercion", 0.0)
 
-    factors: List[Dict[str, Any]] = []
-    for etype, evts in type_groups.items():
-        confidences = [float(e.get("confidence", 0.5)) for e in evts]
-        avg_conf    = sum(confidences) / len(confidences)
-        # Map event type to a mechanism label
-        mechanism = _EVENT_TYPE_TO_MECHANISM.get(etype, etype.replace("_", " ").title())
-        evidence_snippets = [
-            e.get("snippet") or e.get("text") or e.get("type", "")
-            for e in evts[:3]
-        ]
-        factors.append({
-            "type":       etype,
-            "label":      mechanism,
-            "count":      len(evts),
-            "confidence": round(avg_conf, 4),
-            "evidence":   [s for s in evidence_snippets if s],
-        })
+    prompt = f"""
+你是 EL-DRUIN 本体论推演解释器。
 
-    # Sort by count desc, then confidence desc
-    factors.sort(key=lambda f: (-f["count"], -f["confidence"]))
-    return factors
+以下数据已由确定性算法计算完成，你的任务是：
+用 2-3 句话解释这些数据的含义，不允许修改任何数值。
+
+【输入数据（不可修改）】
+- 新闻原文摘要: {text[:150]}
+- 状态向量主导维度: {dominant}（强制/合作指数: {coercion:+.2f}）
+- Alpha 路径（概率={alpha_path['probability']:.0%}）: {alpha_path['causal_chain']}
+- Beta 路径（概率={beta_path['probability']:.0%}）: {beta_path['causal_chain']}
+- 驱动因素:
+{df_text}
+- 综合置信度: {composite_confidence:.0%}（来自本体先验，非 LLM 自报）
+
+【输出要求】
+1. 用 2-3 句中文解释 Alpha 路径为何是最可能路径（引用驱动因素）
+2. 用 1 句话描述 Beta 路径的触发条件
+3. 不要编造新的数值或实体
+4. 只返回解释文本，不加 JSON 格式
+"""
+    try:
+        response = llm_service.call(
+            prompt=prompt,
+            system=(
+                "你是严谨的本体论推演解释器。"
+                "只解释已给定的计算结果，不编造数值，不超出提供的数据范围。"
+            ),
+            temperature=0.15,
+            max_tokens=400,
+        )
+        text_out = str(response).strip()
+        # 剥离可能的 JSON/markdown 包装
+        if text_out.startswith("{") or text_out.startswith("["):
+            import json as _json
+            try:
+                parsed = _json.loads(text_out)
+                if isinstance(parsed, dict):
+                    text_out = parsed.get("text", parsed.get("conclusion", str(parsed)))
+            except Exception:
+                pass
+        return text_out if text_out else _fallback_conclusion_text(
+            alpha_path, beta_path, driving_factors, composite_confidence
+        )
+    except Exception as exc:
+        logger.warning("Stage3 LLM conclusion text failed: %s", exc)
+        return _fallback_conclusion_text(
+            alpha_path, beta_path, driving_factors, composite_confidence
+        )
 
 
-# Mapping from event type constants → human-readable mechanism labels
-_EVENT_TYPE_TO_MECHANISM: Dict[str, str] = {
-    "sanction_imposed":          "Coercive economic pressure",
-    "sanction_lifted":           "Normalisation / sanction relief",
-    "export_control":            "Technology denial / export restriction",
-    "asset_freeze":              "Financial coercion",
-    "legal_regulatory_action":   "Regulatory constraint",
-    "coercive_warning":          "Deterrence signal",
-    "military_strike":           "Kinetic escalation",
-    "clashes":                   "Armed conflict",
-    "ceasefire":                 "De-escalation / ceasefire",
-    "mobilization":              "Force projection",
-    "withdrawal":                "Strategic withdrawal",
-    "market_entry":              "Market expansion",
-    "product_feature_launch":    "Competitive product launch",
-    "competitive_positioning":   "Market positioning",
-    "platform_strategy":         "Platform ecosystem strategy",
-    "space_mission":             "Space technology projection",
-}
+def _fallback_conclusion_text(
+    alpha_path: Dict[str, Any],
+    beta_path: Dict[str, Any],
+    driving_factors: List[DrivingFactor],
+    confidence: float,
+) -> str:
+    """LLM 失败时的模板兜底文本。"""
+    df_str = (
+        driving_factors[0].factor
+        if driving_factors
+        else "模式激活不足，驱动力未明确"
+    )
+    return (
+        f"基于本体模式库的确定性推演，Alpha 路径「{alpha_path['name']}」"
+        f"（概率={alpha_path['probability']:.0%}）由以下驱动力支撑：{df_str}。"
+        f"Beta 路径「{beta_path['name']}」（概率={beta_path['probability']:.0%}）"
+        f"需要{beta_path.get('trigger_condition', '关键节点发生逆转')}才能激活。"
+        f"综合置信度={confidence:.0%}（来自本体先验，非 LLM 自报）。"
+    )
 
+
+# ===========================================================================
+# 主入口
+# ===========================================================================
 
 def run_evented_pipeline(
     text: str,
-    llm_service: Optional[Any] = None,
-) -> EventedPipelineResult:
+    llm_service: Any,
+) -> PipelineResult:
     """
-    Run the full three-stage evented reasoning pipeline.
+    执行完整的五阶段本体推演管线。
 
-    Args:
-        text:        News text (title + summary or full article).
-        llm_service: Optional LLM adapter with a `.call(prompt, ...)` method.
-
-    Returns:
-        EventedPipelineResult with events, active_patterns, derived_patterns,
-        conclusion, credibility, probability_tree, and driving_factors.
+    返回的 PipelineResult 严格遵循数据契约：
+      events[]           ≥1，Stage 1
+      active_patterns[]  ≥0（附说明）
+      state_vector       Stage 2c
+      top_transitions[]  Stage 2b
+      driving_factors[]  Stage 2d（确定性聚合）
+      conclusion         Stage 3（LLM 仅填解释文本）
+      credibility        置信度来源：本体先验 × 贝叶斯后验
     """
     logger.info("EventedPipeline: starting on %d chars", len(text))
 
-    # Stage 1 – event extraction
-    events = extract_events(text, llm_service=llm_service)
+    # ── Stage 1 ──────────────────────────────────────────────────────
+    events = _run_stage1(text, llm_service)
     logger.info("EventedPipeline: %d events extracted", len(events))
 
-    # Stage 2a – active patterns
-    active_patterns = derive_active_patterns(events)
-    logger.info("EventedPipeline: %d active patterns", len(active_patterns))
+    # ── Stage 2a ─────────────────────────────────────────────────────
+    active = _run_stage2a(events)
+    logger.info("EventedPipeline: %d active patterns", len(active))
 
-    # Stage 2b – composed/derived patterns
-    derived_patterns = derive_composed_patterns(active_patterns)
-    logger.info("EventedPipeline: %d derived patterns", len(derived_patterns))
+    # ── Stage 2b ─────────────────────────────────────────────────────
+    transitions = _run_stage2b(active)
+    logger.info("EventedPipeline: %d derived patterns (transitions)", len(transitions))
 
-    # Stage 3a – conclusion
-    conclusion = generate_conclusion(
-        text, events, active_patterns, derived_patterns, llm_service
-    )
+    # ── Stage 2c ─────────────────────────────────────────────────────
+    state_vector = _run_stage2c(active)
 
-    # Stage 3b – credibility
-    credibility = compute_credibility(text, active_patterns, derived_patterns)
+    # ── Stage 2d ─────────────────────────────────────────────────────
+    driving_factors = _run_stage2d(active, transitions)
 
-    # Stage 4 – probability tree (Bayesian-style explainability)
-    probability_tree = _build_probability_tree_from_result(
-        text, events, active_patterns, derived_patterns, credibility
-    )
-
-    # Stage 5 – driving factor extraction
-    driving_factors = _extract_driving_factors_from_events(events, active_patterns)
-
-    return EventedPipelineResult(
+    # ── Stage 3 ──────────────────────────────────────────────────────
+    conclusion, credibility = _run_stage3(
+        text=text,
         events=events,
-        active_patterns=active_patterns,
-        derived_patterns=derived_patterns,
+        active=active,
+        transitions=transitions,
+        state_vector=state_vector,
+        driving_factors=driving_factors,
+        llm_service=llm_service,
+    )
+
+    # ── 序列化 ──────────────────────────────────────────────────────
+    def _pat_to_dict(p: PatternNode) -> Dict[str, Any]:
+        return {
+            "pattern_name":     p.pattern_name,
+            "domain":           p.domain,
+            "mechanism_class":  p.mechanism_class,
+            "confidence_prior": round(p.confidence_prior, 3),
+            "typical_outcomes": p.typical_outcomes[:3],
+            "source_event":     p.source_event,
+        }
+
+    def _trans_to_dict(t: TransitionEdge) -> Dict[str, Any]:
+        return {
+            "from_pattern_a":   t.from_pattern_a,
+            "from_pattern_b":   t.from_pattern_b,
+            "to_pattern":       t.to_pattern,
+            "transition_type":  t.transition_type,
+            "posterior_weight": t.posterior_weight,
+            "lie_similarity":   t.lie_similarity,
+            "typical_outcomes": t.typical_outcomes,
+            "description":      t.description,
+        }
+
+    def _df_to_dict(d: DrivingFactor) -> Dict[str, Any]:
+        return {
+            "factor":              d.factor,
+            "mechanism_class":     d.mechanism_class,
+            "supporting_patterns": d.supporting_patterns,
+            "weight":              d.weight,
+            "outcomes":            d.outcomes,
+        }
+
+    def _ev_to_dict(e: EventNode) -> Dict[str, Any]:
+        return {
+            "event_type":   e.event_type,
+            "severity":     e.severity,
+            "description":  e.description,
+            "entities":     e.entities,
+            "confidence":   e.confidence,
+            "source_quote": e.source_quote,
+        }
+
+    active_dicts     = [_pat_to_dict(p)  for p in active]
+    transition_dicts = [_trans_to_dict(t) for t in transitions]
+    df_dicts         = [_df_to_dict(d)   for d in driving_factors]
+    event_dicts      = [_ev_to_dict(e)   for e in events]
+
+    # derived_patterns 向后兼容字段（取 top transitions 的目标模式名列表）
+    derived_compat = [{"pattern_name": t.to_pattern} for t in transitions[:3]]
+
+    # 概率树（供前端条形图）
+    prob_tree: Dict[str, Any] = {}
+    if transitions:
+        Z = sum(t.posterior_weight for t in transitions) or 1.0
+        prob_tree = {
+            "alpha": {
+                "name":        transitions[0].to_pattern,
+                "probability": round(transitions[0].posterior_weight / Z, 3),
+                "outcomes":    transitions[0].typical_outcomes[:2],
+            },
+            "beta": {
+                "name":        transitions[1].to_pattern if len(transitions) >= 2 else "结构性断裂",
+                "probability": round(
+                    (transitions[1].posterior_weight / Z if len(transitions) >= 2 else 0.3), 3
+                ),
+                "outcomes":    (transitions[1].typical_outcomes[:2] if len(transitions) >= 2 else []),
+            },
+        }
+
+    result = PipelineResult(
+        events=event_dicts,
+        active_patterns=active_dicts,
+        derived_patterns=derived_compat,
+        top_transitions=transition_dicts,
+        state_vector=state_vector,
+        driving_factors=df_dicts,
         conclusion=conclusion,
         credibility=credibility,
-        probability_tree=probability_tree,
-        driving_factors=driving_factors,
+        probability_tree=prob_tree,
     )
+
+    logger.info(
+        "EventedPipeline: complete | events=%d active=%d transitions=%d "
+        "driving_factors=%d confidence=%.2f",
+        len(events), len(active), len(transitions),
+        len(driving_factors), credibility.get("composite_score", 0),
+    )
+    return result
