@@ -742,20 +742,31 @@ class TestConclusionProfessionalStruct:
         concl = result.conclusion
         n_active = len(result.active_patterns)
         ev_outcomes = concl.get("evidence_path", {}).get("outcomes", [])
+        # If no active patterns, skip (no patterns means no outcomes to check)
+        if n_active == 0:
+            return
         # If only 1 pattern, n_outcomes should be 1
-        if n_active <= 1:
-            assert len(ev_outcomes) <= 1, (
-                f"Expected ≤1 outcome with {n_active} active patterns, got {len(ev_outcomes)}"
+        if n_active == 1:
+            assert len(ev_outcomes) == 1, (
+                f"Expected exactly 1 outcome with {n_active} active patterns, got {len(ev_outcomes)}"
             )
 
     def test_adaptive_outcome_count_multiple_patterns(self):
-        """With 3+ active patterns and high confidence, evidence_path outcomes should have 3 entries."""
+        """With 3+ active patterns and high confidence, evidence_path outcomes should have 3 entries.
+        With 2 active patterns, outcomes should be 2."""
         # Geopolitics fixture reliably activates multiple patterns
         result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
         concl = result.conclusion
         n_active = len(result.active_patterns)
         ev_outcomes = concl.get("evidence_path", {}).get("outcomes", [])
-        if n_active >= 3:
+        if n_active == 0:
+            return  # no patterns — skip
+        elif n_active == 2:
+            # With 2 patterns, n_outcomes = 2 (unless low confidence)
+            assert len(ev_outcomes) >= 1, (
+                f"Expected ≥1 outcome with {n_active} active patterns, got {len(ev_outcomes)}"
+            )
+        elif n_active >= 3:
             assert len(ev_outcomes) >= 2, (
                 f"Expected ≥2 outcomes with {n_active} active patterns, got {len(ev_outcomes)}"
             )

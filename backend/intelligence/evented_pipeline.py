@@ -1519,7 +1519,7 @@ def _run_stage3(
 
     # Sanitize trigger_condition: strip Chinese characters and internal pattern chain notation
     _raw_trigger = beta_path.get("trigger_condition", "reversal of dominant pattern node")
-    # Remove bracketed content that may contain Chinese pattern names, e.g. "[模式名]"
+    # Remove bracketed content that may contain raw pattern names, e.g. "[pattern_name]"
     _trigger_clean = re.sub(r"\[[^\]]*\]", "", _raw_trigger).strip(" ,")
     # Remove any remaining CJK characters
     _trigger_clean = re.sub(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+", "", _trigger_clean).strip()
@@ -1670,7 +1670,13 @@ to write 1-2 sentences of professional, outcome-first intelligence commentary.
                 if isinstance(parsed, dict):
                     text_out = parsed.get("text", parsed.get("conclusion", str(parsed)))
                 elif isinstance(parsed, list) and parsed:
-                    text_out = str(parsed[0])
+                    first = parsed[0]
+                    if isinstance(first, str):
+                        text_out = first
+                    elif isinstance(first, dict):
+                        text_out = first.get("text", first.get("conclusion", str(first)))
+                    else:
+                        text_out = str(first)
             except Exception:
                 pass
         # Ensure we return a plain string
