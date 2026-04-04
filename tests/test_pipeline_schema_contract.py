@@ -437,7 +437,7 @@ class TestEventedV1StateVectorContract:
 class _FakeEventedLLM:
     """Stub LLM that returns an empty list for event extraction and a minimal conclusion."""
 
-    def call(self, **kwargs: Any) -> str:  # type: ignore[return]
+    def call(self, **kwargs: Any) -> str:
         # For conclusion generation, return plain text
         return "Deterministic fallback: no LLM."
 

@@ -76,6 +76,8 @@ _T0_CONF_THRESHOLD: float = 0.20
 _T2_CONF_THRESHOLD: float = 0.70
 # Minimum quote length for T2 classification (chars)
 _MIN_QUOTE_LEN: int = 15
+# Maximum confidence assigned to fallback events (clamped before entering the pipeline)
+_FALLBACK_MAX_CONFIDENCE: float = 0.35
 
 
 class EventType:
@@ -211,7 +213,7 @@ def infer_entity_type_lightweight(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Trigger-keyword index for rule-based extraction
+# Trigger-keyword patterns for rule-based extraction
 # ---------------------------------------------------------------------------
 
 _RULE_EVENT_PATTERNS: List[Tuple[str, str, float]] = [
@@ -390,7 +392,8 @@ def postprocess_events(
 
     Returns the filtered and annotated list.
     """
-    seen_ids: Dict[str, Dict[str, Any]] = {}  # id → best event
+    seen_ids: Dict[str, Dict[str, Any]] = {}  # id → accepted event
+    rejected_ids: set = set()  # ids of hard-rejected events
 
     for raw in candidates:
         if not isinstance(raw, dict):
@@ -415,8 +418,8 @@ def postprocess_events(
 
         # ── 3. Deduplicate (keep first occurrence, we process in order) ──
         eid = ev["id"]
-        if eid in seen_ids:
-            continue  # already registered
+        if eid in seen_ids or eid in rejected_ids:
+            continue
 
         # ── 4. Confidence folding ────────────────────────────────────────
         conf = float(ev.get("confidence", 0.0))
@@ -436,7 +439,7 @@ def postprocess_events(
 
         # ── 5. T0 hard-reject ────────────────────────────────────────────
         if conf <= 0 or conf < _T0_CONF_THRESHOLD:
-            seen_ids[eid] = None  # type: ignore[assignment]  # mark as rejected
+            rejected_ids.add(eid)
             continue
 
         # ── 6. Quote quality checks (add gaps, but don't hard-reject) ────
@@ -463,7 +466,7 @@ def postprocess_events(
         ev["verification_gap"] = verification_gap
         seen_ids[eid]          = ev
 
-    return [v for v in seen_ids.values() if v is not None]
+    return list(seen_ids.values())
 
 
 def _fallback_top_events(
@@ -485,7 +488,7 @@ def _fallback_top_events(
     result = []
     for ev in top:
         ev2 = dict(ev)
-        ev2["confidence"] = round(min(float(ev2.get("confidence", 0.3)), 0.35), 4)
+        ev2["confidence"] = round(min(float(ev2.get("confidence", 0.3)), _FALLBACK_MAX_CONFIDENCE), 4)
         ev2["tier"]       = "T1"
         gap = list(ev2.get("verification_gap") or [])
         if not any("fallback" in g for g in gap):
