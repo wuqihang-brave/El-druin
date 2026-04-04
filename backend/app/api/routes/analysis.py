@@ -355,81 +355,80 @@ def _cot_deduction_from_text(
     - 显式写出推演步骤并引用原文证据
     - confidence 强制 ≤ 0.55
     """
-    entities_str = ", ".join(seed_entities[:8]) if seed_entities else "（未指定）"
+    entities_str = ", ".join(seed_entities[:8]) if seed_entities else "(not specified)"
 
-    # 根据领域调整推演框架
+    # Domain-specific reasoning framework
     domain_framework = {
-        "sports": "赛事结果/运动表现/联赛影响",
-        "business": "市场竞争/盈利能力/投资价值",
-        "geopolitics": "国家关系/制裁/军事",
-        "economics": "货币政策/贸易/通胀",
-        "science": "技术突破/产业应用/标准竞争",
-        "society": "社会影响/舆论/政策",
-        "disaster": "人员伤亡/救援响应/恢复重建",
-    }.get(domain, "事件背景/影响/后续发展")
+        "sports":      "match outcomes / athletic performance / league impact",
+        "business":    "market competition / profitability / investment value",
+        "geopolitics": "state relations / sanctions / military",
+        "economics":   "monetary policy / trade / inflation",
+        "science":     "technology breakthrough / industrial application / standards competition",
+        "society":     "social impact / public opinion / policy",
+        "disaster":    "casualties / relief response / reconstruction",
+    }.get(domain, "event background / impact / subsequent developments")
 
-    cot_prompt = f"""
-你是一名情报分析官，正在对以下新闻进行结构化推演分析。
-【注意】当前知识图谱中没有该事件的直接关系路径，你必须完全基于原文进行推演。
-每步推演都必须引用原文中的实际内容，不允许添加原文未提及的实体。
+    cot_prompt = f"""You are an intelligence analyst performing structured causal analysis on the following news.
+NOTE: No direct knowledge-graph paths exist for this event; analysis must be grounded entirely in the source text.
+Every inference step must cite actual content from the source text; do not introduce entities not mentioned.
 
-【新闻原文】
+[NEWS TEXT]
 {news_fragment}
 
-【已识别实体（来自原文）】
+[IDENTIFIED ENTITIES (from source text)]
 {entities_str}
 
-【新闻领域】{domain}
-【推演框架】{domain_framework}
+[NEWS DOMAIN] {domain}
+[REASONING FRAMEWORK] {domain_framework}
 
-【Chain-of-Thought 推演（每步必须引用原文）】
+[Chain-of-Thought Reasoning (each step must cite source text)]
 
-Step 1 领域确认：这条新闻的核心领域是什么？（引用原文关键词）
+Step 1 Domain confirmation: What is the core domain of this news? (cite key terms from source)
 
-Step 2 核心事实：事件的核心驱动因素是什么？哪个实体在驱动变化？（引用原文）
+Step 2 Core facts: What is the primary driving factor? Which entity is driving the change? (cite source)
 
-Step 3 Alpha 路径（最可能演化）：
-  - 如果当前趋势继续，最可能发生什么？
-  - 4步因果链：[事实] --> [机制] --> [中间效应] --> [最终后果]
-  - 原文支撑：...
+Step 3 Alpha path (most probable evolution):
+  - If the current trend continues, what is the most likely outcome?
+  - 4-step causal chain: [fact] --> [mechanism] --> [intermediate effect] --> [final consequence]
+  - Source support: ...
 
-Step 4 Beta 路径（结构性断裂）：
-  - 如果 Alpha 路径的关键节点失效，触发条件是什么？
+Step 4 Beta path (structural disruption):
+  - If the key node in the Alpha path fails, what is the trigger condition?
 
-Step 5 数据缺口：推演中最关键的不确定信息？
+Step 5 Data gaps: What is the most critical uncertain information in this analysis?
 
-完成后输出严格 JSON：
+Output strict JSON:
 {{
   "domain": "{domain}",
-  "driving_factor": "核心驱动力（必须引用原文实体和事件）",
+  "driving_factor": "core driving force (must cite source entities and events)",
   "scenario_alpha": {{
-    "name": "路径名称",
+    "name": "path name",
     "probability": 0.4-0.65,
-    "causal_chain": "A --> [机制] --> B --> C",
-    "description": "一句话描述（必须与新闻领域一致）"
+    "causal_chain": "A --> [mechanism] --> B --> C",
+    "description": "one-sentence description (must align with news domain)"
   }},
   "scenario_beta": {{
-    "name": "路径名称",
+    "name": "path name",
     "probability": 0.1-0.35,
-    "causal_chain": "A --> [机制] --> B --> C",
-    "trigger_condition": "触发条件",
-    "description": "一句话描述"
+    "causal_chain": "A --> [mechanism] --> B --> C",
+    "trigger_condition": "trigger condition",
+    "description": "one-sentence description"
   }},
   "confidence": 0.3-0.55,
-  "graph_evidence": "无图谱路径，CoT 基于原文推演（领域：{domain}）",
-  "verification_gap": "最关键的数据缺口"
+  "graph_evidence": "no graph paths; CoT analysis based on source text (domain: {domain})",
+  "verification_gap": "most critical data gap"
 }}
 
-只输出 JSON，不加任何说明。
+Output JSON only, no additional commentary.
 """
     try:
         response = llm_service.call(
             prompt=cot_prompt,
             system=(
-                f"你是严谨的{domain}领域情报分析官。"
-                "严格基于原文推演，每步必须引用原文证据。"
-                "无图谱路径时 confidence 不得超过 0.55。"
-                "推演结果必须与新闻的实际领域一致，不得套用无关领域模板。"
+                f"You are a rigorous intelligence analyst specialising in {domain}. "
+                "Base all inferences strictly on the source text, citing evidence at every step. "
+                "When no graph paths exist, confidence must not exceed 0.55. "
+                "Ensure analysis aligns with the actual domain of the news."
             ),
             temperature=0.2,
             max_tokens=1500,
@@ -445,32 +444,32 @@ Step 5 数据缺口：推演中最关键的不确定信息？
             import json as _json
             result = _json.loads(text)
 
-        # 强制置信度上限
+        # Enforce confidence ceiling for CoT fallback
         result["confidence"] = min(float(result.get("confidence", 0.45)), 0.55)
-        result["graph_evidence"] = f"无图谱路径，CoT 基于原文推演（领域：{domain}）"
+        result["graph_evidence"] = f"no graph paths; CoT analysis based on source text (domain: {domain})"
         return result
     except Exception as exc:
         logger.error("CoT deduction failed: %s", exc)
         snippet = news_fragment[:80]
         return {
             "domain": domain,
-            "driving_factor": f"基于原文推演：{snippet}",
+            "driving_factor": f"Source-based inference: {snippet}",
             "scenario_alpha": {
-                "name": "现状延续路径",
+                "name": "Status quo continuation path",
                 "probability": 0.55,
-                "causal_chain": f"{snippet} --> [事件演化] --> 相关实体调整 --> 格局渐变",
-                "description": "CoT 兜底推演",
+                "causal_chain": f"{snippet} --> [event evolution] --> entity adjustment --> gradual realignment",
+                "description": "CoT fallback inference",
             },
             "scenario_beta": {
-                "name": "结构性断裂路径",
+                "name": "Structural disruption path",
                 "probability": 0.25,
-                "causal_chain": f"{snippet} --> [关键节点失效] --> 极端博弈 --> 格局重组",
-                "trigger_condition": "关键依赖节点被外部冲击打断",
-                "description": "CoT 兜底推演（断裂）",
+                "causal_chain": f"{snippet} --> [critical node failure] --> extreme conflict --> structural realignment",
+                "trigger_condition": "key dependency node disrupted by external shock",
+                "description": "CoT fallback inference (disruption)",
             },
             "confidence": 0.35,
-            "graph_evidence": f"无图谱路径，CoT 兜底（领域：{domain}）",
-            "verification_gap": "需要更多原文细节和图谱路径支撑",
+            "graph_evidence": f"no graph paths; CoT fallback (domain: {domain})",
+            "verification_gap": "additional source details and graph paths required",
         }
 
 
@@ -913,4 +912,139 @@ def get_entity_ontological_context(entity_name: str) -> Dict[str, Any]:
         }
     except Exception as exc:
         logger.exception("Ontological context retrieval failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Forecast Endpoints
+# ═══════════════════════════════════════════════════════════════════
+
+class ForecastRelationshipRequest(BaseModel):
+    scenario_id:    str
+    horizon_steps:  int = 6
+    extra_patterns: List[str] = []
+
+
+class ForecastCustomRequest(BaseModel):
+    initial_patterns: List[str]
+    horizon_steps:    int = 6
+
+
+@router.get("/forecast/scenarios")
+def get_forecast_scenarios() -> Dict[str, Any]:
+    """Return all preset forecast scenarios."""
+    try:
+        _ensure_intelligence_importable()
+        from intelligence.ontology_forecaster import get_preset_scenarios
+        scenarios = get_preset_scenarios()
+        return {
+            "status":    "success",
+            "scenarios": scenarios,
+            "mode":              "forecast",
+            "contract_version":  "forecast.v1",
+        }
+    except Exception as exc:
+        logger.exception("Failed to retrieve forecast scenarios")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/forecast/relationship")
+def forecast_relationship(request: ForecastRelationshipRequest) -> Dict[str, Any]:
+    """
+    Run a forward trajectory simulation for a named scenario.
+
+    Uses the scenario's initial_patterns plus any extra_patterns supplied by the caller.
+    """
+    try:
+        _ensure_intelligence_importable()
+        llm_service = _get_llm_service()
+        from intelligence.ontology_forecaster import (
+            get_scenario_by_id,
+            run_forecast,
+        )
+
+        scenario = get_scenario_by_id(request.scenario_id)
+        if scenario is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Scenario '{request.scenario_id}' not found. "
+                       "Use GET /forecast/scenarios to list available scenarios.",
+            )
+
+        initial = list(scenario["initial_patterns"]) + list(request.extra_patterns)
+        result = run_forecast(
+            initial_patterns=initial,
+            horizon_steps=request.horizon_steps,
+            llm_service=llm_service,
+        )
+        result["scenario_id"] = request.scenario_id
+        result["scenario_name"] = scenario.get("name", request.scenario_id)
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Forecast relationship simulation failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/forecast/custom")
+def forecast_custom(request: ForecastCustomRequest) -> Dict[str, Any]:
+    """
+    Run a forward trajectory simulation from user-supplied initial patterns.
+    """
+    try:
+        _ensure_intelligence_importable()
+        llm_service = _get_llm_service()
+        from intelligence.ontology_forecaster import run_forecast
+
+        if not request.initial_patterns:
+            raise HTTPException(
+                status_code=422,
+                detail="initial_patterns must contain at least one pattern name.",
+            )
+
+        result = run_forecast(
+            initial_patterns=request.initial_patterns,
+            horizon_steps=request.horizon_steps,
+            llm_service=llm_service,
+        )
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Custom forecast simulation failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/forecast/attractors")
+def get_forecast_attractors(domain: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Return known algebraic attractors (idempotent elements) in the composition semi-group.
+
+    Optionally filter by domain: geopolitics | economics | technology | military | all
+    """
+    try:
+        _ensure_intelligence_importable()
+        from intelligence.ontology_forecaster import find_attractors
+
+        attractors = find_attractors(domain=domain)
+        return {
+            "status":           "success",
+            "domain":           domain or "all",
+            "attractors":       attractors,
+            "mode":             "forecast",
+            "contract_version": "forecast.v1",
+            "meta": {
+                "count":       len(attractors),
+                "description": (
+                    "Attractors are idempotent elements P where compose(P,P)=P. "
+                    "They represent stable terminal states of the ontological system."
+                ),
+            },
+        }
+    except Exception as exc:
+        logger.exception("Attractor discovery failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
         raise HTTPException(status_code=500, detail=str(exc)) from exc

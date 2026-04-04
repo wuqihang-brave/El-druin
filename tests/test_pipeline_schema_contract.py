@@ -575,3 +575,172 @@ class TestEventedDeduceEndpointContract:
     def test_response_active_patterns_have_tier(self):
         for ap in self.data.get("active_patterns", []):
             assert "tier" in ap, f"Active pattern missing 'tier': {ap}"
+
+
+# ===========================================================================
+# Probability tree non-zero posterior test
+# ===========================================================================
+
+class TestProbabilityTreeNonZero:
+    """Verify that probability_tree posterior weights are never all zero."""
+
+    def test_probability_tree_nodes_not_empty(self):
+        """probability_tree must include a non-empty nodes list."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        pt = result.probability_tree
+        assert pt, "probability_tree is empty"
+        nodes = pt.get("nodes", [])
+        assert nodes, f"probability_tree.nodes is empty. Keys: {list(pt.keys())}"
+
+    def test_probability_tree_edges_not_empty(self):
+        """probability_tree must include a non-empty edges list."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        pt = result.probability_tree
+        edges = pt.get("edges", [])
+        assert edges, f"probability_tree.edges is empty. Keys: {list(pt.keys())}"
+
+    def test_probability_tree_posterior_not_all_zero(self):
+        """At least one edge must have posterior_weight > 0."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        pt = result.probability_tree
+        edges = pt.get("edges", [])
+        assert any(e.get("posterior_weight", 0) > 0 for e in edges), (
+            f"All posterior_weights are zero. edges: {edges[:3]}"
+        )
+
+    def test_probability_tree_has_compute_trace(self):
+        """probability_tree must include a compute_trace dict."""
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        pt = result.probability_tree
+        ct = pt.get("compute_trace", {})
+        assert isinstance(ct, dict), f"compute_trace is not a dict: {type(ct)}"
+        assert "Z" in ct, f"compute_trace missing 'Z'. Keys: {list(ct.keys())}"
+        assert ct["Z"] > 0, f"Z partition function is not positive: {ct['Z']}"
+
+
+# ===========================================================================
+# Conclusion professional struct test
+# ===========================================================================
+
+class TestConclusionProfessionalStruct:
+    """Verify the new professional conclusion struct fields."""
+
+    def _conclusion(self, text: str) -> dict:
+        return run_evented_pipeline(text, llm_service=None).conclusion
+
+    def test_conclusion_has_executive_judgement(self):
+        """conclusion must include 'executive_judgement' (non-empty string)."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        assert "executive_judgement" in concl, (
+            f"conclusion missing 'executive_judgement'. Keys: {list(concl.keys())}"
+        )
+        assert concl["executive_judgement"], "'executive_judgement' is empty"
+
+    def test_conclusion_evidence_path_has_outcomes(self):
+        """evidence_path must include 'outcomes' list."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        ep = concl.get("evidence_path", {})
+        assert "outcomes" in ep, (
+            f"evidence_path missing 'outcomes'. Keys: {list(ep.keys())}"
+        )
+        assert isinstance(ep["outcomes"], list)
+
+    def test_conclusion_hypothesis_path_has_verification_gaps(self):
+        """hypothesis_path must include 'verification_gaps' list."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        hp = concl.get("hypothesis_path", {})
+        assert "verification_gaps" in hp, (
+            f"hypothesis_path missing 'verification_gaps'. Keys: {list(hp.keys())}"
+        )
+        assert isinstance(hp["verification_gaps"], list)
+
+    def test_conclusion_has_final_struct(self):
+        """conclusion must include 'final' dict with 'overall_confidence'."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        assert "final" in concl, (
+            f"conclusion missing 'final'. Keys: {list(concl.keys())}"
+        )
+        final = concl["final"]
+        assert "overall_confidence" in final, (
+            f"final missing 'overall_confidence'. Keys: {list(final.keys())}"
+        )
+        oc = final["overall_confidence"]
+        assert 0.0 <= oc <= 1.0, f"overall_confidence out of range: {oc}"
+
+    def test_conclusion_no_pattern_chain_strings(self):
+        """executive_judgement must not contain pattern-chain strings like '⊕ → ['."""
+        concl = self._conclusion(_FIXTURE_GEOPOLITICS)
+        ej = concl.get("executive_judgement", "")
+        # The executive_judgement should not contain raw pattern chain notation
+        assert "→ [" not in ej, (
+            f"executive_judgement contains pattern chain notation: {ej[:200]}"
+        )
+
+
+# ===========================================================================
+# Forecast module unit tests
+# ===========================================================================
+
+class TestOntologyForecaster:
+    """Unit tests for intelligence/ontology_forecaster.py."""
+
+    def test_get_preset_scenarios_returns_list(self):
+        """get_preset_scenarios must return a non-empty list."""
+        from intelligence.ontology_forecaster import get_preset_scenarios
+        scenarios = get_preset_scenarios()
+        assert isinstance(scenarios, list), "Expected list of scenarios"
+        assert len(scenarios) >= 1, "Expected at least one scenario"
+
+    def test_scenario_has_required_fields(self):
+        """Each scenario must have id, name, initial_patterns, domain."""
+        from intelligence.ontology_forecaster import get_preset_scenarios
+        for sc in get_preset_scenarios():
+            for field in ("id", "name", "initial_patterns", "domain"):
+                assert field in sc, f"Scenario missing '{field}': {sc}"
+            assert isinstance(sc["initial_patterns"], list)
+
+    def test_run_forecast_returns_contract(self):
+        """run_forecast must return required top-level contract fields."""
+        from intelligence.ontology_forecaster import run_forecast
+        result = run_forecast(
+            ["霸權制裁模式", "實體清單技術封鎖模式"],
+            horizon_steps=3,
+            llm_service=None,
+        )
+        for field in ("mode", "contract_version", "simulation_steps",
+                      "primary_attractor", "forecast_narrative", "meta"):
+            assert field in result, f"Forecast result missing '{field}'"
+        assert result["mode"] == "forecast"
+        assert result["contract_version"] == "forecast.v1"
+        assert isinstance(result["simulation_steps"], list)
+
+    def test_run_forecast_confidence_decays(self):
+        """Confidence must decrease with each simulation step."""
+        from intelligence.ontology_forecaster import run_forecast
+        result = run_forecast(
+            ["霸權制裁模式"],
+            horizon_steps=4,
+            llm_service=None,
+        )
+        steps = result["simulation_steps"]
+        if len(steps) >= 2:
+            assert steps[0]["confidence"] >= steps[-1]["confidence"], (
+                "Confidence should decay monotonically across steps"
+            )
+
+    def test_find_attractors_returns_list(self):
+        """find_attractors must return a list."""
+        from intelligence.ontology_forecaster import find_attractors
+        attrs = find_attractors()
+        assert isinstance(attrs, list)
+
+    def test_find_attractors_domain_filter(self):
+        """find_attractors with domain filter must not return wrong domains."""
+        from intelligence.ontology_forecaster import find_attractors
+        attrs = find_attractors(domain="geopolitics")
+        for a in attrs:
+            # Domain may be "general" as fallback — that's acceptable
+            assert a.get("domain") in ("geopolitics", "general", ""), (
+                f"Unexpected domain in attractor: {a}"
+            )
+

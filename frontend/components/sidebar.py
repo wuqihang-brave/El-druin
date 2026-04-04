@@ -44,14 +44,13 @@ _INLINE_LABELS: list[str] = [
     "📝 Custom Analysis",
     "📰 Intelligence Feed",
     "🕸 KG Tools",
-    "⚙️ System Status",
+    "🔮 Forecast",
 ]
 
 # Pages living in the pages/ directory – (label, bootstrap-icon, relative path from root)
 _EXTERNAL_PAGES: list[tuple[str, str, str]] = [
-    ("🔍 Object Explorer", "search",          "pages/3_🔍_Object_Explorer.py"),
-    ("🔬 Logic Audit",     "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
-    ("🔮 Oracle Lab (Beta)","stars",           "pages/10_🔮_Oracle_Laboratory.py"),
+    ("🔬 Logic Audit",      "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
+    ("🔮 Oracle Lab (Beta)", "stars",           "pages/10_🔮_Oracle_Laboratory.py"),
 ]
 
 _EXTERNAL_LABELS: list[str] = [ep[0] for ep in _EXTERNAL_PAGES]
@@ -62,8 +61,7 @@ _ALL_ICONS: list[str] = [
     "pencil-square",   # Custom Analysis
     "newspaper",       # Intelligence Feed
     "diagram-3-fill",  # KG Tools
-    "gear-fill",       # System Status
-    "search",          # Object Explorer
+    "broadcast",       # Forecast
     "binoculars-fill", # Logic Audit
     "stars",           # Oracle Lab
 ]
