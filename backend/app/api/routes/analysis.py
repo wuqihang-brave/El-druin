@@ -1047,4 +1047,3 @@ def get_forecast_attractors(domain: Optional[str] = None) -> Dict[str, Any]:
     except Exception as exc:
         logger.exception("Attractor discovery failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
