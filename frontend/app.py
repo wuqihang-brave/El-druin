@@ -828,6 +828,26 @@ if page == "🏠 Home":
                         _exec_j = str(_exec_j)
                     st.info(_exec_j)
 
+                    # Show raw (deterministic) fields in an expander
+                    _render_meta = _ev_concl.get("rendering_meta", {})
+                    _raw_ej  = _ev_concl.get("executive_judgement_raw", "")
+                    _raw_ep  = (_ev_concl.get("evidence_path") or {}).get("summary_raw", "")
+                    _raw_hp  = (_ev_concl.get("hypothesis_path") or {}).get("summary_raw", "")
+                    if _raw_ej or _raw_ep or _raw_hp:
+                        with st.expander("🔍 Show raw (deterministic)", expanded=False):
+                            if _render_meta.get("enabled"):
+                                _guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
+                                st.caption(_guard_note)
+                            if _raw_ej:
+                                st.markdown("**Executive Judgement (raw)**")
+                                st.text(_raw_ej)
+                            if _raw_ep:
+                                st.markdown("**Evidence Path Summary (raw)**")
+                                st.text(_raw_ep)
+                            if _raw_hp:
+                                st.markdown("**Hypothesis Path Summary (raw)**")
+                                st.text(_raw_hp)
+
                     # Confidence from Bayesian posterior
                     _final = _ev_concl.get("final", {})
                     _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
@@ -1479,6 +1499,26 @@ elif page == "📝 Custom Analysis":
                     if not isinstance(_ca_exec_j, str):
                         _ca_exec_j = str(_ca_exec_j)
                     st.info(_ca_exec_j)
+
+                    # Show raw (deterministic) fields in an expander
+                    _ca_render_meta = _ca_concl.get("rendering_meta", {})
+                    _ca_raw_ej = _ca_concl.get("executive_judgement_raw", "")
+                    _ca_raw_ep = (_ca_concl.get("evidence_path") or {}).get("summary_raw", "")
+                    _ca_raw_hp = (_ca_concl.get("hypothesis_path") or {}).get("summary_raw", "")
+                    if _ca_raw_ej or _ca_raw_ep or _ca_raw_hp:
+                        with st.expander("🔍 Show raw (deterministic)", expanded=False):
+                            if _ca_render_meta.get("enabled"):
+                                _ca_guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _ca_render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
+                                st.caption(_ca_guard_note)
+                            if _ca_raw_ej:
+                                st.markdown("**Executive Judgement (raw)**")
+                                st.text(_ca_raw_ej)
+                            if _ca_raw_ep:
+                                st.markdown("**Evidence Path Summary (raw)**")
+                                st.text(_ca_raw_ep)
+                            if _ca_raw_hp:
+                                st.markdown("**Hypothesis Path Summary (raw)**")
+                                st.text(_ca_raw_hp)
 
                     _ca_ev_path = _ca_concl.get("evidence_path", {})
                     if _ca_ev_path.get("summary"):
