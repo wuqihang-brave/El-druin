@@ -1534,34 +1534,75 @@ def _run_stage3(
     _alpha_primary_phrase = _outcome_phrase(alpha_path.get("primary_outcome", "structural_realignment"))
     _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
+    # ── Raw (deterministic) summary strings ─────────────────────────────────
+    _evidence_summary_raw = (
+        f"Primary projected outcome: {_alpha_primary_phrase}. "
+        f"This trajectory is assessed at {alpha_path['probability']:.0%} probability "
+        f"based on corroborating evidence signals from the current event context."
+    )
+    _hypothesis_summary_raw = (
+        f"Contingent outcome: {_beta_primary_phrase}. "
+        f"This scenario is contingent on: {_trigger_clean}. "
+        f"Assessed as a lower-probability but structurally significant alternative."
+    )
+    # executive_judgement_raw: pure deterministic fallback (no LLM)
+    _executive_judgement_raw = _fallback_conclusion_text(
+        alpha_path, beta_path, driving_factors, composite
+    )
+
+    # ── LLM rendering pass (post-deterministic paraphrase) ──────────────────
+    # Extract entity strings from events for the allowed-entity list
+    _allowed_entities: List[str] = []
+    for ev in events:
+        _args = ev.args if hasattr(ev, "args") else {}
+        for _v in _args.values():
+            if isinstance(_v, str) and _v:
+                _allowed_entities.append(_v)
+    # Deduplicate, keep order
+    _seen: set = set()
+    _allowed_entities_dedup: List[str] = []
+    for _e in _allowed_entities:
+        if _e not in _seen:
+            _seen.add(_e)
+            _allowed_entities_dedup.append(_e)
+
+    _rendered = render_conclusion_with_llm(
+        news_fragment=text,
+        executive_judgement_raw=_executive_judgement_raw,
+        evidence_summary_raw=_evidence_summary_raw,
+        hypothesis_summary_raw=_hypothesis_summary_raw,
+        alpha_prob=alpha_prob,
+        beta_prob=beta_prob,
+        composite_confidence=composite,
+        verification_gaps=[_trigger_clean],
+        allowed_entities=_allowed_entities_dedup,
+        llm_service=llm_service,
+    )
+
     conclusion = {
-        # ── professional intelligence judgement struct ────────────────────
-        "executive_judgement": conclusion_text,
+        # ── professional intelligence judgement struct (rendered) ─────────
+        "executive_judgement": _rendered["executive_judgement"],
+        "executive_judgement_raw": _executive_judgement_raw,
         "evidence_path": {
-            "summary": (
-                f"Primary projected outcome: {_alpha_primary_phrase}. "
-                f"This trajectory is assessed at {alpha_path['probability']:.0%} probability "
-                f"based on corroborating evidence signals from the current event context."
-            ),
+            "summary": _rendered["evidence_path_summary"],
+            "summary_raw": _evidence_summary_raw,
             "outcomes": ev_outcomes,
         },
         "hypothesis_path": {
-            "summary": (
-                f"Contingent outcome: {_beta_primary_phrase}. "
-                f"This scenario is contingent on: {_trigger_clean}. "
-                f"Assessed as a lower-probability but structurally significant alternative."
-            ),
+            "summary": _rendered["hypothesis_path_summary"],
+            "summary_raw": _hypothesis_summary_raw,
             "outcomes": hyp_outcomes,
             "verification_gaps": [_trigger_clean],
         },
+        "rendering_meta": _rendered["rendering_meta"],
         "final": {
             "overall_confidence": composite,
             "compute_trace_ref": f"bayesian_posterior|Z={sum(t.posterior_weight for t in transitions):.4f}",
         },
         "beta_path_algebra": {"algebra_used": False},
         # ── canonical frontend keys (backward compat) ────────────────────
-        "conclusion": conclusion_text,
-        "text":       conclusion_text,
+        "conclusion": _rendered["executive_judgement"],
+        "text":       _rendered["executive_judgement"],
         "alpha_path": alpha_path,
         "beta_path":  beta_path,
         "confidence": composite,
@@ -1716,6 +1757,211 @@ def _fallback_conclusion_text(
         f"current trajectory. Confidence is calibrated from ontological priors "
         f"and Bayesian posterior normalisation."
     )
+
+# ---------------------------------------------------------------------------
+# render_conclusion_with_llm: real-world paraphrase layer (post-deterministic)
+# ---------------------------------------------------------------------------
+
+# Substrings that must never appear in rendered output (internal ontology jargon)
+_RENDER_DISALLOWED = [
+    "⊕", "pattern", "mechanism", "composition_derived", "tech_decoupling",
+    "coercive_leverage", "kinetic_escalation", "oligopoly_supply",
+    "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
+]
+
+
+def _extract_numeric_values(text: str) -> set:
+    """Return all numeric values found in *text* (as rounded floats).
+
+    Supports percentages (e.g. "73%") and plain decimals (e.g. "0.73").
+    Values are normalised to [0,1] floats for comparison.
+    """
+    import re as _re
+    found: set = set()
+    # Percentages like 73% or 73.4%
+    for m in _re.finditer(r"(\d+(?:\.\d+)?)\s*%", text):
+        found.add(round(float(m.group(1)) / 100, 4))
+    # Plain decimals 0.xx that look like probabilities (0. prefix)
+    for m in _re.finditer(r"\b(0\.\d+)\b", text):
+        found.add(round(float(m.group(1)), 4))
+    return found
+
+
+def _count_sentences(text: str) -> int:
+    """Rough sentence count: split on sentence-ending punctuation."""
+    import re as _re
+    parts = _re.split(r"(?<=[.!?])\s+", text.strip())
+    return len([p for p in parts if p])
+
+
+def render_conclusion_with_llm(
+    news_fragment: str,
+    executive_judgement_raw: str,
+    evidence_summary_raw: str,
+    hypothesis_summary_raw: str,
+    alpha_prob: float,
+    beta_prob: float,
+    composite_confidence: float,
+    verification_gaps: List[str],
+    allowed_entities: List[str],
+    llm_service: Any,
+) -> Dict[str, Any]:
+    """Apply a real-world paraphrase / rendering pass over deterministic raw fields.
+
+    The LLM is given strict constraints:
+    - Must not change any numeric value (probabilities, confidence).
+    - Must not invent new entities beyond *allowed_entities* or the *news_fragment*.
+    - Must not include pattern names, mechanism_class names, or internal jargon.
+    - Output must be outcome-first professional intelligence judgement, ≤ 3 sentences.
+
+    Guardrails post-validate the rendered text and fall back to raw on violation.
+
+    Returns a dict with:
+    - executive_judgement   (rendered or raw fallback)
+    - evidence_path_summary (rendered or raw fallback)
+    - hypothesis_path_summary (rendered or raw fallback)
+    - rendering_meta        {enabled, guardrails_triggered, quoted_spans_used}
+    """
+    rendering_meta: Dict[str, Any] = {
+        "enabled": False,
+        "guardrails_triggered": False,
+        "quoted_spans_used": False,
+    }
+
+    # Collect allowed numeric values (alpha/beta probs + composite)
+    allowed_nums = {
+        round(alpha_prob, 4),
+        round(beta_prob, 4),
+        round(composite_confidence, 4),
+    }
+
+    def _guardrail_check(rendered: str, raw: str) -> str:
+        """Return rendered if all guardrails pass, else return raw."""
+        nonlocal rendering_meta
+
+        # 1. Length guard: must be ≤ 3 sentences
+        if _count_sentences(rendered) > 3:
+            logger.debug("Rendering guardrail: too many sentences (%d)", _count_sentences(rendered))
+            rendering_meta["guardrails_triggered"] = True
+            return raw
+
+        # 2. Numeric guard: all numbers in rendered must be in allowed_nums
+        found_nums = _extract_numeric_values(rendered)
+        if found_nums - allowed_nums:
+            logger.debug(
+                "Rendering guardrail: unexpected numeric values %s not in %s",
+                found_nums - allowed_nums,
+                allowed_nums,
+            )
+            rendering_meta["guardrails_triggered"] = True
+            return raw
+
+        # 3. Disallowed substring guard (jargon / ontology internals)
+        rendered_lower = rendered.lower()
+        for token in _RENDER_DISALLOWED:
+            if token.lower() in rendered_lower:
+                logger.debug("Rendering guardrail: disallowed token %r found", token)
+                rendering_meta["guardrails_triggered"] = True
+                return raw
+
+        return rendered
+
+    if llm_service is None:
+        return {
+            "executive_judgement": executive_judgement_raw,
+            "evidence_path_summary": evidence_summary_raw,
+            "hypothesis_path_summary": hypothesis_summary_raw,
+            "rendering_meta": rendering_meta,
+        }
+
+    rendering_meta["enabled"] = True
+
+    # Build the set of allowed entity strings for the prompt
+    entities_str = "; ".join(allowed_entities[:10]) if allowed_entities else "(none specified)"
+    gaps_str = "; ".join(verification_gaps[:3]) if verification_gaps else "(none)"
+
+    prompt = f"""You are a professional intelligence analyst performing a rendering pass.
+
+You have been given pre-computed deterministic intelligence fields. Your sole task is to
+rewrite each field into natural, outcome-first professional language while preserving ALL
+numeric values exactly as provided.
+
+[ORIGINAL NEWS FRAGMENT — you MAY quote short phrases from this]
+{news_fragment[:800]}
+
+[DETERMINISTIC RAW FIELDS — numeric values are locked and must not change]
+Executive judgement (raw): {executive_judgement_raw}
+Evidence path summary (raw): {evidence_summary_raw}
+Hypothesis path summary (raw): {hypothesis_summary_raw}
+Verification gaps: {gaps_str}
+Allowed probabilities: alpha={alpha_prob:.0%}, beta={beta_prob:.0%}, confidence={composite_confidence:.0%}
+Allowed entities: {entities_str}
+
+[RENDERING REQUIREMENTS]
+1. Rewrite each field below as natural professional intelligence language.
+2. Each rendered field must be ≤ 3 sentences total.
+3. You MAY quote short phrases (≤ 8 words) from the original news fragment.
+4. You must NOT change any percentage or probability value (e.g. {alpha_prob:.0%} stays {alpha_prob:.0%}).
+5. You must NOT invent new entities not in "Allowed entities" or the news fragment.
+6. You must NOT mention pattern names, mechanism names, algebra chains, or internal jargon.
+7. Output ONLY valid JSON in this exact format, nothing else:
+{{"executive_judgement": "...", "evidence_path_summary": "...", "hypothesis_path_summary": "..."}}
+"""
+
+    try:
+        response = llm_service.call(
+            prompt=prompt,
+            system=(
+                "You are a rigorous intelligence analyst performing a rendering pass. "
+                "Preserve all numeric values exactly. Output only the requested JSON."
+            ),
+            temperature=0.15,
+            max_tokens=400,
+        )
+        raw_response = str(response).strip()
+
+        # Parse JSON response
+        import json as _json
+        # Strip markdown code fences if present
+        if raw_response.startswith("```"):
+            lines = raw_response.splitlines()
+            raw_response = "\n".join(
+                l for l in lines
+                if not l.strip().startswith("```")
+            ).strip()
+
+        parsed = _json.loads(raw_response)
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM response is not a JSON object")
+
+        rendered_ej  = str(parsed.get("executive_judgement", "")).strip()
+        rendered_ep  = str(parsed.get("evidence_path_summary", "")).strip()
+        rendered_hp  = str(parsed.get("hypothesis_path_summary", "")).strip()
+
+        # Detect whether the LLM quoted spans from the news fragment
+        rendering_meta["quoted_spans_used"] = any(
+            phrase in news_fragment
+            for field in [rendered_ej, rendered_ep, rendered_hp]
+            for phrase in [field[i:i+10] for i in range(0, len(field) - 10, 5)]
+            if len(field) > 10
+        )
+
+        return {
+            "executive_judgement": _guardrail_check(rendered_ej, executive_judgement_raw) if rendered_ej else executive_judgement_raw,
+            "evidence_path_summary": _guardrail_check(rendered_ep, evidence_summary_raw) if rendered_ep else evidence_summary_raw,
+            "hypothesis_path_summary": _guardrail_check(rendered_hp, hypothesis_summary_raw) if rendered_hp else hypothesis_summary_raw,
+            "rendering_meta": rendering_meta,
+        }
+
+    except Exception as exc:
+        logger.warning("render_conclusion_with_llm failed: %s", exc)
+        rendering_meta["enabled"] = False
+        return {
+            "executive_judgement": executive_judgement_raw,
+            "evidence_path_summary": evidence_summary_raw,
+            "hypothesis_path_summary": hypothesis_summary_raw,
+            "rendering_meta": rendering_meta,
+        }
 
 
 # ===========================================================================
