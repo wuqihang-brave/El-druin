@@ -160,10 +160,10 @@ class TestRenderConclusionWithLLM:
 
     def test_rendered_text_differs_from_raw_on_success(self):
         result = _render(self._valid_response())
-        # The rendered text should be the LLM output (not the raw)
-        assert "sweeping new tariffs" in result["executive_judgement"] or \
-               result["executive_judgement"] != _RAW_EJ or \
-               result["rendering_meta"]["guardrails_triggered"]
+        # When guardrails don't trigger, the rendered executive_judgement should
+        # contain content from the LLM output (which includes "sweeping new tariffs")
+        assert result["rendering_meta"]["guardrails_triggered"] is False
+        assert "sweeping new tariffs" in result["executive_judgement"]
 
     def test_no_guardrails_triggered_on_valid_response(self):
         result = _render(self._valid_response())
@@ -286,10 +286,19 @@ class TestSentenceLengthGuardrail:
             "hypothesis_path_summary": _RAW_HP,
         })
         result = _render(response)
-        # Should not trigger sentence guard (but might trigger other guards)
-        # At minimum: if guardrail not triggered for length, it should appear
-        if not result["rendering_meta"]["guardrails_triggered"]:
-            assert result["executive_judgement"] == text_3
+        # 3 sentences must not trigger the sentence-length guardrail
+        # (other guardrails might still trigger, but not the length one)
+        # We verify by constructing a response with no other violations
+        text_3_safe = "The primary outcome is market fragmentation at 65% probability. The contingent scenario depends on a reversal. Confidence remains at 52%."
+        response_safe = json.dumps({
+            "executive_judgement": text_3_safe,
+            "evidence_path_summary": "The evidence path supports a 65% trajectory.",
+            "hypothesis_path_summary": "The 35% contingent scenario requires a reversal.",
+        })
+        result_safe = _render(response_safe)
+        assert result_safe["executive_judgement"] == text_3_safe, (
+            f"3 sentences should not trigger fallback, got: {result_safe['executive_judgement']!r}"
+        )
 
 
 # ===========================================================================

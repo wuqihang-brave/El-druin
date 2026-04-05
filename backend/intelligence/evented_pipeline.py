@@ -1769,6 +1769,12 @@ _RENDER_DISALLOWED = [
     "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
 ]
 
+# Precision for rounding numeric values in guardrail comparison
+_NUMERIC_PRECISION = 4
+
+# Maximum number of allowed entities to include in the rendering prompt
+_MAX_ENTITIES_IN_PROMPT = 10
+
 
 def _extract_numeric_values(text: str) -> set:
     """Return all numeric values found in *text* (as rounded floats).
@@ -1780,10 +1786,10 @@ def _extract_numeric_values(text: str) -> set:
     found: set = set()
     # Percentages like 73% or 73.4%
     for m in _re.finditer(r"(\d+(?:\.\d+)?)\s*%", text):
-        found.add(round(float(m.group(1)) / 100, 4))
+        found.add(round(float(m.group(1)) / 100, _NUMERIC_PRECISION))
     # Plain decimals 0.xx that look like probabilities (0. prefix)
     for m in _re.finditer(r"\b(0\.\d+)\b", text):
-        found.add(round(float(m.group(1)), 4))
+        found.add(round(float(m.group(1)), _NUMERIC_PRECISION))
     return found
 
 
@@ -1830,9 +1836,9 @@ def render_conclusion_with_llm(
 
     # Collect allowed numeric values (alpha/beta probs + composite)
     allowed_nums = {
-        round(alpha_prob, 4),
-        round(beta_prob, 4),
-        round(composite_confidence, 4),
+        round(alpha_prob, _NUMERIC_PRECISION),
+        round(beta_prob, _NUMERIC_PRECISION),
+        round(composite_confidence, _NUMERIC_PRECISION),
     }
 
     def _guardrail_check(rendered: str, raw: str) -> str:
@@ -1877,7 +1883,7 @@ def render_conclusion_with_llm(
     rendering_meta["enabled"] = True
 
     # Build the set of allowed entity strings for the prompt
-    entities_str = "; ".join(allowed_entities[:10]) if allowed_entities else "(none specified)"
+    entities_str = "; ".join(allowed_entities[:_MAX_ENTITIES_IN_PROMPT]) if allowed_entities else "(none specified)"
     gaps_str = "; ".join(verification_gaps[:3]) if verification_gaps else "(none)"
 
     prompt = f"""You are a professional intelligence analyst performing a rendering pass.
@@ -1938,13 +1944,19 @@ Allowed entities: {entities_str}
         rendered_ep  = str(parsed.get("evidence_path_summary", "")).strip()
         rendered_hp  = str(parsed.get("hypothesis_path_summary", "")).strip()
 
-        # Detect whether the LLM quoted spans from the news fragment
-        rendering_meta["quoted_spans_used"] = any(
-            phrase in news_fragment
-            for field in [rendered_ej, rendered_ep, rendered_hp]
-            for phrase in [field[i:i+10] for i in range(0, len(field) - 10, 5)]
-            if len(field) > 10
-        )
+        # Detect whether the LLM quoted spans from the news fragment.
+        # Check for double-quoted substrings in rendered fields that appear in news_fragment.
+        import re as _re_q
+        _quote_pattern = _re_q.compile(r'"([^"]{4,40})"')
+        _quoted_spans_used = False
+        for _field in [rendered_ej, rendered_ep, rendered_hp]:
+            for _match in _re_q.finditer(_quote_pattern, _field):
+                if _match.group(1) in news_fragment:
+                    _quoted_spans_used = True
+                    break
+            if _quoted_spans_used:
+                break
+        rendering_meta["quoted_spans_used"] = _quoted_spans_used
 
         return {
             "executive_judgement": _guardrail_check(rendered_ej, executive_judgement_raw) if rendered_ej else executive_judgement_raw,
