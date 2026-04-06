@@ -131,19 +131,24 @@ class TestCountSentences:
 class TestRenderConclusionWithLLM:
 
     def _valid_response(self):
-        """Build a valid JSON response that obeys all guardrails."""
+        """Build a valid JSON response that obeys all guardrails.
+
+        Uses real-world outcome-first judgement language — no meta-commentary,
+        no jargon, no references to internal methods.
+        """
         return json.dumps({
             "executive_judgement": (
-                "Market fragmentation is the primary projected outcome, assessed at 65% probability "
-                "amid sweeping new tariffs on semiconductor exports."
+                "Facing sweeping new tariffs on semiconductor exports, US chipmakers accelerate "
+                "domestic sourcing partnerships, with market fragmentation as the primary near-term "
+                "outcome (p=65%)."
             ),
             "evidence_path_summary": (
-                "The 65% probability trajectory reflects corroborating evidence of supply-chain "
-                "disruptions signalled by the tariff action."
+                "Supply-chain disruption is the most likely near-term trajectory (p=65%), "
+                "as the tariff action restricts cross-border component flows."
             ),
             "hypothesis_path_summary": (
-                "The contingent scenario of structural realignment remains dependent on a "
-                "reversal of dominant trajectory."
+                "A reversal toward structural realignment (p=35%) would require the tariff regime "
+                "to be rolled back or offset by new bilateral agreements."
             ),
         })
 

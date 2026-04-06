@@ -474,10 +474,11 @@ class TestFullPipeline:
         active_names = [ap["pattern"] for ap in result.active_patterns]
         derived_names = [d["derived"] for d in result.derived_patterns]
         # If both sanction and alliance patterns are active, composition must fire
-        if "霸權制裁模式" in active_names and "正式軍事同盟模式" in active_names:
-            assert "多邊聯盟制裁模式" in derived_names, (
-                "Expected 多邊聯盟制裁模式 to be derived from "
-                "霸權制裁模式 + 正式軍事同盟模式 via composition_table"
+        # (pattern field now contains English display names)
+        if "Hegemonic Sanctions" in active_names and "Formal Military Alliance" in active_names:
+            assert "Multilateral Alliance Sanctions" in derived_names, (
+                "Expected 'Multilateral Alliance Sanctions' to be derived from "
+                "'Hegemonic Sanctions' + 'Formal Military Alliance' via composition_table"
             )
         else:
             # Verify that at minimum a sanction event was detected from the text
@@ -1321,3 +1322,145 @@ class TestPipelineResultSchemaContract:
             "PipelineResult missing 'state_vector' attribute"
         )
         assert isinstance(result.state_vector, dict)
+
+
+# ===========================================================================
+# L. No-CJK character policy: API response must contain no Chinese characters
+# ===========================================================================
+
+import re as _re_cjk
+
+_CJK_PATTERN = _re_cjk.compile(
+    r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3000-\u303f\uff00-\uffef]"
+)
+
+
+def _collect_cjk(obj: object, path: str = "") -> list:
+    """Recursively traverse *obj* and return a list of (path, snippet) tuples
+    where CJK characters were found in string values."""
+    found = []
+    if isinstance(obj, str):
+        if _CJK_PATTERN.search(obj):
+            found.append((path, obj[:120]))
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            found.extend(_collect_cjk(v, f"{path}.{k}" if path else k))
+    elif isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            found.extend(_collect_cjk(item, f"{path}[{i}]"))
+    return found
+
+
+class TestNoCJKInPipelineOutput:
+    """Assert that the full pipeline response payload contains no CJK characters
+    in any user-visible or API-facing string value.
+
+    Internal computation (composition_table keys, PatternNode.pattern_name)
+    continues to use CJK; only the serialised output is checked here.
+    """
+
+    def _result_as_dict(self, text: str) -> dict:
+        from intelligence.evented_pipeline import run_evented_pipeline
+        import dataclasses
+        result = run_evented_pipeline(text, llm_service=None)
+        return {
+            "events":          result.events,
+            "active_patterns": result.active_patterns,
+            "derived_patterns": result.derived_patterns,
+            "top_transitions": result.top_transitions,
+            "driving_factors": result.driving_factors,
+            "conclusion":      result.conclusion,
+            "credibility":     result.credibility,
+            "probability_tree": result.probability_tree,
+        }
+
+    def test_geopolitics_no_cjk(self):
+        """Geopolitics fixture: no CJK anywhere in the API response payload."""
+        payload = self._result_as_dict(_FIXTURE_GEOPOLITICS)
+        hits = _collect_cjk(payload)
+        assert not hits, (
+            f"CJK characters found in pipeline output for geopolitics fixture:\n"
+            + "\n".join(f"  [{path}]: {snippet!r}" for path, snippet in hits)
+        )
+
+    def test_tariff_trade_no_cjk(self):
+        """Tariff/trade fixture: no CJK anywhere in the API response payload."""
+        payload = self._result_as_dict(_FIXTURE_TARIFF_TRADE)
+        hits = _collect_cjk(payload)
+        assert not hits, (
+            f"CJK characters found in pipeline output for tariff-trade fixture:\n"
+            + "\n".join(f"  [{path}]: {snippet!r}" for path, snippet in hits)
+        )
+
+    def test_active_pattern_names_no_cjk(self):
+        """active_patterns[].pattern and pattern_name must be CJK-free."""
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for ap in result.active_patterns:
+            for key in ("pattern", "pattern_name"):
+                val = ap.get(key, "")
+                assert not _CJK_PATTERN.search(val), (
+                    f"CJK found in active_pattern['{key}']: {val!r}"
+                )
+
+    def test_derived_pattern_names_no_cjk(self):
+        """derived_patterns[].derived, pattern, pattern_name must be CJK-free."""
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for dp in result.derived_patterns:
+            for key in ("derived", "pattern", "pattern_name"):
+                val = dp.get(key, "")
+                assert not _CJK_PATTERN.search(val), (
+                    f"CJK found in derived_pattern['{key}']: {val!r}"
+                )
+
+    def test_top_transitions_no_cjk(self):
+        """top_transitions fields must be CJK-free."""
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        for tt in result.top_transitions:
+            hits = _collect_cjk(tt)
+            assert not hits, (
+                "CJK found in top_transition:\n"
+                + "\n".join(f"  [{p}]: {s!r}" for p, s in hits)
+            )
+
+    def test_conclusion_no_cjk(self):
+        """conclusion dict must be CJK-free."""
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        hits = _collect_cjk(result.conclusion)
+        assert not hits, (
+            "CJK found in conclusion:\n"
+            + "\n".join(f"  [{p}]: {s!r}" for p, s in hits)
+        )
+
+    def test_probability_tree_no_cjk(self):
+        """probability_tree nodes and edges must be CJK-free."""
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_FIXTURE_GEOPOLITICS, llm_service=None)
+        hits = _collect_cjk(result.probability_tree)
+        assert not hits, (
+            "CJK found in probability_tree:\n"
+            + "\n".join(f"  [{p}]: {s!r}" for p, s in hits)
+        )
+
+    def test_pattern_i18n_display_pattern_no_cjk(self):
+        """display_pattern() must return a CJK-free string for every known internal key."""
+        from intelligence.pattern_i18n import PATTERN_DISPLAY_EN, display_pattern, has_cjk
+        for internal_key, en_label in PATTERN_DISPLAY_EN.items():
+            assert not has_cjk(en_label), (
+                f"English display label still contains CJK for key {internal_key!r}: {en_label!r}"
+            )
+            assert display_pattern(internal_key) == en_label, (
+                f"display_pattern({internal_key!r}) returned unexpected value"
+            )
+
+    def test_display_pattern_unknown_key_no_cjk(self):
+        """display_pattern() with an unknown CJK key strips CJK as a safety net."""
+        from intelligence.pattern_i18n import display_pattern, has_cjk
+        # An unmapped CJK string should have CJK stripped
+        result = display_pattern("未知模式測試")
+        assert not has_cjk(result), (
+            f"display_pattern fallback did not strip CJK: {result!r}"
+        )
