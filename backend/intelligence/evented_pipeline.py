@@ -84,42 +84,107 @@ _FALLBACK_MAX_CONFIDENCE: float = 0.35
 # ===========================================================================
 
 OUTCOME_CATALOG: Dict[str, str] = {
-    # Geopolitical / coercive
-    "target_isolation":               "Progressive isolation of the primary actor from multilateral frameworks",
-    "collective_defence_formation":   "Formation of coordinated collective defence posture among aligned states",
-    "sanctions_escalation":           "Escalating multilateral sanctions regime with broadening scope",
-    "alliance_consolidation":         "Consolidation of formal and informal alliance commitments",
-    "diplomatic_rupture":             "Severing of diplomatic relations and expulsion of official representatives",
-    "ceasefire_negotiation":          "Movement toward negotiated ceasefire or conflict pause",
-    "military_deterrence_signal":     "Deployment of deterrence signals through military posturing",
-    "proxy_conflict_expansion":       "Expansion of conflict through proxy actor networks",
-    # Technology / economic
-    "standard_adoption_lock_in":      "Lock-in of dominant technology standard, foreclosing competing approaches",
-    "competing_standard_fragmentation": "Fragmentation into competing incompatible technology standards",
-    "licensing_revenue_accumulation": "Accumulation of licensing revenue by standard-holder entities",
-    "parallel_tech_stack_emergence":  "Emergence of parallel technology stacks along geopolitical lines",
-    "innovation_efficiency_loss":     "Reduced innovation efficiency due to market segmentation",
-    "semiconductor_chokepoint":       "Concentration of semiconductor supply chain leverage at strategic chokepoints",
-    "supplier_pricing_power":         "Strengthened pricing power for oligopoly suppliers",
-    "buyer_diversification_effort":   "Accelerated buyer efforts to diversify supply sources",
-    "technology_transfer_leverage":   "Use of technology access as strategic bargaining leverage",
-    "joint_rd_resumption":            "Resumption of joint research and development collaboration",
-    "technology_transfer_flow":       "Renewed cross-border technology transfer flows",
-    "innovation_spillover":           "Positive innovation spillover across previously segmented markets",
-    "price_competition":              "Intensifying price competition reducing margins for incumbent suppliers",
-    "buyer_bargaining_increase":      "Strengthened bargaining position for technology buyers",
-    "innovation_acceleration":        "Accelerated innovation pace driven by competitive market dynamics",
-    "standard_displacement":          "Displacement of incumbent technology standard by emerging alternative",
-    "market_share_redistribution":    "Redistribution of market share across technology ecosystem participants",
-    "technology_fragmentation":       "Technology ecosystem fragmentation along domain or regional lines",
-    # Economic / financial
-    "structural_realignment":         "Structural realignment of economic relationships and trade patterns",
-    "structural_disruption":          "Structural disruption to established institutional or market order",
-    "financial_contagion":            "Cross-border financial contagion affecting counterparty exposures",
-    "capital_flow_restriction":       "Restriction of capital flows between targeted jurisdictions",
-    "supply_chain_restructuring":     "Accelerated supply chain restructuring toward resilience priorities",
-    # Fallback generics
-    "unknown":                        "Outcome trajectory insufficient to determine; additional signals required",
+    # ── Geopolitical / coercive ──────────────────────────────────────────────
+    "target_isolation":               "The targeted actor faces progressive exclusion from multilateral frameworks and diplomatic circuits",
+    "collective_defence_formation":   "Aligned states form a coordinated collective defence posture",
+    "sanctions_escalation":           "A broadening multilateral sanctions regime takes hold, tightening access to finance and technology",
+    "alliance_consolidation":         "Formal and informal alliance commitments consolidate around shared threat perception",
+    "diplomatic_rupture":             "Diplomatic relations fracture, with official representatives expelled or recalled",
+    "ceasefire_negotiation":          "Parties move toward a negotiated ceasefire or temporary conflict pause",
+    "military_deterrence_signal":     "Military posturing intensifies as deterrence signals are deployed along contested boundaries",
+    "proxy_conflict_expansion":       "Conflict expands through proxy actor networks, diffusing across borders",
+    # From relation_schema typical_outcomes
+    "supply_chain_fragmentation":     "Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks",
+    "alliance_shift":                 "Sanctioned actors pivot toward alternative partners, reshaping alliance geometry",
+    "currency_substitution":          "Alternative settlement currencies and bilateral swap arrangements emerge as dollar alternatives",
+    "domestic_consolidation":         "The targeted state consolidates internally, reducing reliance on external markets and technology",
+    "third_party_arbitrage":          "Third-party states exploit the gap between sanctioners and target, extracting arbitrage rents",
+    "supply_chain_decoupling":        "Supply chains decouple as sourcing relocates away from restricted suppliers",
+    "domestic_substitution_push":     "The targeted actor accelerates domestic production to replace blocked imports",
+    "third_country_re-export":        "Controlled goods re-enter the target market via third-country transshipment",
+    "technology_gap_widening":        "The technology capability gap between sanctioner and target widens over time",
+    "alliance_activation":            "Mutual defence commitments activate, drawing allied states into the conflict",
+    "sanctions_cascade":              "Sanctions spread rapidly across multiple jurisdictions, cascading into a global regime",
+    "refugee_displacement":           "Large-scale population displacement creates regional humanitarian and security pressures",
+    "energy_market_disruption":       "Energy supply chains disrupt, triggering price spikes and allocation crises across importing states",
+    "regime_change_attempt":          "External actors pursue regime change through overt or covert pressure on the governing authority",
+    "policy_capitulation":            "The targeted actor yields to coercive pressure, shifting policy to accommodate the coercer's demands",
+    "counter_alliance_formation":     "A counter-alliance forms in direct response to coercive pressure, multiplying the coercer's adversaries",
+    "credibility_erosion":            "The coercing actor's deterrence credibility erodes as threats fail to produce the expected compliance",
+    "arms_race_acceleration":         "An accelerating arms race unfolds as both sides expand military capabilities",
+    "multilateral_compliance_cost":   "Alliance members bear rising compliance costs as sanctions tighten business and financial links",
+    "sanctions_fatigue":              "Coalition cohesion weakens over time as member states diverge on compliance and enforcement",
+    "gray_zone_evasion":              "The targeted actor deploys grey-zone tactics to evade sanctions and sustain restricted access",
+    "state_sponsor_exposure":         "Covert state sponsorship of proxy actors is exposed, inviting sanctions and international condemnation",
+    "asymmetric_escalation":          "Non-state actors escalate asymmetrically, raising costs for the state through unconventional attacks",
+    "civilian_infrastructure_targeting": "Civilian infrastructure becomes a target, deepening the humanitarian toll and international pressure",
+    "regional_spillover":             "Violence and instability spill across borders, destabilising neighbouring states",
+    "collective_defense_deterrence":  "Collective defence commitments provide credible deterrence, raising the cost of aggression",
+    "alliance_entrapment_risk":       "Alliance obligations pull members into conflicts they would not otherwise enter",
+    "burden_sharing_friction":        "Persistent friction over defence spending and burden-sharing strains alliance cohesion",
+    "adversary_counter_coalition":    "The adversary assembles a counter-coalition in direct response to the alliance",
+    "norm_cascade":                   "International norms spread rapidly across jurisdictions as states align with the new standard",
+    "competing_norm_fragmentation":   "Competing normative frameworks fracture the multilateral order into rival blocs",
+    "soft_power_accumulation":        "The norm-setting actor accumulates soft power and agenda-setting influence",
+    "free_rider_problem":             "States benefit from the norm without contributing to its enforcement, eroding collective action",
+    # ── Economic / financial ─────────────────────────────────────────────────
+    "mutual_vulnerability_lock_in":   "Deep trade interdependence creates mutual vulnerabilities that lock both actors into the relationship",
+    "leverage_accumulation":          "The surplus actor accumulates economic leverage over the deficit counterpart",
+    "currency_influence_expansion":   "The dominant partner's currency expands its influence across regional payment systems",
+    "decoupling_cost_deterrence":     "The high cost of decoupling deters either party from initiating an economic rupture",
+    "emerging_market_capital_outflow":"Capital flows out of emerging markets as tightening policy strengthens the reserve currency",
+    "dollar_strengthening":           "The reserve currency strengthens, compressing margins for commodity importers and debtors",
+    "debt_service_cost_spike":        "External debt service costs spike as interest rates rise and currencies weaken",
+    "commodity_price_denominated_shift": "Commodity pricing shifts toward alternative currency denominations",
+    "payment_system_fragmentation":   "The global payments architecture splinters as sanctioned actors build parallel settlement systems",
+    "alternative_settlement_push":    "Alternative settlement mechanisms — including digital currencies and bilateral arrangements — gain traction",
+    "hyperinflation_risk":            "Monetary instability escalates toward hyperinflation risk in the isolated economy",
+    "commodity_barter_resurgence":    "Barter and commodity-based exchange re-emerge as sanctions block conventional payment channels",
+    "supply_shock_vulnerability":     "Single-source dependencies create acute vulnerability to supply shocks and coercive cutoffs",
+    "just_in_case_inventory_build":   "Firms shift from just-in-time to just-in-case inventory strategies, raising costs",
+    "near_shoring_acceleration":      "Production nearshores as firms prioritise supply chain resilience over cost efficiency",
+    "margin_compression_from_hedging":"Hedging and diversification costs compress margins across the affected supply chain",
+    "energy_coercion_episodes":       "The resource supplier weaponises energy access, triggering coercion episodes against dependent importers",
+    "importing_country_diversification": "Importing states accelerate diversification away from a single dominant supplier",
+    "pipeline_geopolitics":           "Control over pipeline infrastructure becomes a central instrument of geopolitical leverage",
+    "green_transition_acceleration":  "Import dependence spurs accelerated investment in domestic renewable energy capacity",
+    # ── Technology ──────────────────────────────────────────────────────────
+    "standard_adoption_lock_in":      "A dominant technology standard locks in, foreclosing competing approaches and creating durable advantage",
+    "competing_standard_fragmentation": "Competing incompatible technology standards fragment the global ecosystem into rival blocs",
+    "licensing_revenue_accumulation": "The standard-setting actor accumulates substantial licensing revenue from global adoption",
+    "supply_chain_design_control":    "Control over supply chain architecture concentrates in the hands of the standard-setter",
+    "parallel_tech_stack_emergence":  "Parallel technology stacks emerge along geopolitical lines, reducing interoperability",
+    "innovation_efficiency_loss":     "Market segmentation reduces innovation efficiency as knowledge flows are severed",
+    "semiconductor_chokepoint":       "Strategic chokepoints in the semiconductor supply chain give the holder asymmetric leverage",
+    "supplier_pricing_power":         "Oligopoly suppliers strengthen pricing power as diversification alternatives remain limited",
+    "buyer_diversification_effort":   "Technology buyers accelerate efforts to diversify sourcing and reduce single-supplier exposure",
+    "technology_transfer_leverage":   "Access to critical technology becomes a bargaining chip in broader diplomatic negotiations",
+    "digital_sovereignty_push":       "States accelerate digital sovereignty initiatives, building nationally controlled infrastructure",
+    # ── Information / institutional ─────────────────────────────────────────
+    "public_opinion_polarization":    "Public opinion polarises sharply as competing narratives drive epistemic fragmentation",
+    "institutional_trust_erosion":    "Trust in established institutions erodes as information operations undermine credibility",
+    "counter_narrative_escalation":   "Rival information operations escalate, each side deploying counter-narratives at scale",
+    "epistemic_fragmentation":        "Shared factual foundations fracture, making coordinated international response harder",
+    "regulatory_compliance_cost_spike": "Compliance costs spike as firms navigate expanding and often conflicting regulatory regimes",
+    "regulatory_arbitrage":           "Firms exploit divergence between jurisdictions, relocating activity to avoid restrictive regimes",
+    "market_access_conditionality":   "Market access becomes conditional on regulatory alignment, creating leverage over trade partners",
+    "industry_consolidation":         "Smaller actors exit the market as rising compliance costs accelerate industry consolidation",
+    # ── Generic fallbacks ────────────────────────────────────────────────────
+    "structural_realignment":         "Established economic and political relationships realign under sustained structural pressure",
+    "structural_disruption":          "The existing institutional or market order faces disruption from accumulating structural stress",
+    "financial_contagion":            "Financial stress spreads across borders, exposing correlated counterparty vulnerabilities",
+    "capital_flow_restriction":       "Capital flow restrictions tighten between targeted jurisdictions, fragmenting financial linkages",
+    "supply_chain_restructuring":     "Supply chains restructure toward resilience, accepting higher costs to reduce concentrated exposure",
+    "joint_rd_resumption":            "Joint research collaboration resumes across previously segmented markets",
+    "technology_transfer_flow":       "Cross-border technology transfer flows resume after a period of restriction",
+    "innovation_spillover":           "Positive innovation spillovers spread across previously segmented markets",
+    "price_competition":              "Intensifying price competition erodes incumbent supplier margins",
+    "buyer_bargaining_increase":      "Technology buyers gain bargaining leverage as alternative sources become available",
+    "innovation_acceleration":        "Competitive pressure accelerates the pace of innovation across the ecosystem",
+    "standard_displacement":          "The incumbent technology standard is displaced by an emerging alternative",
+    "market_share_redistribution":    "Market share redistributes across the technology ecosystem as power dynamics shift",
+    "technology_fragmentation":       "The technology ecosystem fragments along domain or regional lines",
+    "unknown":                        "Available signals are insufficient to determine a dominant trajectory",
 }
 
 
@@ -1535,15 +1600,20 @@ def _run_stage3(
     _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
     # ── Raw (deterministic) summary strings ─────────────────────────────────
+    # These are written as outcome-first action sentences, grounded in the
+    # news event context. The LLM rendering pass then anchors them to specific
+    # named actors and quoted phrases from the original news fragment.
+    _alpha_primary_phrase = _outcome_phrase(alpha_path.get("primary_outcome", "structural_realignment"))
+    _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
+
     _evidence_summary_raw = (
-        f"Primary projected outcome: {_alpha_primary_phrase}. "
-        f"This trajectory is assessed at {alpha_path['probability']:.0%} probability "
-        f"based on corroborating evidence signals from the current event context."
+        f"Most likely near-term trajectory (p={alpha_path['probability']:.0%}): "
+        f"{_alpha_primary_phrase}."
     )
     _hypothesis_summary_raw = (
-        f"Contingent outcome: {_beta_primary_phrase}. "
-        f"This scenario is contingent on: {_trigger_clean}. "
-        f"Assessed as a lower-probability but structurally significant alternative."
+        f"Contingent alternative (p={beta_path.get('probability', 0.0):.0%}): "
+        f"{_beta_primary_phrase}, "
+        f"if {_trigger_clean}."
     )
     # executive_judgement_raw: pure deterministic fallback (no LLM)
     _executive_judgement_raw = _fallback_conclusion_text(
@@ -1674,23 +1744,25 @@ def _generate_conclusion_text(
     dominant = state_vector.get("mean_vector", {}).get("dominant_dim", "unknown")
     coercion = state_vector.get("mean_vector", {}).get("coercion", 0.0)
 
-    prompt = f"""You are the EL-DRUIN ontological reasoning interpreter.
+    prompt = f"""You are the EL-DRUIN intelligence analyst. Deterministic algorithms have computed
+the outcomes below. Write 1–2 sentences of outcome-first intelligence commentary anchored to
+the actual news events described in the fragment.
 
-The following outcomes have been determined by deterministic algorithms. Your task is
-to write 1-2 sentences of professional, outcome-first intelligence commentary.
+[ORIGINAL NEWS FRAGMENT]
+{text[:600]}
 
-[COMPUTED OUTCOMES – DO NOT MODIFY]
-- Primary projected outcome: {alpha_outcome_phrase}
-- Alternative contingent outcome: {beta_outcome_phrase}
-- State vector dominant dimension: {dominant} (coercion index: {coercion:+.2f})
-- Overall confidence: {composite_confidence:.0%} (from ontology priors, not LLM-generated)
+[COMPUTED OUTCOMES — DO NOT MODIFY THESE VALUES]
+- Most likely trajectory (p={composite_confidence:.0%}): {alpha_outcome_phrase}
+- Contingent alternative: {beta_outcome_phrase}
+- Dominant state dimension: {dominant} (coercion index {coercion:+.2f})
 
-[OUTPUT REQUIREMENTS]
-1. Begin with the primary projected outcome stated directly (outcome-first).
-2. In 1 sentence, note the alternative contingent outcome and the conditions for its materialisation.
-3. Do NOT mention pattern names, mechanism classes, or composition chains.
-4. Do NOT include probabilities as numbers.
-5. Return plain English text only, no JSON, no markdown, no commentary about your reasoning.
+[REQUIREMENTS]
+1. Start with the outcome stated as a concrete action, naming the actors from the news fragment.
+   BAD:  "The primary actor will face structural pressure."
+   GOOD: "With US export controls tightening, Chinese suppliers are accelerating domestic substitution."
+2. One sentence covers the contingent alternative — what would have to change for it to materialise.
+3. Do NOT explain how confidence was calculated. Do NOT mention patterns, mechanisms, algebra, or Bayesian.
+4. Plain English only. No JSON, no markdown.
 """
     try:
         response = llm_service.call(
@@ -1739,23 +1811,31 @@ def _fallback_conclusion_text(
     driving_factors: List[DrivingFactor],
     confidence: float,
 ) -> str:
-    """Template fallback when LLM is unavailable.
+    """Deterministic template fallback when LLM is unavailable.
 
-    Outcome-first, professional intelligence-grade English.
-    No mechanism class names, no pattern chain notation.
+    Outcome-first, action-sentence intelligence language.
+    No internal jargon, no self-explanation of methodology.
+    Numbers (confidence, methodology) belong in the Probability Tree tab.
     """
     primary_id = alpha_path.get("primary_outcome", "structural_realignment")
-    primary = _outcome_phrase(primary_id)
-    beta_id  = beta_path.get("primary_outcome", "structural_disruption")
-    beta_primary = _outcome_phrase(beta_id)
+    primary    = _outcome_phrase(primary_id)
+    beta_id    = beta_path.get("primary_outcome", "structural_disruption")
+    beta_desc  = _outcome_phrase(beta_id)
     alpha_prob = alpha_path.get("probability", confidence)
+    beta_prob  = beta_path.get("probability", 1 - alpha_prob)
+
+    # Build a one-line driver hint from driving_factors if available
+    driver_hint = ""
+    if driving_factors:
+        top_outcome = driving_factors[0].outcomes[0] if driving_factors[0].outcomes else ""
+        if top_outcome and top_outcome != primary_id:
+            driver_hint = f" driven by {_outcome_phrase(top_outcome).lower()}"
+
     return (
-        f"The most probable projected outcome is: {primary} "
-        f"(assessed probability {alpha_prob:.0%}). "
-        f"A lower-probability but high-impact alternative scenario — "
-        f"{beta_primary} — remains contingent on a significant shift in the "
-        f"current trajectory. Confidence is calibrated from ontological priors "
-        f"and Bayesian posterior normalisation."
+        f"Most likely near-term trajectory (p={alpha_prob:.0%}): "
+        f"{primary}{driver_hint}. "
+        f"A lower-probability but high-impact alternative (p={beta_prob:.0%}): "
+        f"{beta_desc}."
     )
 
 # ---------------------------------------------------------------------------
@@ -1767,6 +1847,8 @@ _RENDER_DISALLOWED = [
     "⊕", "pattern", "mechanism", "composition_derived", "tech_decoupling",
     "coercive_leverage", "kinetic_escalation", "oligopoly_supply",
     "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
+    "calibrated", "calibration", "normalisation", "normalization",
+    "deterministic", "prior", "semigroup", "attractor",
 ]
 
 # Precision for rounding numeric values in guardrail comparison
@@ -1886,30 +1968,30 @@ def render_conclusion_with_llm(
     entities_str = "; ".join(allowed_entities[:_MAX_ENTITIES_IN_PROMPT]) if allowed_entities else "(none specified)"
     gaps_str = "; ".join(verification_gaps[:3]) if verification_gaps else "(none)"
 
-    prompt = f"""You are a professional intelligence analyst performing a rendering pass.
+    prompt = f"""You are a professional intelligence analyst performing a final rendering pass.
 
-You have been given pre-computed deterministic intelligence fields. Your sole task is to
-rewrite each field into natural, outcome-first professional language while preserving ALL
-numeric values exactly as provided.
+You have been given pre-computed deterministic intelligence assessments and the original news fragment.
+Your task: rewrite each field into a concrete, news-anchored intelligence sentence — one that a
+policymaker could read without knowing what "ontology" or "Bayesian" means.
 
-[ORIGINAL NEWS FRAGMENT — you MAY quote short phrases from this]
+[ORIGINAL NEWS FRAGMENT — you MUST anchor your output to named actors and events from here]
 {news_fragment[:800]}
 
-[DETERMINISTIC RAW FIELDS — numeric values are locked and must not change]
+[DETERMINISTIC ASSESSMENTS — probability values are locked and must not change]
+Evidence path (most likely, p={alpha_prob:.0%}): {evidence_summary_raw}
+Hypothesis path (contingent, p={beta_prob:.0%}): {hypothesis_summary_raw}
 Executive judgement (raw): {executive_judgement_raw}
-Evidence path summary (raw): {evidence_summary_raw}
-Hypothesis path summary (raw): {hypothesis_summary_raw}
 Verification gaps: {gaps_str}
-Allowed probabilities: alpha={alpha_prob:.0%}, beta={beta_prob:.0%}, confidence={composite_confidence:.0%}
-Allowed entities: {entities_str}
 
 [RENDERING REQUIREMENTS]
-1. Rewrite each field below as natural professional intelligence language.
-2. Each rendered field must be ≤ 3 sentences total.
-3. You MAY quote short phrases (≤ 8 words) from the original news fragment.
-4. You must NOT change any percentage or probability value (e.g. {alpha_prob:.0%} stays {alpha_prob:.0%}).
-5. You must NOT invent new entities not in "Allowed entities" or the news fragment.
-6. You must NOT mention pattern names, mechanism names, algebra chains, or internal jargon.
+1. Each rendered field must be 1–2 sentences. Start with the outcome, not with a subject clause.
+2. Use specific named actors, countries, or events from the news fragment — do not write generically.
+   Example of WRONG: "The primary actor will face structural pressure."
+   Example of RIGHT: "Facing tightened US export controls, Chinese chipmakers accelerate domestic substitution."
+3. You MAY quote short phrases (≤ 8 words) verbatim from the news fragment to anchor the sentence.
+4. Preserve probability values exactly (e.g. {alpha_prob:.0%} stays {alpha_prob:.0%}).
+5. Do NOT mention "ontology", "Bayesian", "confidence calibration", "pattern", "mechanism", or any internal jargon.
+6. Do NOT add a sentence explaining how confidence was calculated — that belongs in the Probability Tree tab.
 7. Output ONLY valid JSON in this exact format, nothing else:
 {{"executive_judgement": "...", "evidence_path_summary": "...", "hypothesis_path_summary": "..."}}
 """
