@@ -64,6 +64,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from intelligence.pattern_i18n import display_pattern, has_cjk, strip_cjk  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 # ===========================================================================
@@ -1349,8 +1351,9 @@ def _run_stage2d(
         )[:3]
         outcomes_list = [o for o, _ in top_outcomes]
 
-        # 构造可读的驱动力陈述
-        patterns_str = ", ".join(gdata["patterns"][:2])
+        # 构造可读的驱动力陈述 (use English display names in user-visible text)
+        patterns_en  = [display_pattern(p) for p in gdata["patterns"][:2]]
+        patterns_str = ", ".join(patterns_en)
         factor_text  = _mechanism_to_statement(mclass, patterns_str, outcomes_list)
 
         factors.append(DrivingFactor(
@@ -1484,7 +1487,7 @@ def _run_stage3(
     if alpha_transition:
         alpha_outcomes = alpha_transition.typical_outcomes
         alpha_path = {
-            "name":           alpha_transition.to_pattern,
+            "name":           display_pattern(alpha_transition.to_pattern),
             "probability":    round(alpha_prob, 3),
             "mechanism":      _get_transition_mechanism(alpha_transition),
             "typical_outcomes": alpha_outcomes,
@@ -1509,7 +1512,7 @@ def _run_stage3(
     if beta_transition:
         beta_outcomes = beta_transition.typical_outcomes
         beta_path = {
-            "name":           beta_transition.to_pattern,
+            "name":           display_pattern(beta_transition.to_pattern),
             "probability":    round(beta_prob, 3),
             "mechanism":      _get_transition_mechanism(beta_transition),
             "typical_outcomes": beta_outcomes,
@@ -1517,7 +1520,7 @@ def _run_stage3(
             "trigger_condition": (
                 "reversal of dominant pattern node"
                 if beta_transition.transition_type == "inverse"
-                else f"co-activation of [{beta_transition.from_pattern_b}]"
+                else f"co-activation of {display_pattern(beta_transition.from_pattern_b)}"
             ),
             "evidence_basis": (
                 f"{'inverse_table path' if beta_transition.transition_type == 'inverse' else 'composition_table path'} "
@@ -1600,15 +1603,10 @@ def _run_stage3(
     _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
     # ── Raw (deterministic) summary strings ─────────────────────────────────
-    # These are written as outcome-first action sentences, grounded in the
-    # news event context. The LLM rendering pass then anchors them to specific
-    # named actors and quoted phrases from the original news fragment.
-    _alpha_primary_phrase = _outcome_phrase(alpha_path.get("primary_outcome", "structural_realignment"))
-    _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
     _evidence_summary_raw = (
-        f"Most likely near-term trajectory (p={alpha_path['probability']:.0%}): "
-        f"{_alpha_primary_phrase}."
+        f"Primary projected outcome: {_alpha_primary_phrase} "
+        f"(p={alpha_path['probability']:.0%})."
     )
     _hypothesis_summary_raw = (
         f"Contingent alternative (p={beta_path.get('probability', 0.0):.0%}): "
@@ -1842,13 +1840,18 @@ def _fallback_conclusion_text(
 # render_conclusion_with_llm: real-world paraphrase layer (post-deterministic)
 # ---------------------------------------------------------------------------
 
-# Substrings that must never appear in rendered output (internal ontology jargon)
+# Substrings that must never appear in rendered output (internal ontology jargon
+# or meta-commentary that does not belong in a real-world intelligence judgement)
 _RENDER_DISALLOWED = [
     "⊕", "pattern", "mechanism", "composition_derived", "tech_decoupling",
     "coercive_leverage", "kinetic_escalation", "oligopoly_supply",
     "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
     "calibrated", "calibration", "normalisation", "normalization",
     "deterministic", "prior", "semigroup", "attractor",
+    # Real-world phrasing guardrails: block meta-commentary
+    "assessed based on", "corroborating evidence", "evidence signals",
+    "based on corroborating", "corroborating", "evidence signal",
+    "computed from", "derived from ontology",
 ]
 
 # Precision for rounding numeric values in guardrail comparison
@@ -2122,16 +2125,17 @@ def run_evented_pipeline(
 
     # ── 序列化 ──────────────────────────────────────────────────────
     def _pat_to_dict(p: PatternNode) -> Dict[str, Any]:
+        en_name = display_pattern(p.pattern_name)
         return {
-            # v3 canonical keys
-            "pattern_name":     p.pattern_name,
+            # v3 canonical keys (display-safe English labels)
+            "pattern_name":     en_name,
             "domain":           p.domain,
             "mechanism_class":  p.mechanism_class,
             "confidence_prior": round(p.confidence_prior, 3),
             "typical_outcomes": p.typical_outcomes[:3],
             "source_event":     p.source_event,
             # canonical frontend keys
-            "pattern":          p.pattern_name,
+            "pattern":          en_name,
             "tier":             "T2",   # active patterns derived from ontology are T2 by default
             "confidence":       round(p.confidence_prior, 3),
             "from_event":       p.source_event,
@@ -2139,29 +2143,43 @@ def run_evented_pipeline(
         }
 
     def _trans_to_dict(t: TransitionEdge) -> Dict[str, Any]:
+        en_a  = display_pattern(t.from_pattern_a)
+        en_b  = display_pattern(t.from_pattern_b)
+        en_c  = display_pattern(t.to_pattern)
+        # Rebuild description with English names (original uses CJK keys)
+        desc = (
+            f"{en_a} \u2295 {en_b} \u2192 [{en_c}] "
+            f"(posterior={t.posterior_weight:.4f}, lie_sim={t.lie_similarity:.3f})"
+            if t.transition_type != "inverse"
+            else (
+                f"Inverse of [{en_a}] \u2192 [{en_c}] "
+                f"(posterior={t.posterior_weight:.4f}, low-probability high-impact)"
+            )
+        )
         return {
-            "from_pattern_a":   t.from_pattern_a,
-            "from_pattern_b":   t.from_pattern_b,
-            "to_pattern":       t.to_pattern,
+            "from_pattern_a":   en_a,
+            "from_pattern_b":   en_b,
+            "to_pattern":       en_c,
             "transition_type":  t.transition_type,
             "posterior_weight": t.posterior_weight,
             "lie_similarity":   t.lie_similarity,
             "typical_outcomes": t.typical_outcomes,
-            "description":      t.description,
+            "description":      desc,
             "tier":             "T1" if t.transition_type == "inverse" else "T2",
         }
 
     def _df_to_dict(d: DrivingFactor) -> Dict[str, Any]:
+        en_patterns = [display_pattern(p) for p in d.supporting_patterns]
         return {
             # canonical backend keys
             "factor":              d.factor,
             "mechanism_class":     d.mechanism_class,
-            "supporting_patterns": d.supporting_patterns,
+            "supporting_patterns": en_patterns,
             "weight":              d.weight,
             "outcomes":            d.outcomes,
             # canonical frontend alias keys
             "label":      d.factor,
-            "count":      len(d.supporting_patterns),
+            "count":      len(en_patterns),
             "confidence": round(min(d.weight, 1.0), 3),
             "evidence":   d.outcomes[:2],
         }
@@ -2194,15 +2212,15 @@ def run_evented_pipeline(
     # derived_patterns backward-compat field (top transitions → derived pattern list)
     derived_compat = [
         {
-            # canonical keys
-            "pattern_name":      t.to_pattern,
-            "derived":           t.to_pattern,
-            "pattern":           t.to_pattern,
+            # canonical keys (display-safe English labels)
+            "pattern_name":       display_pattern(t.to_pattern),
+            "derived":            display_pattern(t.to_pattern),
+            "pattern":            display_pattern(t.to_pattern),
             "derived_confidence": round(t.posterior_weight, 3),
-            "rule":              t.transition_type,
-            "derived_tier":      "T1" if t.transition_type == "inverse" else "T2",
-            "derived_inferred":  t.transition_type == "inverse",
-            "inputs":            [t.from_pattern_a, t.from_pattern_b],
+            "rule":               t.transition_type,
+            "derived_tier":       "T1" if t.transition_type == "inverse" else "T2",
+            "derived_inferred":   t.transition_type == "inverse",
+            "inputs":             [display_pattern(t.from_pattern_a), display_pattern(t.from_pattern_b)],
         }
         for t in transitions[:3]
     ]
@@ -2230,9 +2248,12 @@ def run_evented_pipeline(
         for idx, t in enumerate(transitions[:5]):
             node_id = f"t{idx}"
             prob = round(t.posterior_weight / Z, 4)
+            en_a = display_pattern(t.from_pattern_a)
+            en_b = display_pattern(t.from_pattern_b)
+            en_c = display_pattern(t.to_pattern)
             pt_nodes.append({
                 "id":                node_id,
-                "label":             t.to_pattern,
+                "label":             en_c,
                 "type":              "T2" if t.transition_type != "inverse" else "T1",
                 "probability":       prob,
                 "evidence":          (
@@ -2250,8 +2271,8 @@ def run_evented_pipeline(
                 "posterior_weight": t.posterior_weight,
                 "posterior_contribution": round(t.posterior_weight / Z, 4),
                 "compute_trace":    (
-                    f"prior_a({t.from_pattern_a})={t.prior_a:.3f} "
-                    f"× prior_b({t.from_pattern_b})={t.prior_b:.3f} "
+                    f"prior_a({en_a})={t.prior_a:.3f} "
+                    f"× prior_b({en_b})={t.prior_b:.3f} "
                     f"× lie_sim={t.lie_similarity:.3f} = {t.posterior_weight:.4f}"
                 ),
             })
@@ -2271,12 +2292,12 @@ def run_evented_pipeline(
             ),
             # Backward-compat alpha/beta keys
             "alpha": {
-                "name":        transitions[0].to_pattern,
+                "name":        display_pattern(transitions[0].to_pattern),
                 "probability": round(transitions[0].posterior_weight / Z, 3),
                 "outcomes":    transitions[0].typical_outcomes[:2],
             },
             "beta": {
-                "name": transitions[1].to_pattern if len(transitions) >= 2 else "Structural Fracture",
+                "name": display_pattern(transitions[1].to_pattern) if len(transitions) >= 2 else "Structural Fracture",
                 "probability": round(
                     transitions[1].posterior_weight / Z if len(transitions) >= 2 else 0.3, 3
                 ),
