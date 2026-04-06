@@ -37,3 +37,18 @@ backend/app/claw_integration/sessions/
 experiments/results/
 experiments/comparison_table.md
 experiments/comparison_table.csv
+
+# LaTeX build artifacts (paper/latex/)
+paper/latex/*.pdf
+paper/latex/*.zip
+paper/latex/*.aux
+paper/latex/*.log
+paper/latex/*.out
+paper/latex/*.toc
+paper/latex/*.lof
+paper/latex/*.lot
+paper/latex/*.bbl
+paper/latex/*.blg
+paper/latex/*.fls
+paper/latex/*.fdb_latexmk
+paper/latex/*.synctex.gz
