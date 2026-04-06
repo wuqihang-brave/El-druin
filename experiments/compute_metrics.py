@@ -92,9 +92,15 @@ def _gpt_constraint_violations(gpt_results: List[Dict[str, Any]]) -> Dict[str, A
                     "based on my training", "i would estimate", "note that"]
     for sample in gpt_results:
         text = sample.get("text", "").lower()
-        # Numeric inconsistency: > 1 distinct percentage
+        # Numeric inconsistency: detect cases where the same trajectory label
+        # is mentioned with two different probability values (suggests internal
+        # contradiction), rather than simply having multiple percentages
+        # (which is expected: alpha + beta probabilities should sum to ~100%).
         pcts = re.findall(r"\b(\d{1,3})\s*%", text)
-        if len(set(pcts)) > 1:
+        pct_set = set(int(p) for p in pcts)
+        # Flag if there are > 2 distinct percentage values (alpha + beta = 2 is fine;
+        # a third independent value suggests the model is internally inconsistent)
+        if len(pct_set) > 2:
             numeric_violations += 1
         # Meta-commentary
         if any(ph in text for ph in meta_phrases):
