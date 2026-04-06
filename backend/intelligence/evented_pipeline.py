@@ -1351,7 +1351,7 @@ def _run_stage2d(
         )[:3]
         outcomes_list = [o for o, _ in top_outcomes]
 
-        # 构造可读的驱动力陈述 (use English display names in user-visible text)
+        # Construct readable driving force statement (use English display names in user-visible text)
         patterns_en  = [display_pattern(p) for p in gdata["patterns"][:2]]
         patterns_str = ", ".join(patterns_en)
         factor_text  = _mechanism_to_statement(mclass, patterns_str, outcomes_list)

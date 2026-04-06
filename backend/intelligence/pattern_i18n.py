@@ -119,7 +119,7 @@ def display_pattern(name: str) -> str:
     # Fallback: strip any residual CJK to guarantee no leakage into outputs
     cleaned = _CJK_RE.sub("", name).strip(" /\u3000")
     # If stripping left nothing (entire string was CJK), return a safe placeholder
-    return cleaned if cleaned else "(unrecognised pattern)"
+    return cleaned if cleaned else "(unrecognized pattern)"
 
 
 def has_cjk(text: str) -> bool:
