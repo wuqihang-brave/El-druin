@@ -2,7 +2,7 @@
 
 **Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B.svg)](https://streamlit.io/)
@@ -10,6 +10,16 @@
 > Paper: *Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs*  
 > Author: Qihang Wu — The Hong Kong Polytechnic University  
 > Repository: https://github.com/wuqihang-brave/El-druin
+
+---
+
+## 🔭 Project at a Glance
+
+EL-DRUIN is an **ontology-driven geopolitical intelligence platform** that forecasts how a political situation evolves by iterating named dynamic patterns through an algebraic transition system.
+
+- **What it does:** Given a news excerpt, EL-DRUIN extracts events, activates ontology patterns (e.g. *Hegemonic Sanctions*, *Tech Decoupling*), computes Lie-algebra similarity-weighted transitions, and outputs a Bayesian confidence distribution over future trajectories — all in a single deterministic pipeline.
+- **Traceability & auditability:** Every confidence value is anchored to a `compute_trace_ref` string of the form `bayesian_posterior|Z=…` that encodes the exact formula used. No stochastic guess-work: same input always produces the same number, with a full computation trace any analyst can verify.
+- **Hallucination guard:** An entity-invention guard rejects any LLM rendering that introduces proper nouns absent from the source text. A numeric consistency guard ensures rendered numbers match the deterministic output exactly.
 
 ---
 
@@ -54,7 +64,37 @@ EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces 
 - Git
 - Docker & Docker Compose (recommended for full stack)
 
-### Option A: Docker (Recommended)
+### Option A: Hosted Demo (no setup required)
+
+| Service | URL |
+|---|---|
+| **Streamlit frontend demo** | https://eldruin-intelligence.streamlit.app |
+| **FastAPI docs (live API)** | https://el-druin-production.up.railway.app/docs |
+
+### Option B: Local — Streamlit frontend
+
+```bash
+git clone https://github.com/wuqihang-brave/El-druin.git
+cd El-druin
+python -m venv venv && source venv/bin/activate
+pip install -r frontend/requirements.txt
+cp .env.example .env   # add API keys if desired
+streamlit run frontend/app.py
+# Opens at http://localhost:8501
+```
+
+### Option C: Local — FastAPI backend
+
+```bash
+# (inside the same venv, or a fresh one)
+pip install -r backend/requirements.txt
+cp .env.example .env   # set LLM_PROVIDER, OPENAI_API_KEY, etc.
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+# API docs at http://localhost:8001/docs
+```
+
+### Option D: Docker (full stack)
 
 ```bash
 git clone https://github.com/wuqihang-brave/El-druin.git
@@ -73,20 +113,7 @@ Stop:
 docker-compose down
 ```
 
-### Option B: Local Development
-
-```bash
-git clone https://github.com/wuqihang-brave/El-druin.git
-cd El-druin
-python -m venv venv && source venv/bin/activate
-pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
-cp .env.example .env
-# Edit .env with your keys
-streamlit run frontend/app.py
-```
-
-### Option C: EL-DRUIN pipeline only (no API key)
+### Option E: Pipeline only (no API key)
 
 ```bash
 cd El-druin
@@ -111,20 +138,24 @@ print(json.dumps({
 
 ## 🎬 Demo
 
-> **Demo screenshots / GIFs coming soon.**  
-> To run the Streamlit demo locally:
->
-> ```bash
-> streamlit run frontend/app.py
-> ```
->
-> Then paste any geopolitical news excerpt into the analysis box.
-> The five tabs display:
-> 1. **Conclusion** — structured alpha/beta trajectory judgement with compute trace
-> 2. **Events** — extracted event types with evidence quotes
-> 3. **Pattern Activation** — active ontology patterns and their source events
-> 4. **Probability Tree** — full Bayesian posterior derivation (the auditable trace)
-> 5. **Object Explorer** — knowledge graph entity browser
+| Service | Link |
+|---|---|
+| **Live Streamlit frontend** | https://eldruin-intelligence.streamlit.app |
+| **Live FastAPI docs** | https://el-druin-production.up.railway.app/docs |
+
+To run the Streamlit demo locally:
+
+```bash
+streamlit run frontend/app.py
+```
+
+Then paste any geopolitical news excerpt into the analysis box.
+The five tabs display:
+1. **Conclusion** — structured alpha/beta trajectory judgement with compute trace
+2. **Events** — extracted event types with evidence quotes
+3. **Pattern Activation** — active ontology patterns and their source events
+4. **Probability Tree** — full Bayesian posterior derivation (the auditable trace)
+5. **Object Explorer** — knowledge graph entity browser
 
 ---
 
@@ -301,7 +332,7 @@ Results are saved to `experiments/results/` and a Markdown comparison table is w
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+This project is licensed under the **Apache License 2.0** — see [LICENSE](LICENSE) for details.
 
 ---
 
