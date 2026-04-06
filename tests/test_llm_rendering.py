@@ -397,3 +397,132 @@ class TestPipelineRenderedFields:
             f"Numeric guardrail failed: rendered field '{ej}' should equal raw '{ej_raw}'"
         )
         assert concl.get("rendering_meta", {}).get("guardrails_triggered") is True
+
+
+# ===========================================================================
+# H. CJK leakage guardrail
+# ===========================================================================
+
+class TestCJKLeakageGuardrail:
+    """LLM output containing CJK characters must be rejected and fall back to raw."""
+
+    def _response_with_cjk(self):
+        return json.dumps({
+            "executive_judgement": (
+                "Facing new tariffs, chipmakers accelerate domestic substitution (霸权制裁模式)."
+            ),
+            "evidence_path_summary": _RAW_EP,
+            "hypothesis_path_summary": _RAW_HP,
+        })
+
+    def test_cjk_in_rendered_triggers_fallback(self):
+        result = _render(self._response_with_cjk())
+        assert result["executive_judgement"] == _RAW_EJ
+        assert result["rendering_meta"]["guardrails_triggered"] is True
+
+    def test_clean_output_does_not_trigger_cjk_guardrail(self):
+        clean_json = json.dumps({
+            "executive_judgement": (
+                "Semiconductor tariffs drive US-China supply-chain fragmentation at 65% probability."
+            ),
+            "evidence_path_summary": "The supply-chain trajectory is the most likely outcome at 65%.",
+            "hypothesis_path_summary": "A reversal at 35% requires tariff rollback.",
+        })
+        result = _render(clean_json)
+        assert result["rendering_meta"]["guardrails_triggered"] is False
+
+
+# ===========================================================================
+# I. Invented entity guardrail
+# ===========================================================================
+
+class TestInventedEntityGuardrail:
+    """LLM output containing proper nouns not present in the news fragment or
+    allowed_entities list must trigger a fallback to the raw deterministic text."""
+
+    _NEWS = (
+        "The United States imposed sweeping new tariffs on Chinese semiconductor "
+        "exports, citing national security concerns. Analysts warn of supply-chain "
+        "disruptions across global markets."
+    )
+
+    def test_invented_location_triggers_fallback(self):
+        """Proper noun not in news fragment must trigger entity guardrail."""
+        response_with_invented = json.dumps({
+            "executive_judgement": (
+                "Kharg Island facility is projected to face disruption at 65% probability."
+            ),
+            "evidence_path_summary": _RAW_EP,
+            "hypothesis_path_summary": _RAW_HP,
+        })
+        result = render_conclusion_with_llm(
+            news_fragment=self._NEWS,
+            executive_judgement_raw=_RAW_EJ,
+            evidence_summary_raw=_RAW_EP,
+            hypothesis_summary_raw=_RAW_HP,
+            alpha_prob=_ALPHA_PROB,
+            beta_prob=_BETA_PROB,
+            composite_confidence=_CONF,
+            verification_gaps=[],
+            allowed_entities=["United States", "China"],
+            llm_service=_make_llm(response_with_invented),
+        )
+        assert result["executive_judgement"] == _RAW_EJ
+        assert result["rendering_meta"]["guardrails_triggered"] is True
+
+    def test_entity_from_news_does_not_trigger_fallback(self):
+        """A proper noun explicitly present in the news fragment must not trigger guardrail."""
+        # "Chinese" appears mid-sentence in the news fragment, so it's anchored
+        response_anchored = json.dumps({
+            "executive_judgement": (
+                "Chinese semiconductor firms face accelerating US export restrictions "
+                "with market fragmentation as the primary outcome (p=65%)."
+            ),
+            "evidence_path_summary": (
+                "The tariff action targets Chinese chipmakers at 65% trajectory probability."
+            ),
+            "hypothesis_path_summary": (
+                "A contingent reversal scenario at 35% remains structurally plausible."
+            ),
+        })
+        result = render_conclusion_with_llm(
+            news_fragment=self._NEWS,
+            executive_judgement_raw=_RAW_EJ,
+            evidence_summary_raw=_RAW_EP,
+            hypothesis_summary_raw=_RAW_HP,
+            alpha_prob=_ALPHA_PROB,
+            beta_prob=_BETA_PROB,
+            composite_confidence=_CONF,
+            verification_gaps=[],
+            allowed_entities=["United States", "China"],
+            llm_service=_make_llm(response_anchored),
+        )
+        assert result["rendering_meta"]["guardrails_triggered"] is False
+
+    def test_invented_entity_meta_records_invented_names(self):
+        """When entity guardrail fires, rendering_meta should record invented entities."""
+        response_with_invented = json.dumps({
+            "executive_judgement": (
+                "Kharg Island facility faces disruption at 65% probability."
+            ),
+            "evidence_path_summary": _RAW_EP,
+            "hypothesis_path_summary": _RAW_HP,
+        })
+        result = render_conclusion_with_llm(
+            news_fragment=self._NEWS,
+            executive_judgement_raw=_RAW_EJ,
+            evidence_summary_raw=_RAW_EP,
+            hypothesis_summary_raw=_RAW_HP,
+            alpha_prob=_ALPHA_PROB,
+            beta_prob=_BETA_PROB,
+            composite_confidence=_CONF,
+            verification_gaps=[],
+            allowed_entities=["United States", "China"],
+            llm_service=_make_llm(response_with_invented),
+        )
+        assert result["rendering_meta"]["guardrails_triggered"] is True
+        # Kharg and/or Island should appear in invented_entities
+        invented = result["rendering_meta"].get("invented_entities", [])
+        assert any("Kharg" in e or "Island" in e for e in invented), (
+            f"Expected 'Kharg' or 'Island' in invented_entities, got: {invented}"
+        )

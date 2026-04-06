@@ -1,218 +1,336 @@
-# El-druin 🛡️
+# EL-DRUIN 🛡️
 
-EL'druin - AI-Powered Ontology-Driven Intelligence Platform. Open-source, federated event monitoring and future prediction system with multi-agent analysis, real-time data fusion, and enterprise-grade security. Combines real-time event tracking with advanced predictive analytics.
+**Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B.svg)](https://streamlit.io/)
+
+> Paper: *Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs*  
+> Author: Qihang Wu — The Hong Kong Polytechnic University  
+> Repository: https://github.com/wuqihang-brave/El-druin
 
 ---
 
-## 🚀 快速开始 / Quick Start
+## ⚡ 60-Second Overview
 
-### 前置要求 / Prerequisites
-- **Git**
-- **Python 3.9+** (本地部署)
-- **Docker & Docker Compose** (推荐方式)
+EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces LLM-generated confidence scores with **provably traceable, algebraically derived** confidence values.
 
-### 1. 克隆项目
+| Property | EL-DRUIN | GPT-4 Baseline |
+|---|---|---|
+| Confidence source | Ontology priors × Bayesian posterior (deterministic formula) | Self-reported by LLM |
+| Verifiable? | **Yes** — every value anchored to a `compute_trace_ref` | **No** — free-text assertion |
+| Stability | σ = 0 (deterministic; same input → same output) | σ > 0 (stochastic) |
+| Traceability | Full compute trace (ontology → Lie algebra → Bayesian) | None |
+| Entity invention guard | Enforced — hallucinated proper nouns trigger deterministic fallback | Not implemented |
+
+**Why it matters for intelligence analysis:** when an analyst reads "73% probability", they need to know *where that number came from*. EL-DRUIN's confidence values are products of explicit algebraic operations over a formal ontology, not stochastic LLM outputs.
+
+---
+
+## 🎯 Key Features
+
+- [x] **Finite Semigroup Forward Simulation** — 18 named dynamic patterns with a declarative composition table; forward iteration converges to fixed-point attractors
+- [x] **8D Lie Algebra State Vectors** — each pattern embedded as a vector; Lie-bracket similarity scores transition quality
+- [x] **Bayesian Posterior with Step Decay** — `w_t = π(A) · π(B) · lie_sim(A,B,C) · λᵗ`; fully auditable formula
+- [x] **Compute Trace Reference** — every output includes `compute_trace_ref: "bayesian_posterior|Z=…"` linking result to algebra
+- [x] **CJK Leakage Guard** — automated test suite prevents any CJK characters leaking into English user-facing outputs
+- [x] **Invented Entity Guard** — LLM rendering pass rejects outputs containing proper nouns not present in the input text
+- [x] **Numeric Consistency Guard** — probability values cannot change between deterministic computation and LLM rendering
+- [x] **Knowledge Graph Layer** — KuzuDB-backed entity and relationship storage with fuzzy deduplication
+- [x] **Five-Tab Streamlit UI** — Conclusion / Events / Pattern Activation / Probability Tree / Object Explorer
+- [ ] Learned pattern vectors (currently expert-annotated)
+- [ ] Historical backtesting against labelled outcome data
+- [ ] Extended composition table coverage (currently ~4% of all pattern pairs)
+
+---
+
+## 🚀 Quickstart
+
+### Prerequisites
+
+- Python 3.9+
+- Git
+- Docker & Docker Compose (recommended for full stack)
+
+### Option A: Docker (Recommended)
+
 ```bash
 git clone https://github.com/wuqihang-brave/El-druin.git
 cd El-druin
-```
-
-### 2. 配置环境变量
-```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的 API Key (如 OpenAI, News API 等)
-nano .env
-```
-
----
-
-### 3. 选择运行方式
-
-#### 选项 A: Docker 快速启动 🐳 (推荐)
-```bash
+# Edit .env: add OPENAI_API_KEY and other keys as needed
 docker-compose up -d
 ```
 
-成功启动后访问：
-- **Streamlit UI**: http://localhost:8501
-- **后端 API**: http://localhost:8001
+Open:
+- **Frontend (Streamlit):** http://localhost:8501
+- **Backend API (FastAPI):** http://localhost:8001/docs
 
-停止服务：
+Stop:
 ```bash
 docker-compose down
 ```
 
----
-
-#### 选项 B: 本地开发环境安装
+### Option B: Local Development
 
 ```bash
-# 3.1 创建并激活虚拟环境
-python -m venv venv
-source venv/bin/activate  # Windows: .\venv\Scripts\activate
-
-# 3.2 安装依赖
-pip install --upgrade pip
+git clone https://github.com/wuqihang-brave/El-druin.git
+cd El-druin
+python -m venv venv && source venv/bin/activate
 pip install -r backend/requirements.txt
 pip install -r frontend/requirements.txt
-
-# 3.3 创建数据存储目录
-mkdir -p data
-
-# 3.4 启动 Streamlit 前端
+cp .env.example .env
+# Edit .env with your keys
 streamlit run frontend/app.py
 ```
 
-然后访问：http://localhost:8501
+### Option C: EL-DRUIN pipeline only (no API key)
+
+```bash
+cd El-druin
+pip install -r backend/requirements.txt
+python -c "
+import sys; sys.path.insert(0, 'backend')
+from intelligence.evented_pipeline import run_evented_pipeline
+result = run_evented_pipeline(
+    'The US imposed sweeping semiconductor export controls on China, '
+    'restricting Nvidia GPU sales and targeting advanced AI chips.'
+)
+import json
+print(json.dumps({
+    'confidence': result.conclusion['confidence'],
+    'compute_trace_ref': result.conclusion['final']['compute_trace_ref'],
+    'primary_attractor': result.top_transitions[0]['to_pattern'] if result.top_transitions else 'N/A',
+}, indent=2))
+"
+```
 
 ---
 
-## ⚙️ 配置说明 / Configuration
+## 🎬 Demo
 
-### 环境变量详解
-
-编辑 `.env` 文件，确保以下核心项已配置：
-
-| 变量名 | 说明 | 示例 |
-| :--- | :--- | :--- |
-| `LLM_PROVIDER` | 模型提供商 | `openai` / `groq` / `none` |
-| `OPENAI_API_KEY` | OpenAI 密钥 | `sk-xxxx...` |
-| `GROQ_API_KEY` | Groq 密钥 | `gsk_xxxx...` |
-| `GRAPH_BACKEND` | 图数据库类型 | `kuzu` / `networkx` |
-| `KUZU_DB_PATH` | Kuzu 数据库路径 | `./data/kuzu_db` |
-| `NEWSAPI_KEY` | NewsAPI 密钥 | `your_key_here` |
-| `API_PORT` | 后端 API 端口 | `8001` |
-
-更详细的配置选项见 [.env.example](.env.example)
+> **Demo screenshots / GIFs coming soon.**  
+> To run the Streamlit demo locally:
+>
+> ```bash
+> streamlit run frontend/app.py
+> ```
+>
+> Then paste any geopolitical news excerpt into the analysis box.
+> The five tabs display:
+> 1. **Conclusion** — structured alpha/beta trajectory judgement with compute trace
+> 2. **Events** — extracted event types with evidence quotes
+> 3. **Pattern Activation** — active ontology patterns and their source events
+> 4. **Probability Tree** — full Bayesian posterior derivation (the auditable trace)
+> 5. **Object Explorer** — knowledge graph entity browser
 
 ---
 
-## 📂 项目结构 / Project Structure
+## 🏗️ Architecture
 
-```text
+```
 El-druin/
-├── backend/                # 后端核心：摄入、知识层、API
+├── backend/                     # FastAPI backend
 │   ├── app/
-│   │   ├── api/            # FastAPI 路由
-│   │   ├── core/           # 核心配置
-│   │   ├── data_ingestion/ # 数据抓取与预处理
-│   │   └── knowledge/      # Kuzu 图数据库逻辑
-│   ├── main.py             # 后端入口
-│   └── requirements.txt
-├── frontend/               # UI 界面：Streamlit 驱动
-│   ├── app.py              # 主入口
-│   ├── pages/              # 功能模块页面
-│   ├── utils/              # 工具函数
-│   └── requirements.txt
-├── data/                   # 本地持久化数据
-├── config.py               # 全局配置读取
-├── docker-compose.yml      # 容器化编排
-└── .env.example            # 环境变量模板
+│   │   ├── api/routes/          # REST endpoints
+│   │   │   ├── analysis.py      # POST /api/v1/evented/analyze
+│   │   │   ├── intelligence.py  # Bayesian bridge / probability tree
+│   │   │   └── provenance.py    # Entity/relationship provenance
+│   │   └── core/                # Config, logging
+│   ├── intelligence/            # Core reasoning engine
+│   │   ├── evented_pipeline.py  # Five-stage pipeline (Stage 1-3)
+│   │   ├── pattern_i18n.py      # CJK -> English pattern display mapping
+│   │   ├── probability_tree.py  # Bayesian posterior computation
+│   │   └── ontology_forecaster.py # Multi-step Markov simulation
+│   ├── knowledge_layer/
+│   │   └── entity_resolver.py   # Fuzzy entity deduplication (SIMILARITY=0.85)
+│   └── ontology/
+│       └── relation_schema.py   # Pattern registry, composition_table, inverse_table
+├── frontend/                    # Streamlit UI
+│   ├── app.py                   # Main entry point
+│   ├── pages/
+│   │   └── 3_Object_Explorer.py
+│   └── components/
+│       ├── faceted_search.py
+│       ├── object_view.py
+│       └── proof_panel.py
+├── experiments/                 # Reproducible baseline experiments
+│   ├── news_samples.jsonl       # 10 public news excerpts (URL + metadata)
+│   ├── run_baseline.py          # EL-DRUIN + GPT-4 runner
+│   ├── compute_metrics.py       # Metrics table generator
+│   └── README.md                # Experiment instructions
+└── tests/                       # Pytest test suite
+    ├── test_evented_pipeline.py
+    ├── test_llm_rendering.py    # Guardrail tests (CJK, entity, numeric)
+    └── test_pipeline_schema_contract.py
+```
+
+### Five-Stage Reasoning Pipeline
+
+```
+Input: News Text
+    |
+    v
+Stage 1: Event Extraction
+  Rule-based keyword co-occurrence -> EventNode{type, confidence, evidence}
+    |
+    v
+Stage 2a: Pattern Activation
+  EventType -> PatternNode  (ontology prior x event confidence)
+    |
+    +-----------------------------+--------------------+
+    |                             |                    |
+Stage 2b:                    Stage 2c:           Stage 2d:
+Transition Enumeration       State Vector        Driving Factors
+(composition_table)          (8D Lie algebra)    (mechanism_class aggregation)
+    |
+    v
+Stage 3: Bayesian Conclusion Generation
+  w_t = pi(A) * pi(B) * lie_sim(A,B,C) * lambda^t
+  -> alpha/beta paths -> composite_confidence -> compute_trace_ref
+  -> LLM rendering pass (with CJK / entity / numeric guardrails)
 ```
 
 ---
 
-## 🛠️ 故障排除 / Troubleshooting
+## ⚙️ Configuration
 
-- **ImportError**: 检查是否激活了 venv，并确保分别运行了 `pip install -r backend/requirements.txt` 和 `pip install -r frontend/requirements.txt`。
-- **Kuzu Database Error**: 确保 `data/` 目录存在且有写入权限：`mkdir -p data`。
-- **API Key 无效**: 检查 `.env` 文件中的 API Key 是否正确填入，注意不要有多余的空格。
-- **端口占用**: Streamlit 默认 8501，后端 API 默认 8001。若冲突，请使用 `streamlit run frontend/app.py --server.port 8502`。
-- **Docker 容器无法启动**: 运行 `docker-compose logs` 查看详细错误信息。
+Copy `.env.example` to `.env` and set:
+
+| Variable | Description | Default |
+|---|---|---|
+| `LLM_PROVIDER` | LLM backend (`openai` / `groq` / `none`) | `none` |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `GROQ_API_KEY` | Groq API key | — |
+| `GRAPH_BACKEND` | Graph DB (`kuzu` / `networkx`) | `kuzu` |
+| `KUZU_DB_PATH` | KuzuDB path | `./data/kuzu_db` |
+| `NEWSAPI_KEY` | NewsAPI key for live feed | — |
+| `API_PORT` | Backend port | `8001` |
+
+The pipeline runs fully deterministically without any API key (`LLM_PROVIDER=none`).  
+An LLM key enables the rendering pass (paraphrase layer), which is subject to all guardrails.
 
 ---
 
-## 🌐 初始化知识图谱本体 / Seed Ontology Data
-
-首次启动后，**推荐运行一次**以下命令初始化 KuzuDB 本体数据，获得包含地缘政治、科技/AI、经济三大领域的丰富本体（157 个实体，331 条高质量关系）：
+## 🧪 Running Tests
 
 ```bash
-python -m backend.knowledge_layer.seed_ontology
+pip install pytest
+PYTHONPATH=backend python -m pytest tests/ -q --ignore=tests/test_deduction_engine.py
 ```
 
-运行后输出示例：
+Key test files:
 
-```
-Inserted 157 nodes and 331 relationships
-```
-
-涵盖的典型关系：
-- `US --strategic_rival→ Iran / China / Russia`
-- `Israel --military_strike→ Iran / Lebanon / Hezbollah`
-- `Iran --controls→ Strait_of_Hormuz`
-- `AI_model --causes→ job_displacement`
-- `Data_Center --consumes→ Energy`
-- `Supply_Chain --vulnerable_to→ Geopolitical_Risk`
+| File | Coverage |
+|---|---|
+| `test_evented_pipeline.py` | Stage 1-3 pipeline, pattern activation, credibility |
+| `test_llm_rendering.py` | CJK leakage guard, entity invention guard, numeric guard, sentence-length guard |
+| `test_pipeline_schema_contract.py` | API output schema backward compatibility |
+| `test_grounded_deduce_endpoint.py` | REST endpoint integration |
 
 ---
 
-## 📚 导入 Schema.org 本体类型层次 / Import Schema.org Ontology
+## 🔬 Baseline Experiments
 
-为了让知识图谱的上下文提取在实体边数为零时仍能提供类型级别的语义背景，
-本项目内置了 schema.org 完整类型层次（`backend/ontology/resources/schemaorg_nodes.json`，约 1466 个类型）。
+See [`experiments/README.md`](experiments/README.md) for full instructions.
 
-### 一次性导入
-
+**Quick run (EL-DRUIN only, no API key):**
 ```bash
-# 从项目根目录执行（确保已安装 kuzu）：
-python -m backend.ontology.tools.import_schemaorg
-
-# 指定自定义 DB 路径：
-python -m backend.ontology.tools.import_schemaorg --db ./data/el_druin.kuzu
-
-# 仅导入前 100 个类型（测试用）：
-python -m backend.ontology.tools.import_schemaorg --limit 100
-
-# 重置后重新导入（删除旧表再写入）：
-python -m backend.ontology.tools.import_schemaorg --reset
+python experiments/run_baseline.py --skip-gpt
+python experiments/compute_metrics.py
 ```
 
-导入后效果：
-- Kuzu DB 中新增 `SchemaType` 节点表（~1466 个类型节点）和 `SUBTYPE_OF` 关系表（~996 条边）
-- 当实体（如 "Ryder Cup", "Tiger Woods"）在 KG 中无直接关系时，上下文提取器自动回退到 schema.org 类型层次，提供最小可用的类型级背景
-- 日志将显示 `KG fallback – using schema.org type-hierarchy context` 而非 `0 1-hop + 0 2-hop`
-
-### 重新生成 schemaorg_nodes.json
-
-如果需要从最新的 schema.org CSV 重新生成 JSON：
-
+**Full run with GPT-4:**
 ```bash
-# 下载最新 CSV 并放置到：
-# backend/ontology/resources/schemaorg-current-https-types.csv
-# 然后运行：
-python tools/generate_schemaorg_ontology.py
+export OPENAI_API_KEY="sk-..."
+python experiments/run_baseline.py
+python experiments/compute_metrics.py
+```
+
+Results are saved to `experiments/results/` and a Markdown comparison table is written to `experiments/comparison_table.md`.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | Streamlit (Python) |
+| **Backend API** | FastAPI + Uvicorn |
+| **Knowledge Graph** | KuzuDB (embedded) / NetworkX (fallback) |
+| **Reasoning Engine** | Pure Python (NumPy for Lie algebra vectors) |
+| **LLM Integration** | OpenAI API / Groq API (optional rendering pass) |
+| **Testing** | Pytest |
+| **Containerisation** | Docker + Docker Compose |
+
+---
+
+## 📋 Feature Kanban
+
+### Done
+- [x] 18-pattern CARTESIAN_PATTERN_REGISTRY with composition_table and inverse_table
+- [x] Five-stage evented reasoning pipeline
+- [x] Bayesian posterior with step decay (compute_trace_ref in every output)
+- [x] 8D Lie algebra state vectors and Lie-bracket transition scoring
+- [x] Attractor / fixed-point detection
+- [x] Phase transition and bifurcation detection
+- [x] English-only user-facing outputs (CJK -> English mapping layer)
+- [x] CJK leakage guardrail + test
+- [x] Invented entity guardrail + test
+- [x] Numeric consistency guardrail + test
+- [x] KuzuDB knowledge graph with fuzzy entity deduplication
+- [x] Five-tab Streamlit UI
+- [x] Reproducible baseline experiment framework (EL-DRUIN vs GPT-4)
+- [x] 10-sample geopolitical news dataset (public URLs + short excerpts)
+- [x] Comparison metrics table (traceability / stability / constraint compliance)
+
+### In Progress
+- [ ] Demo GIFs / screenshots
+- [ ] Streamlit Cloud deployment
+
+### Planned
+- [ ] Learned pattern vectors (from labelled event data)
+- [ ] Historical backtesting against outcome datasets
+- [ ] Extended composition table (currently ~4% coverage)
+- [ ] Group / Hopf-algebra extension for inverse completion
+- [ ] Multi-horizon forecasting with confidence intervals
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+
+---
+
+## 📚 Citation
+
+If you use EL-DRUIN in your research, please cite:
+
+```bibtex
+@misc{wu2024eldruin,
+  title  = {Ontological Trajectory Forecasting via Finite Semigroup Iteration
+             and Lie Algebra Approximation in Geopolitical Knowledge Graphs},
+  author = {Wu, Qihang},
+  year   = {2024},
+  institution = {The Hong Kong Polytechnic University},
+  url    = {https://github.com/wuqihang-brave/El-druin}
+}
 ```
 
 ---
 
-## 🔬 本体代数验证 / Ontology Algebra Validation
+## 🤝 Contributing
 
-`backend/ontology/relation_schema.py` 实现了基于群论的关系代数验证：
-
-- **逆元一致性**：若模式 A 的逆是 B，则 B 的逆必须是 A。通过 `validate_inverses()` 静态检查。
-- **组合闭包**：`composition_table` 定义了两个模式合成后的高阶效应（Cayley Table），通过 `validate_composition_closure()` 验证引用完整性。
-- **未知实体类型短路**：当实体类型无法推断（返回 `"unknown"`）时，笛卡尔积匹配自动跳过，避免污染推演结果。
-
-应用启动时自动在非严格模式下运行验证（仅记录警告）。在开发环境中启用严格模式：
+Pull requests are welcome. For major changes, please open an issue first.  
+All contributions must pass the existing test suite:
 
 ```bash
-DEBUG=true uvicorn app.main:app --reload --port 8001
-```
-
-手动运行验证：
-
-```python
-from ontology.relation_schema import run_ontology_validation
-run_ontology_validation(strict=False)  # 生产模式：只警告
-run_ontology_validation(strict=True)   # 开发模式：有错误时抛出 ValueError
+PYTHONPATH=backend python -m pytest tests/ -q --ignore=tests/test_deduction_engine.py
 ```
 
 ---
 
-## 🤝 参与贡献 / Contributing
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+*EL-DRUIN — named after the magical sword of pure light in the Forgotten Realms universe, symbolising clarity and verifiability in intelligence analysis.*
