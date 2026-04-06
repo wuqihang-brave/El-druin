@@ -263,6 +263,10 @@ class LieAlgebraSpace:
     PHASE_TRANSITION_THRESHOLD: float = 1.0
 
     # 可交换性判断阈值：bracket_norm < ε 视为近似可交换
+    # 注：COMMUTATIVITY_EPSILON < PHASE_TRANSITION_THRESHOLD，
+    # 因此 0 ≤ bracket_norm < 0.5 → 可交换且不触发相变；
+    # 0.5 ≤ bracket_norm < 1.0 → 不可交换但仍不触发相变（中间区域）；
+    # bracket_norm ≥ 1.0 → 不可交换且触发相变（需同时满足投影跳变条件）
     COMMUTATIVITY_EPSILON: float = 0.5
 
     # 模式组合查找表（与 relation_schema.composition_table 对齐）
@@ -443,7 +447,7 @@ class LieAlgebraSpace:
         v_sum   = self.add(pattern_a, pattern_b)
         bracket = self.bracket(pattern_a, pattern_b)
         b_norm  = float(np.linalg.norm(bracket, "fro"))
-        is_com  = b_norm < self.COMMUTATIVITY_EPSILON
+        is_commutative = b_norm < self.COMMUTATIVITY_EPSILON
 
         # 先查 composition_table
         exact = self._COMPOSITION_LOOKUP.get((pattern_a, pattern_b))
@@ -466,7 +470,7 @@ class LieAlgebraSpace:
         # 人类可读解释
         dominant_sum_idx = int(np.argmax(np.abs(v_sum)))
         dominant_sum_dim = SEMANTIC_DIMS[dominant_sum_idx]
-        comm_note = "（近似可交换）" if is_com else f"（非交换，‖[X_A,X_B]‖_F={b_norm:.2f}）"
+        comm_note = "（近似可交换）" if is_commutative else f"（非交换，‖[X_A,X_B]‖_F={b_norm:.2f}）"
         interp = (
             f"「{pattern_a}」⊕「{pattern_b}」→ 向量叠加主导维度：{dominant_sum_dim}，"
             f"最近模式：「{final_nearest}」（相似度={final_sim:.2f}）{comm_note}"
@@ -486,7 +490,7 @@ class LieAlgebraSpace:
             bracket_norm=b_norm,
             phase_transition=phase,
             interpretation=interp,
-            is_commutative=is_com,
+            is_commutative=is_commutative,
         )
 
     # ------------------------------------------------------------------
