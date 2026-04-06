@@ -1860,6 +1860,88 @@ _NUMERIC_PRECISION = 4
 # Maximum number of allowed entities to include in the rendering prompt
 _MAX_ENTITIES_IN_PROMPT = 10
 
+# Minimum length for a capitalised token to be treated as a proper noun
+_PROPER_NOUN_MIN_LEN = 3
+
+# Stop-words / common sentence starters that must not be mistaken for proper nouns
+_PROPER_NOUN_STOPWORDS: frozenset = frozenset({
+    "The", "A", "An", "This", "That", "These", "Those", "It", "Its",
+    "In", "On", "At", "By", "For", "With", "To", "Of", "As", "If",
+    "And", "But", "Or", "Nor", "So", "Yet", "Both", "Either", "Neither",
+    "Facing", "According", "Based", "Given", "While", "When", "Where",
+    "Under", "Over", "After", "Before", "During", "Since", "Until",
+    "Between", "Among", "Against", "Through", "Without", "Within",
+    "Primary", "Secondary", "Final", "Overall", "Key", "Major", "New",
+    "High", "Low", "Strong", "Weak", "Full", "Large", "Small", "Long",
+    "Short", "Main", "Likely", "Potential", "Possible", "Significant",
+    "Supply", "Trade", "Energy", "Market", "Financial", "Economic",
+    "Military", "Political", "National", "Global", "Regional", "Local",
+    "State", "Government", "Policy", "Security", "Export", "Import",
+    "Sanctions", "Tariffs", "Investment", "Technology", "Alliance",
+    "Conflict", "Pressure", "Escalation", "Tension", "Agreement",
+    "Projected", "Assessed", "Estimated", "Reported", "Confirmed",
+    "Imposed", "Announced", "Warning", "Following", "Continued",
+    # Sentence-starting verbs and common words
+    "Facing", "Citing", "Following", "Amid", "Despite", "Although",
+    "However", "Therefore", "Moreover", "Furthermore", "Additionally",
+    "Analysts", "Officials", "Experts", "Leaders", "Authorities",
+    "Washington", "Beijing", "Moscow", "Brussels", "London",
+    "Supply", "Demand", "Production", "Exports", "Imports",
+    "Corporate", "Private", "Public", "Federal", "Central",
+    "Strategic", "Tactical", "Structural", "Systemic", "Bilateral",
+    "Multilateral", "Unilateral", "International", "Domestic",
+    "Contingent", "Conditional", "Alternative", "Reversal",
+    "Escalation", "Stabilisation", "Stabilization", "Resolution",
+    "Trajectory", "Projection", "Assessment", "Analysis", "Forecast",
+    "Continued", "Ongoing", "Persistent", "Growing", "Rising",
+    "Declining", "Increasing", "Decreasing", "Stable", "Volatile",
+    "Comprehensive", "Sweeping", "Targeted", "Broad", "Narrow",
+    "Imminent", "Immediate", "Near", "Long", "Medium", "Short",
+    "Critical", "Essential", "Important", "Relevant", "Significant",
+    "Potential", "Possible", "Probable", "Likely", "Unlikely",
+    "Expected", "Anticipated", "Predicted", "Forecast", "Projected",
+})
+
+
+def _extract_proper_nouns(text: str) -> frozenset:
+    """Return mid-sentence capitalised tokens from *text* that are likely proper nouns.
+
+    Strategy: split on sentence boundaries, then within each sentence extract
+    tokens that are capitalised but do NOT appear at position 0 (sentence start).
+    Additionally apply a stop-word filter and length filter.
+
+    This approach avoids false-positives from sentence-initial common words like
+    "Supply", "Facing", "Analysts" etc.  It errs on the side of false negatives
+    (missing real proper nouns) to keep guardrail precision high.
+    """
+    import re as _re_pn
+
+    # Split into sentences at . ? ! or newline
+    _sent_splitter = _re_pn.compile(r"(?<=[.?!\n])\s+")
+    sentences = _sent_splitter.split(text.strip())
+
+    tokens: set = set()
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        words = sent.split()
+        # Skip the first word of each sentence (capitalised by grammar, not by proper-noun status)
+        for word in words[1:]:
+            # Strip surrounding punctuation
+            clean = word.strip(".,;:!?\"'()[]{}").rstrip("'s")
+            if len(clean) < _PROPER_NOUN_MIN_LEN:
+                continue
+            if not clean[0].isupper():
+                continue
+            # Must have at least one lowercase letter (exclude ALL-CAPS acronyms like "US", "EU")
+            if not any(c.islower() for c in clean):
+                continue
+            if clean in _PROPER_NOUN_STOPWORDS:
+                continue
+            tokens.add(clean)
+    return frozenset(tokens)
+
 
 def _extract_numeric_values(text: str) -> set:
     """Return all numeric values found in *text* (as rounded floats).
@@ -1926,6 +2008,15 @@ def render_conclusion_with_llm(
         round(composite_confidence, _NUMERIC_PRECISION),
     }
 
+    # Build the full set of "anchored" tokens from which the LLM may draw proper
+    # nouns: (a) the news fragment itself, (b) the explicit allowed_entities list.
+    _anchor_text = news_fragment + " " + " ".join(allowed_entities)
+    _anchor_proper_nouns: frozenset = _extract_proper_nouns(_anchor_text)
+    # Also allow first-word tokens of entity strings (e.g. "United" from "United States")
+    _anchor_words: frozenset = frozenset(
+        w for e in allowed_entities for w in e.split() if len(w) >= _PROPER_NOUN_MIN_LEN
+    )
+
     def _guardrail_check(rendered: str, raw: str) -> str:
         """Return rendered if all guardrails pass, else return raw."""
         nonlocal rendering_meta
@@ -1955,6 +2046,44 @@ def render_conclusion_with_llm(
                 rendering_meta["guardrails_triggered"] = True
                 return raw
 
+        # 4. CJK leakage guard: no CJK characters allowed in rendered output
+        from intelligence.pattern_i18n import has_cjk as _has_cjk
+        if _has_cjk(rendered):
+            logger.debug("Rendering guardrail: CJK characters detected in rendered output")
+            rendering_meta["guardrails_triggered"] = True
+            return raw
+
+        # 5. Invented entity guard: proper nouns not anchored to the news fragment
+        #    or allowed_entities list must not appear in the rendered text.
+        rendered_nouns = _extract_proper_nouns(rendered)
+        # For hyphenated compounds (e.g. "US-China"), check if every component
+        # part that looks like a proper noun is individually anchored — if so,
+        # the compound as a whole is considered anchored (not invented).
+        _all_anchor = _anchor_proper_nouns | _anchor_words
+        _all_anchor_lower = frozenset(a.lower() for a in _all_anchor)
+        truly_invented: set = set()
+        for noun in rendered_nouns:
+            if noun in _all_anchor:
+                continue  # directly anchored
+            # Check hyphenated compound: all alphabetic parts must be anchored
+            parts = [p for p in noun.split("-") if p]
+            if parts and all(
+                p.lower() in _all_anchor_lower
+                # Allow ALL-CAPS acronyms (e.g. "US", "EU", "NATO") in compounds
+                or all(c.isupper() or not c.isalpha() for c in p)
+                for p in parts
+            ):
+                continue  # all parts are anchored → whole compound is anchored
+            truly_invented.add(noun)
+        if truly_invented:
+            logger.debug(
+                "Rendering guardrail: invented proper nouns %s not in anchor set",
+                truly_invented,
+            )
+            rendering_meta["guardrails_triggered"] = True
+            rendering_meta["invented_entities"] = sorted(truly_invented)
+            return raw
+
         return rendered
 
     if llm_service is None:
@@ -1980,6 +2109,9 @@ policymaker could read without knowing what "ontology" or "Bayesian" means.
 [ORIGINAL NEWS FRAGMENT — you MUST anchor your output to named actors and events from here]
 {news_fragment[:800]}
 
+[ALLOWED ENTITIES — you may only reference proper nouns from this list or the news fragment above]
+{entities_str}
+
 [DETERMINISTIC ASSESSMENTS — probability values are locked and must not change]
 Evidence path (most likely, p={alpha_prob:.0%}): {evidence_summary_raw}
 Hypothesis path (contingent, p={beta_prob:.0%}): {hypothesis_summary_raw}
@@ -1995,7 +2127,10 @@ Verification gaps: {gaps_str}
 4. Preserve probability values exactly (e.g. {alpha_prob:.0%} stays {alpha_prob:.0%}).
 5. Do NOT mention "ontology", "Bayesian", "confidence calibration", "pattern", "mechanism", or any internal jargon.
 6. Do NOT add a sentence explaining how confidence was calculated — that belongs in the Probability Tree tab.
-7. Output ONLY valid JSON in this exact format, nothing else:
+7. CRITICAL: Do NOT introduce any proper noun (person, place, organisation, facility) that does not
+   appear in the news fragment or the allowed entities list above. Any invented proper noun will
+   cause automatic fallback to a deterministic conclusion.
+8. Output ONLY valid JSON in this exact format, nothing else:
 {{"executive_judgement": "...", "evidence_path_summary": "...", "hypothesis_path_summary": "..."}}
 """
 
