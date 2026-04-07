@@ -1732,6 +1732,9 @@ def _generate_conclusion_text(
 
     The output is ALWAYS a plain English string — never a dict or JSON blob.
     """
+    if llm_service is None:
+        return _fallback_conclusion_text(alpha_path, beta_path, driving_factors, composite_confidence)
+
     alpha_outcome_phrase = _outcome_phrase(
         alpha_path.get("primary_outcome", "structural_realignment")
     )
