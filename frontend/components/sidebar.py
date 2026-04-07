@@ -42,9 +42,9 @@ import streamlit as st
 _INLINE_LABELS: list[str] = [
     "🏠 Home",
     "📝 Custom Analysis",
-    "📰 Intelligence Feed",
-    "🕸 KG Tools",
     "🔮 Forecast",
+    "🕸 KG Tools",
+    "📰 Intelligence Feed",
 ]
 
 # Pages living in the pages/ directory – (label, bootstrap-icon, relative path from root)
@@ -59,9 +59,9 @@ _ALL_LABELS: list[str] = _INLINE_LABELS + _EXTERNAL_LABELS
 _ALL_ICONS: list[str] = [
     "house-fill",      # Home
     "pencil-square",   # Custom Analysis
-    "newspaper",       # Intelligence Feed
-    "diagram-3-fill",  # KG Tools
     "broadcast",       # Forecast
+    "diagram-3-fill",  # KG Tools
+    "newspaper",       # Intelligence Feed
     "binoculars-fill", # Logic Audit
     "stars",           # Oracle Lab
 ]

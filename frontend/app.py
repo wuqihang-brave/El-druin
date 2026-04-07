@@ -2,15 +2,10 @@
 EL'druin Intelligence Platform – Streamlit Frontend v2
 =======================================================
 
-修复说明 (v2)：
-  - 所有页面名称改回简体中文，与 render_sidebar_navigation() 返回值严格一致：
-      "🏠 主页" / "📰 实时新闻" / "🕸 知识图谱" / "⚙️ 系统状态"
-  - 去除繁体字、全角符号、多余空格，防止 page == "..." 判断失效
-
-v2 功能：
-  1. 首页：突出因果链 + 推演结果，Tab 结构展示
-  2. 实时新闻：每条新闻带「执行本体推演」直达按钮
-  3. 知识图谱：新增「🧮 笛卡尔积诊断」Tab
+v2 features:
+  1. Home: highlights causal chain + deduction results, Tab-based layout
+  2. Intelligence Feed: each article has a "Run Ontological Analysis" shortcut button
+  3. KG Tools: includes Cartesian Pattern Diagnostic tab
 """
 
 import logging
@@ -169,7 +164,7 @@ def get_graph_context_for_news(query_text: str) -> str:
     import kuzu
     db_path = "./data/kuzu_db.db"
     if not os.path.exists(db_path):
-        return "数据库尚未初始化。"
+        return "Database not yet initialised."
     try:
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
@@ -183,10 +178,10 @@ def get_graph_context_for_news(query_text: str) -> str:
             res = conn.execute(cypher)
             while res.has_next():
                 row = res.get_next()
-                context_facts.append(f"- 事实: {row[0]} --[{row[1]}]--> {row[2]} (权重: {row[3]})")
-        return "\n".join(set(context_facts)) if context_facts else "未找到关联图谱事实。"
+                context_facts.append(f"- Fact: {row[0]} --[{row[1]}]--> {row[2]} (weight: {row[3]})")
+        return "\n".join(set(context_facts)) if context_facts else "No related graph facts found."
     except Exception as e:
-        return f"查询提示: {str(e)}"
+        return f"Graph query note: {str(e)}"
 
 
 # ---------------------------------------------------------------------------
@@ -284,10 +279,10 @@ def render_graph(data: Dict[str, Any]) -> None:
     raw_nodes: List[Dict[str, Any]] = data.get("nodes", []) if data else []
     raw_edges: List[Dict[str, Any]] = data.get("edges", []) if data else []
     if not raw_nodes and not raw_edges:
-        st.info("📭 暂无图谱数据。")
+        st.info("📭 No graph data available.")
         return
     if not _AGRAPH_AVAILABLE:
-        st.warning("⚠️ `streamlit-agraph` 未安装，无法显示交互图谱。")
+        st.warning("⚠️ `streamlit-agraph` is not installed. Interactive graph is unavailable.")
         return
     degree: Dict[str, int] = {}
     for edge in raw_edges:
@@ -314,7 +309,7 @@ def render_graph(data: Dict[str, Any]) -> None:
         for e in raw_edges if e.get("from") and e.get("to")
     ]
     if not ag_nodes:
-        st.info("📭 节点数据为空。")
+        st.info("📭 No node data found.")
         return
     try:
         config = Config(
@@ -648,7 +643,7 @@ if page == "🏠 Home":
                                 st.write(f"- {f}")
                     else:
                         _fallback = get_graph_context_for_news(_sel_title + " " + _sel_desc)
-                        if _fallback and "未找到" not in _fallback:
+                        if _fallback and "No related" not in _fallback:
                             st.text(_fallback)
                         else:
                             st.info("No explicit evidence retrieved from the ontology graph. Check KuzuDB sync and backend reasoning logic.")
@@ -1279,7 +1274,12 @@ elif page == "📰 Intelligence Feed":
         data = _api.get_latest_news(limit=limit, hours=hours)
 
     if "error" in data:
-        st.error(f"❌ Could not fetch news: {data['error']}\n\nEnsure the backend is running.")
+        st.warning(
+            "⚠️ Backend is currently unavailable. Intelligence Feed requires a running backend.\n\n"
+            "To run locally: `cd backend && uvicorn app.main:app --port 8000`"
+        )
+        if st.button("🔄 Retry", key="feed_retry"):
+            st.rerun()
     else:
         articles: List[Dict[str, Any]] = data.get("articles", [])
         if search_query:
@@ -1752,7 +1752,11 @@ elif page == "🕸 KG Tools":
             _schema_available = True
         except ImportError:
             _schema_available = False
-            st.warning("⚠️ `ontology/relation_schema.py` not found. Ensure the backend module is deployed.")
+            st.info(
+                "🔌 Connect to a running backend to use this feature.\n\n"
+                "The Cartesian Diagnostic requires the backend ontology module. "
+                "To run locally: `cd backend && uvicorn app.main:app --port 8000`"
+            )
 
         if _schema_available:
             _e_types = [e.value for e in EntityType]

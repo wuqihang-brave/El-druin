@@ -42,6 +42,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+try:
+    from intelligence.pattern_i18n import display_pattern as _display_pattern  # type: ignore
+except ImportError:
+    def _display_pattern(name: str) -> str:  # type: ignore[misc]
+        return name
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -231,7 +237,7 @@ def run_forecast(
 
         simulation_steps.append({
             "step":            step,
-            "active_patterns": new_active,
+            "active_patterns": [_display_pattern(p) for p in new_active],
             "state_vector":    {
                 "mean": [round(float(v), 4) for v in curr_vector.tolist()],
                 "delta_norm": round(delta_norm, 4),
@@ -254,7 +260,7 @@ def run_forecast(
     for pat_name, first_step in sorted(attractor_candidates.items(), key=lambda x: x[1]):
         conf = round(init_conf * (_DECAY ** first_step), 4)
         all_attractors.append({
-            "name":            pat_name,
+            "name":            _display_pattern(pat_name),
             "domain":          _get_pattern_domain(pat_name),
             "first_step":      first_step,
             "final_probability": conf,
@@ -266,7 +272,7 @@ def run_forecast(
         max(all_attractors, key=lambda a: a["final_probability"])
         if all_attractors
         else {
-            "name":              active[0] if active else "unknown",
+            "name":              _display_pattern(active[0]) if active else "unknown",
             "domain":            _get_pattern_domain(active[0]) if active else "general",
             "first_step":        len(simulation_steps),
             "final_probability": round(init_conf * (_DECAY ** len(simulation_steps)), 4),
@@ -388,11 +394,12 @@ def find_attractors(domain: Optional[str] = None) -> List[Dict[str, Any]]:
                 continue
             conf = _get_pattern_confidence(pa)
             attractors.append({
-                "name":        pa,
+                "name":        _display_pattern(pa),
                 "domain":      pat_domain,
                 "probability": round(conf, 3),
                 "description": (
-                    f"[{pa}] is an idempotent element: compose({pa}, {pa}) = {pa}. "
+                    f"[{_display_pattern(pa)}] is an idempotent element: "
+                    f"compose({_display_pattern(pa)}, {_display_pattern(pa)}) = {_display_pattern(pa)}. "
                     f"It represents a self-reinforcing terminal state in the semi-group."
                 ),
             })
@@ -407,11 +414,11 @@ def find_attractors(domain: Optional[str] = None) -> List[Dict[str, Any]]:
                     continue
                 if pat.confidence_prior >= 0.70:
                     attractors.append({
-                        "name":        pat.pattern_name,
+                        "name":        _display_pattern(pat.pattern_name),
                         "domain":      pat_domain,
                         "probability": round(pat.confidence_prior, 3),
                         "description": (
-                            f"[{pat.pattern_name}] is a high-confidence stable pattern "
+                            f"[{_display_pattern(pat.pattern_name)}] is a high-confidence stable pattern "
                             f"(prior={pat.confidence_prior:.0%}) that may serve as an attractor."
                         ),
                     })
@@ -427,8 +434,13 @@ def find_attractors(domain: Optional[str] = None) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def get_preset_scenarios() -> List[Dict[str, Any]]:
-    """Return all preset scenarios."""
-    return _PRESET_SCENARIOS
+    """Return all preset scenarios with English pattern names."""
+    result = []
+    for sc in _PRESET_SCENARIOS:
+        sc_copy = dict(sc)
+        sc_copy["initial_patterns"] = [_display_pattern(p) for p in sc.get("initial_patterns", [])]
+        result.append(sc_copy)
+    return result
 
 
 def get_scenario_by_id(scenario_id: str) -> Optional[Dict[str, Any]]:
