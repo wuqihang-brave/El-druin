@@ -859,7 +859,7 @@ with tab_hierarchy:
                                 label=node_id,
                                 size=size,
                                 color=color,
-                                title=f"{node_id}\nType: {node['type']}\nDegree: {node_degree}\nTier: {tier}",
+                                title=f"{node_id}\nType: {node.get('type', 'Unknown')}\nDegree: {node_degree}\nTier: {tier}",
                             )
                         )
 

@@ -45,6 +45,10 @@ import numpy as np
 try:
     from intelligence.pattern_i18n import display_pattern as _display_pattern  # type: ignore
 except ImportError:
+    logger.warning(
+        "intelligence.pattern_i18n not available; pattern names will not be translated to English"
+    )
+
     def _display_pattern(name: str) -> str:  # type: ignore[misc]
         return name
 

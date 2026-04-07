@@ -214,13 +214,13 @@ def calculate_systemic_order_score(
 
 
 def get_order_status(score: float) -> str:
-    """根据秩序评分返回状态描述。
+    """Return a status label for the given order score.
 
     Args:
-        score: 0-100 的秩序评分
+        score: 0-100 order score
 
     Returns:
-        带图标的中文状态描述
+        Icon-prefixed English status description
     """
     if score < 30:
         return "🔴 Chaotic"
