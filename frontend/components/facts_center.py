@@ -124,7 +124,7 @@ def render_facts_center(top_5_news: List[Dict[str, Any]]) -> None:
     st.subheader("📰 Top 5 Structural News")
 
     if not top_5_news:
-        st.info("▶ 点击「🧠 Ingest Intelligence」以加载最新结构性新闻。")
+        st.info("▶ Click '🧠 Ingest Intelligence' to load the latest structural news.")
         return
 
     for idx, news in enumerate(top_5_news[:5], 1):

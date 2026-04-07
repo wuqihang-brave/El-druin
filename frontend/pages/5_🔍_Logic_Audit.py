@@ -43,11 +43,17 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 _backend_url_raw = os.environ.get("BACKEND_URL")
 if not _backend_url_raw:
-    raise RuntimeError(
-        "BACKEND_URL environment variable is not set. "
-        "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com/api/v1"
+    try:
+        from components.sidebar import render_sidebar_navigation  # noqa: E402
+        render_sidebar_navigation(is_subpage=True)
+    except Exception:
+        pass
+    st.info(
+        "Logic Audit requires a running backend. Start the backend to use this feature.\n\n"
+        "To run locally: `cd backend && uvicorn app.main:app --port 8000`\n\n"
+        "Then set the `BACKEND_URL` environment variable to point to it."
     )
+    st.stop()
 _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
 

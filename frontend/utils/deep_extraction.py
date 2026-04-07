@@ -113,7 +113,7 @@ def extract_causal_chains(news_text: str, api_client: "APIClient") -> Dict[str, 
     try:
         resp = api_client.extract_causal_chains(news_text)
         if "error" in resp:
-            logger.warning("因果链 API 返回错误: %s", resp["error"])
+            logger.warning("Causal chain API returned error: %s", resp["error"])
             return _EMPTY
         return {
             "entities": resp.get("entities", []),
@@ -122,7 +122,7 @@ def extract_causal_chains(news_text: str, api_client: "APIClient") -> Dict[str, 
             "overall_order_score": resp.get("overall_order_score", 50),
         }
     except Exception as exc:
-        logger.error("因果链提取调用失败: %s", exc)
+        logger.error("Causal chain extraction call failed: %s", exc)
         return _EMPTY
 
 
@@ -142,7 +142,7 @@ def visualize_confidence(causal_chains: List[Dict[str, Any]]) -> None:
     import streamlit as st
 
     if not causal_chains:
-        st.info("📭 暂无因果链数据。")
+        st.info("📭 No causal chain data available.")
         return
 
     try:
@@ -151,15 +151,15 @@ def visualize_confidence(causal_chains: List[Dict[str, Any]]) -> None:
         # Build chart data – truncate long chain labels
         chart_data = pd.DataFrame([
             {
-                "因果链": (c.get("chain") or f"Chain {i + 1}")[:40],
-                "置信度": float(c.get("confidence", 0.0)),
+                "Causal Chain": (c.get("chain") or f"Chain {i + 1}")[:40],
+                "Confidence": float(c.get("confidence", 0.0)),
             }
             for i, c in enumerate(causal_chains)
-        ]).set_index("因果链")
+        ]).set_index("Causal Chain")
 
         st.bar_chart(chart_data, height=200)
     except ImportError:
-        st.warning("⚠️ pandas 不可用，无法渲染置信度图表。")
+        st.warning("⚠️ pandas is not available; confidence chart cannot be rendered.")
 
     # Summary metrics
     avg_confidence = sum(float(c.get("confidence", 0)) for c in causal_chains) / len(causal_chains)
@@ -214,20 +214,20 @@ def calculate_systemic_order_score(
 
 
 def get_order_status(score: float) -> str:
-    """根据秩序评分返回状态描述。
+    """Return a status label for the given order score.
 
     Args:
-        score: 0-100 的秩序评分
+        score: 0-100 order score
 
     Returns:
-        带图标的中文状态描述
+        Icon-prefixed English status description
     """
     if score < 30:
-        return "🔴 混沌状态"
+        return "🔴 Chaotic"
     elif score < 60:
-        return "🟡 过渡状态"
+        return "🟡 Transitional"
     else:
-        return "🟢 可控秩序"
+        return "🟢 Ordered"
 
 
 def calculate_signal_noise_ratio(

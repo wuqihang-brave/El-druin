@@ -233,6 +233,7 @@ if st.session_state.oracle_running:
                 "Check that the backend intelligence package is installed."
             )
             st.session_state.oracle_running = False
+            st.stop()
         else:
             try:
                 result = simulator.run(st.session_state.oracle_seed_event)

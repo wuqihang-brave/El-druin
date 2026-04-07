@@ -1,15 +1,15 @@
 """
-知识图谱页面 – 文本提取、可视化、Cypher 查询
-================================================
+KG Tools – Text Extraction, Visualisation, Cypher Query
+========================================================
 
-功能:
-  Tab 1 - 📝 文本提取: 输入文本 → 提取实体/关系 → 显示 Metrics 和表格
-  Tab 2 - 🕸️ 图谱可视化: NetworkX 构建图 + streamlit-agraph 交互展示
+Features:
+  Tab 1 - 📝 Text Extraction: input text → extract entities/relations → show metrics
+  Tab 2 - 🕸️ Graph Visualisation: NetworkX + streamlit-agraph interactive display
   Tab 3 - 🌈 Ontology Graph: 3-column layout with ontology class filters
-  Tab 4 - 🎚️ 层级图谱: Degree-filtered hierarchical graph
-  Tab 5 - 💬 Cypher 查询: 输入 Cypher → 执行 → 显示 DataFrame 结果
+  Tab 4 - 🎚️ Hierarchical Graph: Degree-filtered hierarchical graph
+  Tab 5 - 💬 Cypher Query: input Cypher → execute → show DataFrame
 
-使用 st.session_state 缓存提取结果，避免重复调用后端。
+Uses st.session_state to cache extraction results.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from components.ontological_panel import render_ontological_significance  # noqa
 # Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="知识图谱 – EL-DRUIN",
+    page_title="KG Tools – EL-DRUIN",
     page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -64,11 +64,17 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 _backend_url_raw = os.environ.get("BACKEND_URL")
 if not _backend_url_raw:
-    raise RuntimeError(
-        "BACKEND_URL environment variable is not set. "
-        "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com/api/v1"
+    try:
+        from components.sidebar import render_sidebar_navigation  # noqa: E402
+        render_sidebar_navigation(is_subpage=True)
+    except Exception:
+        pass
+    st.info(
+        "KG Tools requires a running backend. Start the backend to use this feature.\n\n"
+        "To run locally: `cd backend && uvicorn app.main:app --port 8000`\n\n"
+        "Then set the `BACKEND_URL` environment variable to point to it."
     )
+    st.stop()
 _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
 
@@ -155,12 +161,12 @@ st.markdown(
           <circle cx="20" cy="15" r="2" fill="#0047AB"/>
         </svg>
         <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
-                   font-family:'Inter',sans-serif;">知识图谱</h1>
+                   font-family:'Inter',sans-serif;">KG Tools</h1>
     </div>
     """,
     unsafe_allow_html=True,
 )
-st.caption("从文本中提取实体与关系，可视化知识图谱，并通过 Cypher 查询探索数据。")
+st.caption("Extract entities and relations from text, visualise the Knowledge Graph, and explore data via Cypher query.")
 
 st.divider()
 
@@ -168,18 +174,18 @@ st.divider()
 # Tabs
 # ===========================================================================
 tab_extract, tab_viz, tab_onto, tab_hierarchy, tab_query = st.tabs(
-    ["📝 文本提取", "🕸️ 图谱可视化", "🌈 Ontology Graph", "🎚️ 层级图谱", "💬 Cypher 查询"]
+    ["📝 Text Extraction", "🕸️ Graph Visualisation", "🌈 Ontology Graph", "🎚️ Hierarchical Graph", "💬 Cypher Query"]
 )
 
 # ===========================================================================
-# Tab 1 – 文本提取
+# Tab 1 – Text Extraction
 # ===========================================================================
 with tab_extract:
-    st.subheader("📝 从文本中提取知识")
+    st.subheader("📝 Extract Knowledge from Text")
 
     input_text = st.text_area(
-        "输入新闻文本",
-        placeholder="请粘贴新闻文章内容（10 – 10000 字符）…",
+        "News article text",
+        placeholder="Paste a news article (10 – 10000 characters)…",
         height=180,
         max_chars=10000,
         key="extract_input_text",
@@ -189,7 +195,7 @@ with tab_extract:
     with col_btn:
         do_extract = st.button("⚔️ Manifest Knowledge", type="primary", key="btn_extract")
     with col_clear:
-        if st.button("🗑️ 清除结果", key="btn_clear_extract"):
+        if st.button("🗑️ Clear results", key="btn_clear_extract"):
             st.session_state.kg_extract_result = {}
             st.rerun()
 
@@ -197,17 +203,17 @@ with tab_extract:
     if do_extract:
         text_stripped = (input_text or "").strip()
         if len(text_stripped) < 10:
-            st.warning("⚠️ 文本太短，至少需要 10 个字符。")
+            st.warning("⚠️ Text is too short. Minimum 10 characters required.")
         else:
-            with st.spinner("🔍 正在提取实体和关系…"):
+            with st.spinner("🔍 Extracting entities and relations…"):
                 result = _api.extract_knowledge(text_stripped)
             if result.get("status") == "error" or (
                 "error" in result and "entities" not in result
             ):
-                st.error(f"❌ 提取失败：{result.get('error', '未知错误')}")
+                st.error(f"❌ Extraction failed: {result.get('error', 'Unknown error')}")
             else:
                 st.session_state.kg_extract_result = result
-                st.success("✅ 提取完成！结果已缓存。")
+                st.success("✅ Extraction complete! Results cached.")
 
     # Display cached results
     cached = st.session_state.kg_extract_result
@@ -217,75 +223,75 @@ with tab_extract:
         # Triples = relations expressed as (subject, predicate, object)
         triples = [
             {
-                "主体 (Subject)": r.get("subject", ""),
-                "关系 (Predicate)": r.get("predicate", ""),
-                "客体 (Object)": r.get("object", ""),
+                "Subject": r.get("subject", ""),
+                "Predicate": r.get("predicate", ""),
+                "Object": r.get("object", ""),
             }
             for r in relations
         ]
 
         # ── Metrics ──────────────────────────────────────────────────────────
-        st.markdown("#### 📊 提取摘要")
+        st.markdown("#### 📊 Extraction Summary")
         m1, m2, m3 = st.columns(3)
-        m1.metric("🔵 实体数", len(entities))
-        m2.metric("🔗 关系数", len(relations))
-        m3.metric("📐 三元组数", len(triples))
+        m1.metric("🔵 Entities", len(entities))
+        m2.metric("🔗 Relations", len(relations))
+        m3.metric("📐 Triples", len(triples))
 
         st.divider()
 
         # ── Entities table ────────────────────────────────────────────────────
-        st.markdown("#### 📋 提取的实体")
+        st.markdown("#### 📋 Extracted Entities")
         if entities:
             df_entities = pd.DataFrame(
                 [
                     {
-                        "名称": e.get("name", ""),
-                        "类型": e.get("type", ""),
-                        "描述": e.get("description", ""),
-                        "置信度": round(float(e.get("confidence", 0)), 3),
+                        "Name": e.get("name", ""),
+                        "Type": e.get("type", ""),
+                        "Description": e.get("description", ""),
+                        "Confidence": round(float(e.get("confidence", 0)), 3),
                     }
                     for e in entities
                 ]
             )
             st.dataframe(df_entities, use_container_width=True, height=250)
         else:
-            st.info("未提取到实体。")
+            st.info("No entities extracted.")
 
         # ── Relations table ───────────────────────────────────────────────────
-        st.markdown("#### 🔗 提取的关系")
+        st.markdown("#### 🔗 Extracted Relations")
         if relations:
             df_relations = pd.DataFrame(
                 [
                     {
-                        "源 (Subject)": r.get("subject", ""),
-                        "关系类型 (Predicate)": r.get("predicate", ""),
-                        "目标 (Object)": r.get("object", ""),
+                        "Subject": r.get("subject", ""),
+                        "Predicate": r.get("predicate", ""),
+                        "Object": r.get("object", ""),
                     }
                     for r in relations
                 ]
             )
             st.dataframe(df_relations, use_container_width=True, height=250)
         else:
-            st.info("未提取到关系。")
+            st.info("No relations extracted.")
 
         # ── Triples table ─────────────────────────────────────────────────────
         if triples:
-            st.markdown("#### 📐 三元组列表")
+            st.markdown("#### 📐 Triple List")
             st.dataframe(pd.DataFrame(triples), use_container_width=True, height=200)
 
     elif not do_extract:
-        st.info("👆 在上方输入文本，然后点击「🔄 提取并存储」按钮开始提取。")
+        st.info("👆 Enter text above and click '⚔️ Manifest Knowledge' to begin extraction.")
 
 # ===========================================================================
-# Tab 2 – 图谱可视化
+# Tab 2 – Graph Visualisation
 # ===========================================================================
 with tab_viz:
-    st.subheader("🕸️ 知识图谱可视化")
+    st.subheader("🕸️ Knowledge Graph Visualisation")
 
     # ── Data source selector ─────────────────────────────────────────────────
     data_source = st.radio(
-        "数据来源",
-        ["使用提取结果（Tab 1）", "从图数据库加载"],
+        "Data Source",
+        ["Use extraction results (Tab 1)", "Load from graph database"],
         horizontal=True,
         key="viz_data_source",
     )
@@ -293,7 +299,7 @@ with tab_viz:
     viz_entities: List[Dict[str, Any]] = []
     viz_relations: List[Dict[str, Any]] = []
 
-    if data_source == "使用提取结果（Tab 1）":
+    if data_source == "Use extraction results (Tab 1)":
         cached_viz = st.session_state.kg_extract_result
         if cached_viz:
             viz_entities = cached_viz.get("entities", [])
@@ -307,15 +313,15 @@ with tab_viz:
                 for r in cached_viz.get("relations", [])
             ]
         else:
-            st.info("👆 请先在「📝 文本提取」标签中提取知识，或切换到「从图数据库加载」。")
+            st.info("👆 Please extract knowledge in the '📝 Text Extraction' tab first, or switch to 'Load from graph database'.")
     else:
-        with st.spinner("📡 正在从数据库加载实体和关系…"):
+        with st.spinner("📡 Loading entities and relations from database…"):
             ent_resp = _api.get_kg_entities(limit=200)
             rel_resp = _api.get_kg_relations(limit=300)
         if "error" in ent_resp:
-            st.error(f"❌ 加载实体失败：{ent_resp['error']}")
+            st.error(f"❌ Failed to load entities: {ent_resp['error']}")
         elif "error" in rel_resp:
-            st.error(f"❌ 加载关系失败：{rel_resp['error']}")
+            st.error(f"❌ Failed to load relations: {rel_resp['error']}")
         else:
             viz_entities = ent_resp.get("entities", [])
             viz_relations = rel_resp.get("relations", [])
@@ -350,7 +356,7 @@ with tab_viz:
                 G.add_edge(src, tgt, label=rel)
 
         st.caption(
-            f"图谱共 **{G.number_of_nodes()}** 个节点，**{G.number_of_edges()}** 条边"
+            f"Graph: **{G.number_of_nodes()}** nodes · **{G.number_of_edges()}** edges"
         )
 
         # ── Colour legend ─────────────────────────────────────────────────────
@@ -378,7 +384,7 @@ with tab_viz:
                         label=node_name,
                         size=20,
                         color=color,
-                        title=f"{node_name}\n类型: {etype}",
+                        title=f"{node_name}\nType: {etype}",
                     )
                 )
             for src, tgt, data in G.edges(data=True):
@@ -438,7 +444,7 @@ with tab_viz:
                     ),
                 ],
                 layout=go.Layout(
-                    title={"text": "知识图谱网络图", "font": {"color": "#0047AB"}},
+                    title={"text": "Knowledge Graph", "font": {"color": "#0047AB"}},
                     showlegend=False,
                     hovermode="closest",
                     paper_bgcolor="#F0F8FF",
@@ -451,20 +457,20 @@ with tab_viz:
             )
             st.plotly_chart(fig_net, use_container_width=True)
 
-    elif data_source == "从图数据库加载":
+    elif data_source == "Load from graph database":
         if "error" not in _api.get_kg_stats():
             st.info(
-                "📭 **图谱中暂无数据。**\n\n"
-                "请先通过「📝 文本提取」标签添加知识，或点击下方按钮注入示例数据。"
+                "📭 **No data in the graph yet.**\n\n"
+                "Add knowledge via the '📝 Text Extraction' tab, or click the button below to inject sample data."
             )
-            if st.button("🌱 注入示例三元组", key="btn_seed_viz", type="primary"):
-                with st.spinner("正在注入示例数据…"):
+            if st.button("🌱 Inject Sample Triples", key="btn_seed_viz", type="primary"):
+                with st.spinner("Injecting sample data…"):
                     seed_resp = _api.seed_knowledge_graph()
                 if seed_resp.get("status") == "ok":
-                    st.success(seed_resp.get("message", "示例数据注入成功。"))
+                    st.success(seed_resp.get("message", "Sample data injected successfully."))
                     st.rerun()
                 else:
-                    st.error(f"注入失败：{seed_resp.get('error', seed_resp)}")
+                    st.error(f"Injection failed: {seed_resp.get('error', seed_resp)}")
 
 # ===========================================================================
 # Tab 3 – 🌈 Ontology Graph (3-column layout with color-coded nodes)
@@ -496,7 +502,7 @@ with tab_onto:
             "📭 **No entities found in the knowledge graph.**\n\n"
             "The ontology graph requires data in the database before it can be "
             "displayed. You can:\n"
-            "- Extract knowledge from a text in the **📝 文本提取** tab\n"
+            "- Extract knowledge from a text in the **📝 Text Extraction** tab\n"
             "- Seed the graph with example data using the button below"
         )
         if st.button("🌱 Seed Example Data", key="btn_seed_onto", type="primary"):
@@ -738,11 +744,11 @@ with tab_onto:
             )
 
 # ===========================================================================
-# Tab 4 – 层级图谱 (Hierarchical Graph)
+# Tab 4 – Hierarchical Graph
 # ===========================================================================
 with tab_hierarchy:
     st.subheader("🎚️ Hierarchical Knowledge Graph")
-    st.caption("通过度数过滤器调整节点可见性，点击节点查看其「秩序叙事」。")
+    st.caption("Adjust node visibility using the degree filter. Click a node to view its Order Narrative.")
 
     # ── Session state initialisation ─────────────────────────────────────
     if "hg_min_degree" not in st.session_state:
@@ -765,7 +771,7 @@ with tab_hierarchy:
                 min_value=0,
                 max_value=50,
                 value=st.session_state.hg_min_degree,
-                help="只显示度数 ≥ 此值的节点",
+                help="Show only nodes with degree ≥ this value.",
                 key="hg_slider_min",
             )
             st.session_state.hg_min_degree = hg_min
@@ -775,7 +781,7 @@ with tab_hierarchy:
                 min_value=0,
                 max_value=100,
                 value=st.session_state.hg_max_degree,
-                help="只显示度数 ≤ 此值的节点",
+                help="Show only nodes with degree ≤ this value.",
                 key="hg_slider_max",
             )
             st.session_state.hg_max_degree = hg_max
@@ -820,7 +826,7 @@ with tab_hierarchy:
                 if total_nodes == 0 and st.session_state.hg_min_degree == 0:
                     st.info(
                         "📭 **The knowledge graph is empty.**\n\n"
-                        "Add data by extracting knowledge in the **📝 文本提取** tab "
+                        "Add data by extracting knowledge in the **📝 Text Extraction** tab "
                         "or seed the graph with example triples:"
                     )
                     if st.button("🌱 Seed Example Data", key="btn_seed_hg", type="primary"):
@@ -853,7 +859,7 @@ with tab_hierarchy:
                                 label=node_id,
                                 size=size,
                                 color=color,
-                                title=f"{node_id}\nType: {node['type']}\nDegree: {node_degree}\nTier: {tier}",
+                                title=f"{node_id}\nType: {node.get('type', 'Unknown')}\nDegree: {node_degree}\nTier: {tier}",
                             )
                         )
 
@@ -976,15 +982,15 @@ with tab_hierarchy:
             )
 
 # ===========================================================================
-# Tab 4 – Cypher 查询
+# Tab 5 – Cypher Query
 # ===========================================================================
 with tab_query:
-    st.subheader("💬 Cypher 查询")
-    st.caption("仅 Kuzu 后端支持 Cypher 查询（需设置 `GRAPH_BACKEND=kuzu`）。")
+    st.subheader("💬 Cypher Query")
+    st.caption("Cypher queries are supported with KuzuDB backend (`GRAPH_BACKEND=kuzu`).")
 
     default_cypher = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
     cypher_input = st.text_area(
-        "Cypher 查询语句",
+        "Cypher query",
         value=st.session_state.kg_query_text or default_cypher,
         height=120,
         key="cypher_query_input",
@@ -993,9 +999,9 @@ with tab_query:
 
     col_run, col_clr = st.columns([1, 5])
     with col_run:
-        run_query = st.button("▶ 执行查询", type="primary", key="btn_run_query")
+        run_query = st.button("▶ Run Query", type="primary", key="btn_run_query")
     with col_clr:
-        if st.button("🗑️ 清除结果", key="btn_clear_query"):
+        if st.button("🗑️ Clear results", key="btn_clear_query"):
             st.session_state.kg_query_result = []
             st.session_state.kg_query_text = ""
             st.rerun()
@@ -1003,20 +1009,20 @@ with tab_query:
     if run_query:
         query_stripped = (cypher_input or "").strip()
         if not query_stripped:
-            st.warning("⚠️ 请输入 Cypher 查询语句。")
+            st.warning("⚠️ Please enter a Cypher query.")
         else:
             st.session_state.kg_query_text = query_stripped
-            with st.spinner("⏳ 正在执行查询…"):
+            with st.spinner("⏳ Running query…"):
                 query_resp = _api.run_kg_query(query_stripped)
             if "error" in query_resp and "results" not in query_resp:
-                st.error(f"❌ 查询失败：{query_resp['error']}")
+                st.error(f"❌ Query failed: {query_resp['error']}")
             else:
                 results = query_resp.get("results", [])
                 st.session_state.kg_query_result = results
                 if results:
-                    st.success(f"✅ 返回 {len(results)} 条结果。")
+                    st.success(f"✅ {len(results)} result(s) returned.")
                 else:
-                    st.info("查询成功，但无结果。")
+                    st.info("Query succeeded, but no results found.")
 
     # Display cached query results
     cached_qr = st.session_state.kg_query_result
