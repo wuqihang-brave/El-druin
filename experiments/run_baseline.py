@@ -2,7 +2,7 @@
 """
 experiments/run_baseline.py
 ============================
-Reproducible baseline comparison experiment for EL-DRUIN vs GPT-4.
+Reproducible baseline comparison experiment for EL-DRUIN vs GPT-4 / GPT-5.1.
 
 Usage
 -----
@@ -12,18 +12,24 @@ Usage
 
 For each news sample in news_samples.jsonl the script:
 1. Runs the EL-DRUIN evented pipeline (deterministic, no API key required).
-2. Runs the GPT-4 baseline N=5 times with an identical analytical prompt.
+2. Runs the GPT baseline N=5 times with an identical analytical prompt.
 3. Saves all outputs as JSON under experiments/results/.
 
 The run is designed to be reproducible: the EL-DRUIN output is deterministic
-(same input → same output always) while the GPT-4 outputs demonstrate the
+(same input → same output always) while the GPT outputs demonstrate the
 variance inherent in stochastic LLM generation.
 
 Environment variables
 ---------------------
-OPENAI_API_KEY   OpenAI API key (required for GPT-4 baseline)
+OPENAI_API_KEY   OpenAI API key (required for live GPT baseline only)
 GPT_MODEL        Model identifier (default: gpt-4o)
 GPT_N_SAMPLES    Number of GPT samples per news item (default: 5)
+
+Manual baseline (no API key required)
+--------------------------------------
+python experiments/run_baseline.py --inject-manual-gpt
+  Injects pre-collected GPT-5.1 (PolyU GenAI, 2026) responses.
+  See experiments/gpt_manual_data.py for the raw data and collection protocol.
 
 Do NOT commit your API key.  Set it via the environment variable above.
 """
@@ -205,7 +211,7 @@ def load_samples(path: Path) -> List[Dict[str, Any]]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="EL-DRUIN vs GPT-4 baseline experiment")
+    parser = argparse.ArgumentParser(description="EL-DRUIN vs GPT baseline experiment")
     parser.add_argument(
         "--samples", default=str(_DEFAULT_SAMPLES),
         help="Path to news_samples.jsonl"
@@ -216,7 +222,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--skip-gpt", action="store_true",
-        help="Skip GPT-4 baseline (run EL-DRUIN only; useful for CI / offline testing)"
+        help="Skip GPT baseline (run EL-DRUIN only; useful for CI / offline testing)"
+    )
+    parser.add_argument(
+        "--inject-manual-gpt", action="store_true",
+        help=(
+            "Inject manually-collected GPT-5.1 (PolyU GenAI, 2026) baseline results "
+            "instead of calling the OpenAI API. Use this when API key is unavailable "
+            "but manual collection has been completed."
+        )
     )
     parser.add_argument(
         "--ids", nargs="*",
@@ -232,6 +246,15 @@ def main() -> None:
     if args.ids:
         samples = [s for s in samples if s.get("id") in args.ids]
 
+    # Load manual GPT responses if requested
+    manual_gpt_data: Dict[str, Any] = {}
+    if args.inject_manual_gpt:
+        _experiments_dir = Path(__file__).resolve().parent
+        if str(_experiments_dir.parent) not in sys.path:
+            sys.path.insert(0, str(_experiments_dir.parent))
+        from experiments.gpt_manual_data import GPT_MANUAL_RESPONSES  # type: ignore
+        manual_gpt_data = GPT_MANUAL_RESPONSES
+
     print(f"Processing {len(samples)} sample(s)…")
 
     for sample in samples:
@@ -242,8 +265,12 @@ def main() -> None:
         print("done.", flush=True)
 
         gpt_results: List[Dict[str, Any]] = []
-        if not args.skip_gpt:
-            print(f"[{sid}] Running GPT-4 baseline (N={_GPT_N_SAMPLES})…", end=" ", flush=True)
+        if args.inject_manual_gpt:
+            gpt_results = manual_gpt_data.get(sid, [])
+            n = len(gpt_results)
+            print(f"[{sid}] GPT-5.1 manual baseline injected (N={n})", flush=True)
+        elif not args.skip_gpt:
+            print(f"[{sid}] Running GPT baseline (N={_GPT_N_SAMPLES})…", end=" ", flush=True)
             try:
                 gpt_results = run_gpt_baseline(excerpt)
                 print("done.", flush=True)

@@ -1,0 +1,254 @@
+{
+  "id": "brexit_withdrawal_2020",
+  "title": "UK and EU Finalise Brexit Withdrawal Agreement, Northern Ireland Protocol Triggers Political Crisis",
+  "url": "https://www.ft.com/content/brexit-trade-cooperation-agreement-2020",
+  "date": "2020-12-24",
+  "source": "Financial Times",
+  "tags": [
+    "europe",
+    "brexit",
+    "trade",
+    "geopolitics",
+    "uk",
+    "eu"
+  ],
+  "excerpt": "The United Kingdom and the European Union signed a landmark Trade and Cooperation Agreement on December 24, 2020, finalising the terms of Britain's departure from the EU's single market and customs union after more than four years of negotiations. The deal averted tariffs on goods trade but left significant barriers to services, which account for 80 percent of the UK economy. The most contentious element was the Northern Ireland Protocol, which kept the region aligned with EU single market rules for goods to avoid a hard border with the Republic of Ireland, effectively creating trade checks between Northern Ireland and mainland Britain. The Protocol immediately triggered a constitutional and political crisis, with Northern Ireland's unionist parties calling it a betrayal of British sovereignty. The Democratic Unionist Party threatened to collapse the Stormont power-sharing executive, while the EU and UK began a prolonged dispute over implementation that would strain bilateral relations for years.",
+  "eldruin": {
+    "events": [
+      {
+        "event_type": "coercive_warning",
+        "severity": "medium",
+        "description": "The Democratic Unionist Party threatened to collapse the Stormont power-sharing executive, while the EU and UK began a p",
+        "entities": {},
+        "confidence": 0.68,
+        "source_quote": "The Democratic Unionist Party threatened to collapse the Stormont power-sharing executive, while the EU and UK began a p",
+        "type": "coercive_warning",
+        "tier": "T1",
+        "evidence": {
+          "quote": "The Democratic Unionist Party threatened to collapse the Stormont power-sharing executive, while the EU and UK began a p",
+          "source": ""
+        },
+        "inferred_fields": [],
+        "verification_gap": [
+          "tier downgraded by confidence threshold"
+        ]
+      }
+    ],
+    "active_patterns": [
+      {
+        "pattern_name": "Hegemonic Sanctions",
+        "domain": "geopolitics",
+        "mechanism_class": "coercive_leverage",
+        "confidence_prior": 0.53,
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "source_event": "coercive_warning",
+        "pattern": "Hegemonic Sanctions",
+        "tier": "T2",
+        "confidence": 0.53,
+        "from_event": "coercive_warning",
+        "inferred": false
+      }
+    ],
+    "top_transitions": [
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "Entity-List Technology Blockade",
+        "to_pattern": "Tech Decoupling / Technology Iron Curtain",
+        "transition_type": "compose",
+        "posterior_weight": 0.2122,
+        "lie_similarity": 0.5,
+        "typical_outcomes": [
+          "parallel_tech_stack_emergence",
+          "innovation_efficiency_loss",
+          "semiconductor_chokepoint"
+        ],
+        "description": "Hegemonic Sanctions ⊕ Entity-List Technology Blockade → [Tech Decoupling / Technology Iron Curtain] (posterior=0.2122, lie_sim=0.500)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Financial Isolation / SWIFT Cut-Off",
+        "from_pattern_b": "Hegemonic Sanctions",
+        "to_pattern": "Hegemonic Sanctions",
+        "transition_type": "self",
+        "posterior_weight": 0.2095,
+        "lie_similarity": 0.5,
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "description": "Financial Isolation / SWIFT Cut-Off ⊕ Hegemonic Sanctions → [Hegemonic Sanctions] (posterior=0.2095, lie_sim=0.500)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "Formal Military Alliance",
+        "to_pattern": "Multilateral Alliance Sanctions",
+        "transition_type": "compose",
+        "posterior_weight": 0.1925,
+        "lie_similarity": 0.49,
+        "typical_outcomes": [
+          "target_isolation",
+          "multilateral_compliance_cost",
+          "sanctions_fatigue"
+        ],
+        "description": "Hegemonic Sanctions ⊕ Formal Military Alliance → [Multilateral Alliance Sanctions] (posterior=0.1925, lie_sim=0.490)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "(inverse)",
+        "to_pattern": "Sanctions Relief / Normalisation",
+        "transition_type": "inverse",
+        "posterior_weight": 0.0093,
+        "lie_similarity": 0.05,
+        "typical_outcomes": [
+          "trade_normalization",
+          "diplomatic_restoration",
+          "investment_flows_resumption"
+        ],
+        "description": "Inverse of [Hegemonic Sanctions] → [Sanctions Relief / Normalisation] (posterior=0.0093, low-probability high-impact)",
+        "tier": "T1"
+      }
+    ],
+    "conclusion": {
+      "executive_judgement": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "executive_judgement_raw": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "evidence_path": {
+        "summary": "Primary projected outcome: Parallel technology stacks emerge along geopolitical lines, reducing interoperability (p=34%).",
+        "summary_raw": "Primary projected outcome: Parallel technology stacks emerge along geopolitical lines, reducing interoperability (p=34%).",
+        "outcomes": [
+          {
+            "id": "parallel_tech_stack_emergence",
+            "text": "Parallel technology stacks emerge along geopolitical lines, reducing interoperability",
+            "probability": 0.34
+          }
+        ]
+      },
+      "hypothesis_path": {
+        "summary": "Contingent alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks, if co-activation of Hegemonic Sanctions.",
+        "summary_raw": "Contingent alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks, if co-activation of Hegemonic Sanctions.",
+        "outcomes": [
+          {
+            "id": "supply_chain_fragmentation",
+            "text": "Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks",
+            "probability": 0.336
+          }
+        ],
+        "verification_gaps": [
+          "co-activation of Hegemonic Sanctions"
+        ]
+      },
+      "rendering_meta": {
+        "enabled": false,
+        "guardrails_triggered": false,
+        "quoted_spans_used": false
+      },
+      "final": {
+        "overall_confidence": 0.26,
+        "compute_trace_ref": "bayesian_posterior|Z=0.6235"
+      },
+      "beta_path_algebra": {
+        "algebra_used": false
+      },
+      "conclusion": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "text": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "alpha_path": {
+        "name": "Tech Decoupling / Technology Iron Curtain",
+        "probability": 0.34,
+        "mechanism": "tech_decoupling",
+        "typical_outcomes": [
+          "parallel_tech_stack_emergence",
+          "innovation_efficiency_loss",
+          "semiconductor_chokepoint"
+        ],
+        "primary_outcome": "parallel_tech_stack_emergence",
+        "evidence_basis": "Derived via composition table (posterior_weight=0.2122, prior_a=0.530, prior_b=0.800, lie_sim=0.500)"
+      },
+      "beta_path": {
+        "name": "Hegemonic Sanctions",
+        "probability": 0.336,
+        "mechanism": "coercive_leverage",
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "primary_outcome": "supply_chain_fragmentation",
+        "trigger_condition": "co-activation of Hegemonic Sanctions",
+        "evidence_basis": "composition_table path (posterior_weight=0.2095)"
+      },
+      "confidence": 0.26,
+      "mode": "deterministic_fallback"
+    },
+    "credibility": {
+      "verifiability_score": 0.3,
+      "kg_consistency_score": 0.8,
+      "overall_score": 0.26,
+      "hypothesis_ratio": 0.0,
+      "missing_evidence": [
+        "specific_date",
+        "named_institution_or_official_source",
+        "official_document_or_url_reference"
+      ],
+      "contradictions": [],
+      "supporting_paths": [],
+      "verifiability": 0.3,
+      "kg_consistency": 0.8,
+      "composite_score": 0.26,
+      "active_pattern_count": 1,
+      "transition_count": 4,
+      "confidence_source": "ontology_prior × bayesian_posterior",
+      "note": "Confidence derived from ontology priors × Bayesian posterior normalisation. Missing evidence anchors reduce verifiability score."
+    },
+    "compute_trace_ref": "bayesian_posterior|Z=0.6235",
+    "confidence": 0.26,
+    "mode": "deterministic_fallback"
+  },
+  "gpt_baseline": [
+    {
+      "sample_index": 0,
+      "text": "1. Primary trajectory — probability 68%: The Northern Ireland Protocol triggers a sustained constitutional and political crisis that dominates UK-EU relations for 2–3 years. Unionist parties use the Protocol as justification for collapsing Stormont power-sharing, creating governance vacuums that require UK government direct rule interventions. A renegotiated Windsor Framework in 2023 produces partial resolution but leaves constitutional uncertainty unresolved.\n\n2. Contingent trajectory: UK invokes Article 16 safeguards and unilaterally suspends Protocol implementation, triggering EU retaliatory trade measures and effectively nullifying the TCA's goods trade terms, producing a hard Brexit outcome through the back door.\n\n3. Confidence: 68% — the Windsor Framework trajectory is confirmed by subsequent history; Article 16 invocation was threatened but not ultimately executed.",
+      "confidence": 0.68,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 1,
+      "text": "1. Primary trajectory — probability 66%: The TCA averts immediate tariff shock to goods trade but produces sustained services sector adjustment costs — particularly financial services, professional services, and creative industries that relied on single market access. London's position as European financial centre faces structural erosion as EU clearing, trading, and fund domiciling activities migrate to Amsterdam, Paris, and Frankfurt.\n\n2. Contingent trajectory: Scottish independence referendum is triggered by Brexit's UK constitutional consequences, with Scotland seeking EU re-entry as an independent state — producing a UK disintegration scenario with long-run geopolitical consequences for Britain's P5/NATO standing.\n\n3. Confidence: 66% — services erosion is well-documented through financial centre data; Scottish independence trajectory remains live but not yet executed.",
+      "confidence": 0.66,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 2,
+      "text": "1. Primary trajectory — probability 70%: Brexit withdrawal produces a decade-long UK economic underperformance relative to comparable European economies, as barriers to EU trade, labour mobility restrictions, and regulatory divergence costs accumulate. IMF and OBR forecasts consistently project 3–4% permanent GDP level reduction relative to remaining-in-EU counterfactual.\n\n2. Contingent trajectory: A UK Labour government elected in 2024 negotiates a substantially deeper UK-EU relationship — dynamic alignment, customs facilitation, mobility partnership — that partially reverses the TCA's barriers without formal EU re-accession, a 'Brexit in Name Only' equilibrium.\n\n3. Confidence: 70% — economic underperformance trajectory is supported by consistent macro data; Labour closer alignment trajectory is in progress under the Starmer government elected in 2024.",
+      "confidence": 0.7,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 3,
+      "text": "1. Primary trajectory — probability 65%: Northern Ireland becomes a de facto dual-market jurisdiction — aligned with both UK internal market and EU single market for goods — creating a unique regulatory and economic space that attracts investment from firms seeking access to both markets, paradoxically outperforming the rest of the UK economically post-Brexit despite unionist political opposition.\n\n2. Contingent trajectory: DUP boycott of power-sharing institutions collapses Stormont for 2+ years, requiring UK direct rule and potentially triggering a constitutional crisis around Northern Ireland's long-run place within the United Kingdom.\n\n3. Confidence: 65% — both trajectories received empirical confirmation: Northern Ireland outperformance data is documented, as is the 2022–24 Stormont collapse.",
+      "confidence": 0.65,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 4,
+      "text": "1. Primary trajectory — probability 67%: The TCA's services gap creates structural pressure for a supplementary UK-EU agreement covering financial services equivalence and professional qualifications recognition. Bilateral negotiations progress slowly given mutual interest but high political sensitivity — an extended iterative process rather than a comprehensive deal.\n\n2. Contingent trajectory: Rapid post-Brexit UK trade deals with the US, Australia, and Pacific partners partially compensate for EU market access loss, and UK GDP trajectory proves more resilient than OBR forecasts, reducing domestic political pressure for EU re-alignment.\n\n3. Confidence: 67% — extended negotiation trajectory is proceeding slowly as forecast; CPTPP accession and bilateral deals provided limited but real compensation for EU market loss.",
+      "confidence": 0.67,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    }
+  ]
+}
