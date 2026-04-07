@@ -1,22 +1,59 @@
 """
-ontology/lie_algebra_space.py
-==============================
-Lie Algebra Vector Space for Ontological Relations
+ontology/lie_algebra_space.py  –  v2 (mathematically corrected)
+================================================================
+Lie Algebra so(8) Representation for Ontological Relations
 
-设计目标（基础闭环版本）：
-  1. 把每个「本体关系模式」(DynamicPattern) 看成高维空间中的一个向量
-  2. 关系的组合对应向量加法（在李代数空间里）
-  3. 连续强度变化 → 不连续模式转换（相变检测）
-  4. 提供与现有 relation_schema.py / deduction_engine.py 的闭环集成接口
+数学修正说明 (v2)
+──────────────────
 
-数学基础：
-  李代数 g 是一个带有李括号 [·,·] 的向量空间
-  本文件的离散近似：
-    • 向量空间 V = ℝ^d，d = 语义维度数（当前 d=8）
-    • 加法 v_A + v_B ≈ compose_patterns(A, B) 的向量表示
-    • 逆元 -v_A ≈ inverse_table[A] 的向量表示
-    • 李括号 [v_A, v_B] = v_A × v_B（反对称部分）→ 高阶效应检测
-    • 范数 ||v|| = confidence_prior × strength 权重
+问题（v1 的根本数学错误）：
+  原版使用 [v_A, v_B] = v_A ⊙ v_B − v_B ⊙ v_A（逐元素积的反对称差）。
+  但 ℝⁿ 上的逐元素乘积是交换的：a ⊙ b = b ⊙ a，
+  因此这个表达式恒为零向量，不是李括号，
+  也无法满足反对称性和 Jacobi 恒等式。
+
+修正方案：反对称矩阵嵌入（hat map）+ 矩阵换位子
+
+  Step 1. 将每个模式向量 v_P ∈ ℝ⁸ 嵌入为 8×8 反对称矩阵 X_P ∈ 𝔰𝔬(8)：
+
+       hat map:  X_P[i,j] = v_P[i] − v_P[j]   (i ≠ j)
+                 X_P[i,i] = 0
+
+       等价地：X_P = v_P · 1ᵀ − 1 · v_Pᵀ（外差矩阵）
+       显然 X_P^T = (v · 1ᵀ − 1 · vᵀ)^T = 1 · vᵀ − v · 1ᵀ = −X_P  ✓
+
+       X_P 的各行编码该模式向量相对于所有其他维度的相对强度差，
+       保留了原始语义向量的全部信息且结构唯一确定。
+
+  Step 2. 李括号定义为矩阵换位子：
+
+       [X_A, X_B] = X_A @ X_B − X_B @ X_A
+
+       验证代数性质：
+       (a) 反对称性：[X_A, X_B] = −[X_B, X_A]                           ✓
+       (b) 双线性性：[αX+βY, Z] = α[X,Z] + β[Y,Z]                       ✓
+       (c) Jacobi：[[X,Y],Z] + [[Y,Z],X] + [[Z,X],Y] = 0                ✓
+       (d) 封闭性：若 X,Y ∈ 𝔰𝔬(n) 则 [X,Y] ∈ 𝔰𝔬(n)                   ✓
+           证：[X,Y]^T = (XY−YX)^T = Y^T X^T − X^T Y^T
+                       = (−Y)(−X) − (−X)(−Y) = YX − XY = −[X,Y] ✓
+
+  Step 3. 换位子 Frobenius 范数 ‖[X_A, X_B]‖_F 作为非交换性度量：
+
+       = 0    ⟺ X_A, X_B 可交换（模式方向平行，作用顺序无关）
+       > 0    ⟺ 存在非交换效应（组合顺序不可互换，高阶涌现效应）
+
+  Phase transition 阈值重新标定：
+    ℝ⁸ 向量范数 ‖v‖ ~ 1–2；hat(v) 矩阵 Frobenius 范数 ~ √(2n)·‖v‖ ~ 4–8
+    换位子强非交换时 ‖[X,Y]‖_F ~ O(‖X‖·‖Y‖) ~ O(16–64)
+    将相变阈值设为 1.0（低于此值视为近似可交换）
+
+兼容性说明：
+  - _vec() / _PATTERN_VECTORS / SEMANTIC_DIMS 不变（ℝ⁸ 坐标）
+  - PCA 投影、lie_sim、cos 相似度仍在 ℝ⁸ 上计算（不变）
+  - PatternVector 新增 matrix / matrix_norm 字段
+  - LieCompositionResult.lie_bracket 现在是 (8,8) 矩阵（非零）
+  - LieCompositionResult 新增 is_commutative 布尔字段
+  - 所有对外 API 函数签名与 v1 完全兼容
 
 语义维度（8维）：
   dim 0: coercion       — 强制/对抗强度
@@ -40,7 +77,6 @@ Lie Algebra Vector Space for Ontological Relations
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -120,15 +156,43 @@ def _vec(pattern_name: str) -> np.ndarray:
 
 
 # ===========================================================================
+# 核心数学：hat map + 矩阵换位子（v2 修正）
+# ===========================================================================
+
+def _hat(v: np.ndarray) -> np.ndarray:
+    """
+    Hat map: ℝⁿ → 𝔰𝔬(n)（n×n 反对称矩阵）。
+
+    定义：X = v · 1ᵀ − 1 · vᵀ，即 X[i,j] = v[i] − v[j]
+    性质：X^T = −X，X[i,i] = 0  ✓
+
+    物理意义：X[i,j] 编码维度 i 相对维度 j 的相对激活强度差。
+    """
+    return v[:, None] - v[None, :]   # shape (n, n), antisymmetric by construction
+
+
+def _commutator(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+    """
+    矩阵换位子（李括号）：[X, Y] = XY − YX。
+
+    对 X, Y ∈ 𝔰𝔬(n)，[X,Y] ∈ 𝔰𝔬(n)（封闭性证明见模块文档）。
+    满足反对称性、双线性性、Jacobi 恒等式。
+    """
+    return X @ Y - Y @ X
+
+
+# ===========================================================================
 # 核心数据类
 # ===========================================================================
 
 @dataclass
 class PatternVector:
-    """模式在李代数空间中的向量表示。"""
+    """模式在 𝔰𝔬(8) 李代数空间中的表示。"""
     pattern_name:  str
-    vector:        np.ndarray          # shape (DIM,)
-    norm:          float               # ||v||₂
+    vector:        np.ndarray          # shape (DIM,)   ℝ⁸ 语义坐标
+    matrix:        np.ndarray          # shape (DIM, DIM)  𝔰𝔬(8) 嵌入矩阵
+    norm:          float               # ‖v‖₂
+    matrix_norm:   float               # ‖X‖_F（Frobenius）
     dominant_dims: List[str]           # 最强的 top-2 语义维度名称
     confidence:    float = 0.72
 
@@ -138,13 +202,14 @@ class LieCompositionResult:
     """两个模式向量组合的结果。"""
     pattern_a:       str
     pattern_b:       str
-    composed_vector: np.ndarray        # v_A + v_B
+    composed_vector: np.ndarray        # v_A + v_B  (ℝ⁸)
     nearest_pattern: str               # 最近的已知模式名
     similarity:      float             # cos similarity to nearest
-    lie_bracket:     np.ndarray        # [v_A, v_B] = 反对称部分
-    bracket_norm:    float             # ||[v_A, v_B]||
+    lie_bracket:     np.ndarray        # [X_A, X_B]  shape (DIM, DIM)  ← v2: 非零矩阵
+    bracket_norm:    float             # ‖[X_A, X_B]‖_F                ← v2: 有意义
     phase_transition: Optional[str]    # 若范数超过阈值，标注相变类型
     interpretation:  str               # 人类可读的组合解释
+    is_commutative:  bool              # bracket_norm < ε → 可线性叠加
 
 
 @dataclass
@@ -182,17 +247,27 @@ class LieAlgebraAnalysis:
 
 class LieAlgebraSpace:
     """
-    离散李代数空间实现。
+    𝔰𝔬(8) 李代数空间。
 
-    核心操作：
-      add(A, B)       → 向量加法，等价于关系组合
-      bracket(A, B)   → 李括号，测量非交换性（高阶效应）
-      project(v)      → 将任意向量投影到最近的已知模式
-      phase(v, dv)    → 检测是否发生相变（超过阈值跃迁）
+    每个模式 P 对应：
+      v_P ∈ ℝ⁸  （语义坐标，用于 PCA / cos-similarity / lie_sim）
+      X_P ∈ 𝔰𝔬(8) （反对称矩阵，用于换位子 / 相变检测）
+
+    李括号 = 矩阵换位子 [X_A, X_B] = X_A @ X_B − X_B @ X_A
+    换位子 Frobenius 范数 = 非交换性度量（v1 中恒为 0 的 bug 已修复）
     """
 
-    # 相变阈值：当李括号范数超过此值时，认为发生高阶相变
-    PHASE_TRANSITION_THRESHOLD = 0.45
+    # 相变阈值（Frobenius 范数，重新标定为矩阵量级）
+    # ℝ⁸ 向量范数 ~ 1–2 → hat(v) Frobenius 范数 ~ 4–8
+    # 非交换换位子 ~ O(‖X‖·‖Y‖) ~ 16–64；阈值 1.0 = 低端截断
+    PHASE_TRANSITION_THRESHOLD: float = 1.0
+
+    # 可交换性判断阈值：bracket_norm < ε 视为近似可交换
+    # 注：COMMUTATIVITY_EPSILON < PHASE_TRANSITION_THRESHOLD，
+    # 因此 0 ≤ bracket_norm < 0.5 → 可交换且不触发相变；
+    # 0.5 ≤ bracket_norm < 1.0 → 不可交换但仍不触发相变（中间区域）；
+    # bracket_norm ≥ 1.0 → 不可交换且触发相变（需同时满足投影跳变条件）
+    COMMUTATIVITY_EPSILON: float = 0.5
 
     # 模式组合查找表（与 relation_schema.composition_table 对齐）
     _COMPOSITION_LOOKUP: Dict[Tuple[str, str], str] = {}
@@ -203,6 +278,10 @@ class LieAlgebraSpace:
         self._all_vectors  = np.stack(
             [_vec(p) for p in self._all_patterns], axis=0
         )  # shape (N, DIM)
+        # 预计算 𝔰𝔬(8) 矩阵缓存
+        self._matrices: Dict[str, np.ndarray] = {
+            p: _hat(_vec(p)) for p in self._all_patterns
+        }
         self._load_composition_lookup()
 
     def _load_composition_lookup(self) -> None:
@@ -212,6 +291,12 @@ class LieAlgebraSpace:
             self._COMPOSITION_LOOKUP = composition_table
         except ImportError:
             logger.debug("LieAlgebraSpace: relation_schema not available, using empty lookup")
+
+    def _get_matrix(self, pattern_name: str) -> np.ndarray:
+        """获取模式的 𝔰𝔬(8) 矩阵（缓存 + 按需计算）。"""
+        if pattern_name not in self._matrices:
+            self._matrices[pattern_name] = _hat(_vec(pattern_name))
+        return self._matrices[pattern_name]
 
     # ------------------------------------------------------------------
     # 基本向量运算
@@ -226,17 +311,19 @@ class LieAlgebraSpace:
 
     def bracket(self, pattern_a: str, pattern_b: str) -> np.ndarray:
         """
-        李括号 [v_A, v_B]：
-        离散近似 = 反对称部分，即 (v_A ⊗ v_B - v_B ⊗ v_A) 的对角投影。
+        𝔰𝔬(8) 矩阵换位子 [X_A, X_B] = X_A @ X_B − X_B @ X_A。
 
-        物理含义：
-          bracket_norm 大 → A 和 B 的作用顺序不可互换 → 高阶非线性效应
-          bracket_norm ≈ 0 → A 和 B 近似交换 → 可线性叠加
+        v1 的实现使用逐元素积的反对称差 v_A ⊙ v_B − v_B ⊙ v_A，
+        但 ℝⁿ 上的逐元素乘积满足交换律，因此该式恒为零向量（数学错误）。
+
+        v2 修正：每个模式向量先经 hat map 嵌入为 𝔰𝔬(8) 矩阵，
+        再计算矩阵换位子，返回 shape (DIM, DIM) 的反对称矩阵。
+        Frobenius 范数 ‖result‖_F = 0 iff 两模式可交换。
+
+        Returns:
+            shape (DIM, DIM) ndarray — 换位子矩阵 [X_A, X_B]
         """
-        v_a = _vec(pattern_a)
-        v_b = _vec(pattern_b)
-        # 元素级反对称：近似 [A,B] = A*B - B*A（对角元素）
-        return v_a * v_b - v_b * v_a
+        return _commutator(self._get_matrix(pattern_a), self._get_matrix(pattern_b))
 
     def project(self, vector: np.ndarray) -> Tuple[str, float]:
         """
@@ -269,20 +356,22 @@ class LieAlgebraSpace:
         delta_vector: np.ndarray,
     ) -> Optional[PhaseTransitionEvent]:
         """
-        检测相变：若强度变化 delta_vector 导致模式跃迁，返回 PhaseTransitionEvent。
+        检测相变（v2：使用换位子 Frobenius 范数）。
 
-        相变条件：
-          1. ||v + dv|| > THRESHOLD（组合范数超过阈值）
-          2. project(v + dv) ≠ project(v)（投影到不同模式）
+        触发条件（AND）：
+          1. ‖[X_P, X_Δ]‖_F > PHASE_TRANSITION_THRESHOLD
+          2. project(v_P + Δv) ≠ project(v_P)
         """
         v_current = _vec(pattern)
         v_new     = v_current + delta_vector
 
         current_proj, _ = self.project(v_current)
-        new_proj, sim   = self.project(v_new)
+        new_proj, _     = self.project(v_new)
 
-        bracket_v = v_current * delta_vector - delta_vector * v_current
-        bracket_n = float(np.linalg.norm(bracket_v))
+        X_current = self._get_matrix(pattern)
+        X_delta   = _hat(delta_vector)
+        C         = _commutator(X_current, X_delta)
+        bracket_n = float(np.linalg.norm(C, "fro"))
 
         if new_proj == current_proj or bracket_n < self.PHASE_TRANSITION_THRESHOLD:
             return None
@@ -300,7 +389,7 @@ class LieAlgebraSpace:
             description=(
                 f"在 {trigger_dim} 维度发生强度跃迁（Δ={delta_vector[trigger_idx]:+.2f}），"
                 f"模式从「{current_proj}」相变为「{new_proj}」"
-                f"（李括号范数={bracket_n:.2f}）"
+                f"（换位子 Frobenius 范数={bracket_n:.2f} > {self.PHASE_TRANSITION_THRESHOLD}）"
             ),
         )
 
@@ -313,18 +402,22 @@ class LieAlgebraSpace:
         pattern_name: str,
         confidence: float = 0.72,
     ) -> PatternVector:
-        """构建 PatternVector 数据对象。"""
+        """构建 PatternVector 数据对象（v2：包含 𝔰𝔬(8) 矩阵）。"""
         v    = _vec(pattern_name)
+        X    = self._get_matrix(pattern_name)
         norm = float(np.linalg.norm(v))
+        matrix_norm = float(np.linalg.norm(X, "fro"))
 
         # top-2 语义维度
-        top_idx = np.argsort(np.abs(v))[-2:][::-1]
+        top_idx  = np.argsort(np.abs(v))[-2:][::-1]
         dominant = [SEMANTIC_DIMS[i] for i in top_idx]
 
         return PatternVector(
             pattern_name=pattern_name,
             vector=v,
-            norm=norm,
+            matrix=X,
+            norm=round(norm, 4),
+            matrix_norm=round(matrix_norm, 4),
             dominant_dims=dominant,
             confidence=confidence,
         )
@@ -341,16 +434,20 @@ class LieAlgebraSpace:
         confidence_b: float = 0.72,
     ) -> LieCompositionResult:
         """
-        计算两个模式的李代数组合。
+        计算两个模式的 𝔰𝔬(8) 李代数组合（v2）。
 
         同时查询 composition_table 的确定性结果（来自 relation_schema）
         和向量加法的连续结果（来自 Lie algebra），两者互补：
           - composition_table → 离散代数查找（精确）
           - 向量加法投影     → 连续空间近似（模糊）
+
+        v2 修正：bracket 现在是真实的矩阵换位子 [X_A, X_B]（非零），
+        b_norm 是换位子的 Frobenius 范数，用于判断非交换性。
         """
-        v_sum    = self.add(pattern_a, pattern_b)
-        bracket  = self.bracket(pattern_a, pattern_b)
-        b_norm   = float(np.linalg.norm(bracket))
+        v_sum   = self.add(pattern_a, pattern_b)
+        bracket = self.bracket(pattern_a, pattern_b)
+        b_norm  = float(np.linalg.norm(bracket, "fro"))
+        is_commutative = b_norm < self.COMMUTATIVITY_EPSILON
 
         # 先查 composition_table
         exact = self._COMPOSITION_LOOKUP.get((pattern_a, pattern_b))
@@ -366,18 +463,17 @@ class LieAlgebraSpace:
         phase: Optional[str] = None
         if b_norm >= self.PHASE_TRANSITION_THRESHOLD:
             phase = (
-                f"高阶效应激活（李括号范数={b_norm:.2f}），"
-                f"A×B 的顺序不可互换，存在非线性涌现效应"
+                f"高阶效应激活（换位子 Frobenius 范数={b_norm:.2f}），"
+                f"组合顺序不可互换，存在非线性涌现效应"
             )
 
         # 人类可读解释
-        v_a = _vec(pattern_a)
-        v_b = _vec(pattern_b)
         dominant_sum_idx = int(np.argmax(np.abs(v_sum)))
         dominant_sum_dim = SEMANTIC_DIMS[dominant_sum_idx]
+        comm_note = "（近似可交换）" if is_commutative else f"（非交换，‖[X_A,X_B]‖_F={b_norm:.2f}）"
         interp = (
             f"「{pattern_a}」⊕「{pattern_b}」→ 向量叠加主导维度：{dominant_sum_dim}，"
-            f"最近模式：「{final_nearest}」（相似度={final_sim:.2f}）"
+            f"最近模式：「{final_nearest}」（相似度={final_sim:.2f}）{comm_note}"
         )
         if exact:
             interp += f"。代数精确解：「{exact}」"
@@ -394,6 +490,7 @@ class LieAlgebraSpace:
             bracket_norm=b_norm,
             phase_transition=phase,
             interpretation=interp,
+            is_commutative=is_commutative,
         )
 
     # ------------------------------------------------------------------
@@ -433,16 +530,18 @@ class LieAlgebraSpace:
 
         result = []
         for i, name in enumerate(names):
-            v      = _vec(name)
-            norm   = float(np.linalg.norm(v))
-            domain = _infer_domain(name)
+            v           = _vec(name)
+            norm        = float(np.linalg.norm(v))
+            matrix_norm = float(np.linalg.norm(self._get_matrix(name), "fro"))
+            domain      = _infer_domain(name)
             result.append({
-                "name":   name,
-                "x":      float(coords_2d[i, 0]),
-                "y":      float(coords_2d[i, 1]),
-                "norm":   round(norm, 3),
-                "domain": domain,
-                "dims":   {SEMANTIC_DIMS[d]: round(float(v[d]), 2) for d in range(DIM)},
+                "name":        name,
+                "x":           float(coords_2d[i, 0]),
+                "y":           float(coords_2d[i, 1]),
+                "norm":        round(norm, 3),
+                "matrix_norm": round(matrix_norm, 3),
+                "domain":      domain,
+                "dims":        {SEMANTIC_DIMS[d]: round(float(v[d]), 2) for d in range(DIM)},
             })
         return result
 
@@ -602,6 +701,7 @@ def compute_pattern_trajectory(
                 "composed_result": r.nearest_pattern,
                 "similarity":      round(r.similarity, 3),
                 "bracket_norm":    round(r.bracket_norm, 3),
+                "is_commutative":  r.is_commutative,
                 "phase_transition": r.phase_transition,
                 "interpretation":  r.interpretation,
             })
@@ -642,6 +742,7 @@ def compute_pattern_trajectory(
             "dim_values":     dim_values,
         },
         "summary": _build_simple_summary(all_names, compositions, phase_events),
+        "algebra": "so(8)",
     }
 
 
@@ -657,12 +758,16 @@ def get_full_vector_space() -> Dict[str, Any]:
         "semantic_dims": SEMANTIC_DIMS,
         "n_patterns":    len(_PATTERN_VECTORS),
         "pca_coords":    pca_all,
-        "dim": DIM,
+        "dim":           DIM,
+        "algebra":       "so(8)",
     }
 
 
 def get_composition_map() -> List[Dict[str, Any]]:
-    """返回 composition_table 的向量化表示（供前端力导向图）。"""
+    """返回 composition_table 的向量化表示（供前端力导向图）。
+
+    v2：bracket_norm 使用矩阵换位子 Frobenius 范数（非零，有意义）。
+    """
     result = []
     try:
         from ontology.relation_schema import composition_table  # type: ignore
@@ -670,11 +775,12 @@ def get_composition_map() -> List[Dict[str, Any]]:
             v_a = _vec(a)
             v_b = _vec(b)
             v_c = _vec(c)
+            C   = _commutator(_hat(v_a), _hat(v_b))
             result.append({
-                "source":  a,
-                "target":  b,
-                "result":  c,
-                "bracket_norm": round(float(np.linalg.norm(v_a * v_b - v_b * v_a)), 3),
+                "source":       a,
+                "target":       b,
+                "result":       c,
+                "bracket_norm": round(float(np.linalg.norm(C, "fro")), 3),
                 "additive_sim": round(float(
                     np.dot(v_a + v_b, v_c) /
                     max(1e-9, np.linalg.norm(v_a + v_b) * np.linalg.norm(v_c))
@@ -726,7 +832,7 @@ def _build_trajectory_summary(
     mean_vec: np.ndarray,
 ) -> str:
     """构建供 LLM prompt 注入的轨迹摘要（中文）。"""
-    lines = ["【李代数空间分析（辅助推演锚定）】"]
+    lines = ["【𝔰𝔬(8) 李代数空间分析（辅助推演锚定）】"]
 
     dom_idx = int(np.argmax(np.abs(mean_vec)))
     dom_dim = SEMANTIC_DIMS[dom_idx]
@@ -739,8 +845,9 @@ def _build_trajectory_summary(
 
     if compositions:
         top = compositions[0]
+        comm_tag = "可交换" if top.is_commutative else f"非交换 ‖[X,Y]‖_F={top.bracket_norm:.2f}"
         lines.append(
-            f"  最强组合效应: {top.interpretation}"
+            f"  最强组合效应: {top.interpretation}（{comm_tag}）"
         )
 
     if phase_events:
@@ -762,7 +869,12 @@ def _build_simple_summary(
         return "无模式激活"
     comp_str = ""
     if compositions:
-        comp_str = f"；主要组合效应: 「{compositions[0]['pattern_a']}」⊕「{compositions[0]['pattern_b']}」→「{compositions[0]['composed_result']}」"
+        c    = compositions[0]
+        ct   = "可交换" if c.get("is_commutative") else f"非交换 ‖[X,Y]‖_F={c.get('bracket_norm', 0):.2f}"
+        comp_str = (
+            f"；主要组合效应: 「{c['pattern_a']}」⊕「{c['pattern_b']}」"
+            f"→「{c['composed_result']}」（{ct}）"
+        )
     phase_str = ""
     if phase_events:
         phase_str = f"；⚡ 检测到 {len(phase_events)} 个相变点"

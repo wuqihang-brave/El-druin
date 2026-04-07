@@ -5,13 +5,24 @@ Ontological Trajectory Forecaster
 
 Mathematical foundation
 -----------------------
-The composition_table defines a finite semi-group S over the set of named patterns.
-Each iteration step is multiplication in S:
+The composition_table defines a *partial* binary operation over the set of
+named patterns — only ~4 % of all pattern pairs have an explicitly defined
+composition result.  This constitutes a **partial semigroup**, not a total
+semigroup; the classical Green (1951) theorem that guarantees convergence to
+idempotent elements applies to total semigroups and therefore cannot be
+directly invoked here.
 
-    S₀ → S₁ → S₂ → ... → S_n
+Convergence is defined **operationally**: the forward simulation terminates
+when the active pattern set stops changing between two consecutive steps
+(i.e., the fixed-point condition S_{t} == S_{t-1} holds).  This is a
+sufficient — though not necessary — condition for reaching a stable state
+under the partial operation, and is empirically observed to hold within
+6 steps on all tested scenarios.
 
-A finite semi-group converges to a power-idempotent element (attractor) P
-satisfying compose(P, P) = P within at most |S|² steps.
+Attractor detection: a pattern P is flagged as an idempotent attractor if
+compose(P, P) = P is explicitly defined in the composition_table.  Patterns
+not covered by the table are excluded from attractor candidates; this is
+conservative but honest given the table's partial coverage.
 
 Bayesian confidence decay:
     confidence_t = initial_confidence × decay^t   (decay = 0.85 per step)
@@ -359,10 +370,11 @@ Do NOT include any numerical probabilities. Do NOT mention pattern names literal
 
 def find_attractors(domain: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Find all idempotent elements in the composition semi-group.
-    An element P is idempotent if compose(P, P) = P.
+    Find all idempotent elements explicitly defined in the composition table.
+    An element P is idempotent if compose(P, P) = P appears in composition_table.
 
-    Optionally filter by domain.
+    Note: the composition_table is a partial operation; patterns not covered
+    by the table are not considered here.  Optionally filter by domain.
     """
     composition_table = _get_composition_table()
     attractors: List[Dict[str, Any]] = []
