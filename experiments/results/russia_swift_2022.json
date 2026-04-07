@@ -1,0 +1,250 @@
+{
+  "id": "russia_swift_2022",
+  "title": "West Cuts Off Seven Russian Banks from SWIFT as Invasion Triggers Sanctions",
+  "url": "https://www.ft.com/content/russia-swift-sanctions-2022",
+  "date": "2022-03-01",
+  "source": "Financial Times",
+  "tags": [
+    "financial_isolation",
+    "SWIFT",
+    "Russia",
+    "sanctions"
+  ],
+  "excerpt": "Western nations disconnected seven Russian banks from the SWIFT global financial messaging network on Saturday, delivering the most sweeping financial sanctions yet imposed on a major economy. The move, co-ordinated by the US, EU, UK and Canada, cuts off the targeted banks from the system that underpins most international payments and blocks Russia from accessing the global financial system. Sberbank, the country's largest bank, was excluded from the ban, as were banks handling energy payments, in a nod to European dependence on Russian gas.",
+  "eldruin": {
+    "events": [
+      {
+        "event_type": "sanction_imposed",
+        "severity": "medium",
+        "description": "g the most sweeping financial sanctions yet imposed on a major economy. The move, co-ordinated by the US, EU, UK and Ca",
+        "entities": {},
+        "confidence": 0.8,
+        "source_quote": "g the most sweeping financial sanctions yet imposed on a major economy. The move, co-ordinated by the US, EU, UK and Ca",
+        "type": "sanction_imposed",
+        "tier": "T2",
+        "evidence": {
+          "quote": "g the most sweeping financial sanctions yet imposed on a major economy. The move, co-ordinated by the US, EU, UK and Ca",
+          "source": ""
+        },
+        "inferred_fields": [],
+        "verification_gap": []
+      }
+    ],
+    "active_patterns": [
+      {
+        "pattern_name": "Hegemonic Sanctions",
+        "domain": "geopolitics",
+        "mechanism_class": "coercive_leverage",
+        "confidence_prior": 0.624,
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "source_event": "sanction_imposed",
+        "pattern": "Hegemonic Sanctions",
+        "tier": "T2",
+        "confidence": 0.624,
+        "from_event": "sanction_imposed",
+        "inferred": false
+      }
+    ],
+    "top_transitions": [
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "Entity-List Technology Blockade",
+        "to_pattern": "Tech Decoupling / Technology Iron Curtain",
+        "transition_type": "compose",
+        "posterior_weight": 0.2496,
+        "lie_similarity": 0.5,
+        "typical_outcomes": [
+          "parallel_tech_stack_emergence",
+          "innovation_efficiency_loss",
+          "semiconductor_chokepoint"
+        ],
+        "description": "Hegemonic Sanctions ⊕ Entity-List Technology Blockade → [Tech Decoupling / Technology Iron Curtain] (posterior=0.2496, lie_sim=0.500)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Financial Isolation / SWIFT Cut-Off",
+        "from_pattern_b": "Hegemonic Sanctions",
+        "to_pattern": "Hegemonic Sanctions",
+        "transition_type": "self",
+        "posterior_weight": 0.2465,
+        "lie_similarity": 0.5,
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "description": "Financial Isolation / SWIFT Cut-Off ⊕ Hegemonic Sanctions → [Hegemonic Sanctions] (posterior=0.2465, lie_sim=0.500)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "Formal Military Alliance",
+        "to_pattern": "Multilateral Alliance Sanctions",
+        "transition_type": "compose",
+        "posterior_weight": 0.2264,
+        "lie_similarity": 0.49,
+        "typical_outcomes": [
+          "target_isolation",
+          "multilateral_compliance_cost",
+          "sanctions_fatigue"
+        ],
+        "description": "Hegemonic Sanctions ⊕ Formal Military Alliance → [Multilateral Alliance Sanctions] (posterior=0.2264, lie_sim=0.490)",
+        "tier": "T2"
+      },
+      {
+        "from_pattern_a": "Hegemonic Sanctions",
+        "from_pattern_b": "(inverse)",
+        "to_pattern": "Sanctions Relief / Normalisation",
+        "transition_type": "inverse",
+        "posterior_weight": 0.0109,
+        "lie_similarity": 0.05,
+        "typical_outcomes": [
+          "trade_normalization",
+          "diplomatic_restoration",
+          "investment_flows_resumption"
+        ],
+        "description": "Inverse of [Hegemonic Sanctions] → [Sanctions Relief / Normalisation] (posterior=0.0109, low-probability high-impact)",
+        "tier": "T1"
+      }
+    ],
+    "conclusion": {
+      "executive_judgement": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "executive_judgement_raw": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "evidence_path": {
+        "summary": "Primary projected outcome: Parallel technology stacks emerge along geopolitical lines, reducing interoperability (p=34%).",
+        "summary_raw": "Primary projected outcome: Parallel technology stacks emerge along geopolitical lines, reducing interoperability (p=34%).",
+        "outcomes": [
+          {
+            "id": "parallel_tech_stack_emergence",
+            "text": "Parallel technology stacks emerge along geopolitical lines, reducing interoperability",
+            "probability": 0.34
+          }
+        ]
+      },
+      "hypothesis_path": {
+        "summary": "Contingent alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks, if co-activation of Hegemonic Sanctions.",
+        "summary_raw": "Contingent alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks, if co-activation of Hegemonic Sanctions.",
+        "outcomes": [
+          {
+            "id": "supply_chain_fragmentation",
+            "text": "Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks",
+            "probability": 0.336
+          }
+        ],
+        "verification_gaps": [
+          "co-activation of Hegemonic Sanctions"
+        ]
+      },
+      "rendering_meta": {
+        "enabled": false,
+        "guardrails_triggered": false,
+        "quoted_spans_used": false
+      },
+      "final": {
+        "overall_confidence": 0.306,
+        "compute_trace_ref": "bayesian_posterior|Z=0.7334"
+      },
+      "beta_path_algebra": {
+        "algebra_used": false
+      },
+      "conclusion": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "text": "Most likely near-term trajectory (p=34%): Parallel technology stacks emerge along geopolitical lines, reducing interoperability driven by supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks. A lower-probability but high-impact alternative (p=34%): Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks.",
+      "alpha_path": {
+        "name": "Tech Decoupling / Technology Iron Curtain",
+        "probability": 0.34,
+        "mechanism": "tech_decoupling",
+        "typical_outcomes": [
+          "parallel_tech_stack_emergence",
+          "innovation_efficiency_loss",
+          "semiconductor_chokepoint"
+        ],
+        "primary_outcome": "parallel_tech_stack_emergence",
+        "evidence_basis": "Derived via composition table (posterior_weight=0.2496, prior_a=0.624, prior_b=0.800, lie_sim=0.500)"
+      },
+      "beta_path": {
+        "name": "Hegemonic Sanctions",
+        "probability": 0.336,
+        "mechanism": "coercive_leverage",
+        "typical_outcomes": [
+          "supply_chain_fragmentation",
+          "alliance_shift",
+          "currency_substitution"
+        ],
+        "primary_outcome": "supply_chain_fragmentation",
+        "trigger_condition": "co-activation of Hegemonic Sanctions",
+        "evidence_basis": "composition_table path (posterior_weight=0.2465)"
+      },
+      "confidence": 0.306,
+      "mode": "deterministic_fallback"
+    },
+    "credibility": {
+      "verifiability_score": 0.3,
+      "kg_consistency_score": 0.8,
+      "overall_score": 0.306,
+      "hypothesis_ratio": 0.0,
+      "missing_evidence": [
+        "specific_date",
+        "named_institution_or_official_source",
+        "official_document_or_url_reference"
+      ],
+      "contradictions": [],
+      "supporting_paths": [],
+      "verifiability": 0.3,
+      "kg_consistency": 0.8,
+      "composite_score": 0.306,
+      "active_pattern_count": 1,
+      "transition_count": 4,
+      "confidence_source": "ontology_prior × bayesian_posterior",
+      "note": "Confidence derived from ontology priors × Bayesian posterior normalisation. Missing evidence anchors reduce verifiability score."
+    },
+    "compute_trace_ref": "bayesian_posterior|Z=0.7334",
+    "confidence": 0.306,
+    "mode": "deterministic_fallback"
+  },
+  "gpt_baseline": [
+    {
+      "sample_index": 0,
+      "text": "1. Primary trajectory — probability 75%: The partial SWIFT exclusion will inflict significant but not catastrophic damage on Russia's external trade finance capacity. The carve-out for energy payments means the principal revenue stream (hydrocarbons) remains operable, limiting the strategic effect while EU energy dependency persists. Russia will accelerate adoption of SPFS (its domestic messaging system) and deepen bilateral clearing arrangements with China's CIPS.\n\n2. Contingent trajectory: A subsequent decision to extend SWIFT disconnection to Sberbank and Gazprombank, coupled with a European embargo on Russian energy imports, would produce a qualitatively different financial isolation scenario — one the EU had judged too economically costly in the initial package.\n\n3. Confidence: 75% — the energy carve-out is the dominant variable. As long as European gas dependency persists, full SWIFT exclusion is politically infeasible, making the partial-sanctions trajectory the most durable baseline.",
+      "confidence": 0.75,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 1,
+      "text": "1. Primary trajectory — probability 73%: Russia successfully pivots its trade settlement architecture toward non-Western alternatives. Yuan-denominated bilateral settlements with China, rupee-rouble mechanisms with India, and SPFS expansion to willing partners will partially offset SWIFT exclusion within 12–18 months, particularly for commodity exports.\n\n2. Contingent trajectory: Western financial institutions and correspondent banks in neutral jurisdictions (UAE, Turkey) impose de facto secondary sanctions compliance, closing the main SWIFT workaround channels and producing a more complete financial isolation.\n\n3. Confidence: 73% — historical precedent with Iran demonstrates that partial SWIFT exclusions create adaptive workarounds within 2 years; Russia's larger and more diversified economy suggests faster adaptation but also larger residual exposure.",
+      "confidence": 0.73,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 2,
+      "text": "1. Primary trajectory — probability 70%: The SWIFT sanctions produce significant short-term financial disruption to Russia — currency depreciation, capital flight, and trade financing difficulties — but do not fundamentally alter Russian war-fighting capacity due to the energy revenue exemption and pre-accumulated reserves.\n\n2. Contingent trajectory: Coordinated G7 expansion of SWIFT exclusions to all Russian financial institutions, combined with the oil price cap mechanism, creates a qualitatively more severe constraint on Russian state revenues.\n\n3. Confidence: 70% — the structural limitation of the energy carve-out is the primary confidence anchor; secondary uncertainty relates to the pace of European LNG import infrastructure build-out.",
+      "confidence": 0.7,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 3,
+      "text": "1. Primary trajectory — probability 77%: Russia's financial system sustains the sanctions shock through central bank capital controls, domestic bond markets, and bilateral currency swap lines with China. The ruble recovers after initial depreciation as the CBR imposes emergency capital controls and energy revenues continue.\n\n2. Contingent trajectory: Cascading bank runs and sovereign default on hard-currency debt obligations, triggered if energy revenues collapse through a coordinated Western embargo before Russia can redirect exports eastward.\n\n3. Confidence: 77% — Russia's prior experience with 2014 sanctions demonstrated institutional resilience; the energy carve-out is the decisive factor maintaining this confidence level.",
+      "confidence": 0.77,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 4,
+      "text": "1. Primary trajectory — probability 74%: SWIFT exclusion accelerates de-dollarisation among non-Western economies. Russia's experience provides a proof-of-concept for alternative settlement architectures, incentivising China, India, and Gulf states to invest in SWIFT-independent payment infrastructure as insurance against future Western coercive financial statecraft.\n\n2. Contingent trajectory: NATO-Russia ceasefire negotiations produce a partial sanctions rollback within 18 months, as European governments face domestic political pressure from energy price inflation.\n\n3. Confidence: 74% — the de-dollarisation acceleration thesis is well-supported by post-2022 BRICS payment data; uncertainty remains about the pace and reversibility of this structural shift.",
+      "confidence": 0.74,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    }
+  ]
+}

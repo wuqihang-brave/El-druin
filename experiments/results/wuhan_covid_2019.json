@@ -1,0 +1,206 @@
+{
+  "id": "wuhan_covid_2019",
+  "title": "China Reports Cluster of Pneumonia Cases of Unknown Cause in Wuhan",
+  "url": "https://www.who.int/csr/don/05-january-2020-pneumonia-of-unknown-cause-china/en/",
+  "date": "2019-12-31",
+  "source": "World Health Organization",
+  "tags": [
+    "covid19",
+    "pandemic",
+    "china",
+    "wuhan",
+    "public_health",
+    "global_spread"
+  ],
+  "excerpt": "The World Health Organization's Country Office in China was informed of cases of pneumonia of unknown aetiology detected in Wuhan City, Hubei Province, China on 31 December 2019. A total of 44 case-patients with pneumonia of unknown aetiology were reported to WHO between 31 December 2019 and 3 January 2020. Of the 44 case-patients, 11 were severely ill, while the remaining 33 patients were in stable condition. All patients were isolated and receiving treatment in Wuhan medical institutions. Chinese authorities identified a new type of coronavirus, which was isolated on 7 January 2020. The outbreak would subsequently spread globally and be declared a pandemic by March 2020.",
+  "eldruin": {
+    "events": [
+      {
+        "event_type": "其他事件",
+        "severity": "medium",
+        "description": "The World Health Organization's Country Office in China was informed of cases of pneumonia of unknown aetiology detected in Wuhan City, Hubei Province, China on 31 December 2019. A total of 44 case-pa",
+        "entities": {},
+        "confidence": 0.5,
+        "source_quote": "The World Health Organization's Country Office in China was informed of cases of pneumonia of unknown aetiology detected",
+        "type": "其他事件",
+        "tier": "T1",
+        "evidence": {
+          "quote": "The World Health Organization's Country Office in China was informed of cases of pneumonia of unknown aetiology detected",
+          "source": ""
+        },
+        "inferred_fields": [],
+        "verification_gap": [
+          "tier downgraded by confidence threshold"
+        ]
+      }
+    ],
+    "active_patterns": [
+      {
+        "pattern_name": "Bilateral Trade Dependency",
+        "domain": "economics",
+        "mechanism_class": "economic_interdependence",
+        "confidence_prior": 0.355,
+        "typical_outcomes": [
+          "mutual_vulnerability_lock_in",
+          "leverage_accumulation",
+          "currency_influence_expansion"
+        ],
+        "source_event": "其他事件",
+        "pattern": "Bilateral Trade Dependency",
+        "tier": "T2",
+        "confidence": 0.355,
+        "from_event": "其他事件",
+        "inferred": false
+      }
+    ],
+    "top_transitions": [
+      {
+        "from_pattern_a": "Bilateral Trade Dependency",
+        "from_pattern_b": "(inverse)",
+        "to_pattern": "Trade War / Decoupling",
+        "transition_type": "inverse",
+        "posterior_weight": 0.0062,
+        "lie_similarity": 0.05,
+        "typical_outcomes": [
+          "bilateral_trade_collapse",
+          "supply_chain_fragmentation",
+          "third_country_trade_diversion"
+        ],
+        "description": "Inverse of [Bilateral Trade Dependency] → [Trade War / Decoupling] (posterior=0.0062, low-probability high-impact)",
+        "tier": "T1"
+      }
+    ],
+    "conclusion": {
+      "executive_judgement": "Most likely near-term trajectory (p=100%): bilateral trade collapse driven by deep trade interdependence creates mutual vulnerabilities that lock both actors into the relationship. A lower-probability but high-impact alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress.",
+      "executive_judgement_raw": "Most likely near-term trajectory (p=100%): bilateral trade collapse driven by deep trade interdependence creates mutual vulnerabilities that lock both actors into the relationship. A lower-probability but high-impact alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress.",
+      "evidence_path": {
+        "summary": "Primary projected outcome: bilateral trade collapse (p=100%).",
+        "summary_raw": "Primary projected outcome: bilateral trade collapse (p=100%).",
+        "outcomes": [
+          {
+            "id": "bilateral_trade_collapse",
+            "text": "bilateral trade collapse",
+            "probability": 1.0
+          }
+        ]
+      },
+      "hypothesis_path": {
+        "summary": "Contingent alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress, if external shock triggering inverse pattern.",
+        "summary_raw": "Contingent alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress, if external shock triggering inverse pattern.",
+        "outcomes": [
+          {
+            "id": "structural_realignment",
+            "text": "Established economic and political relationships realign under sustained structural pressure",
+            "probability": 0.0
+          }
+        ],
+        "verification_gaps": [
+          "external shock triggering inverse pattern"
+        ]
+      },
+      "rendering_meta": {
+        "enabled": false,
+        "guardrails_triggered": false,
+        "quoted_spans_used": false
+      },
+      "final": {
+        "overall_confidence": 0.174,
+        "compute_trace_ref": "bayesian_posterior|Z=0.0062"
+      },
+      "beta_path_algebra": {
+        "algebra_used": false
+      },
+      "conclusion": "Most likely near-term trajectory (p=100%): bilateral trade collapse driven by deep trade interdependence creates mutual vulnerabilities that lock both actors into the relationship. A lower-probability but high-impact alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress.",
+      "text": "Most likely near-term trajectory (p=100%): bilateral trade collapse driven by deep trade interdependence creates mutual vulnerabilities that lock both actors into the relationship. A lower-probability but high-impact alternative (p=0%): The existing institutional or market order faces disruption from accumulating structural stress.",
+      "alpha_path": {
+        "name": "Trade War / Decoupling",
+        "probability": 1.0,
+        "mechanism": "economic_decoupling",
+        "typical_outcomes": [
+          "bilateral_trade_collapse",
+          "supply_chain_fragmentation",
+          "third_country_trade_diversion"
+        ],
+        "primary_outcome": "bilateral_trade_collapse",
+        "evidence_basis": "Derived via composition table (posterior_weight=0.0062, prior_a=0.355, prior_b=0.350, lie_sim=0.050)"
+      },
+      "beta_path": {
+        "name": "Structural Fracture Path",
+        "probability": 0.0,
+        "mechanism": "inverse_pattern_activation",
+        "typical_outcomes": [
+          "structural_realignment"
+        ],
+        "primary_outcome": "structural_disruption",
+        "trigger_condition": "external shock triggering inverse pattern",
+        "evidence_basis": "Low-probability high-impact path based on inverse_table"
+      },
+      "confidence": 0.174,
+      "mode": "deterministic_fallback"
+    },
+    "credibility": {
+      "verifiability_score": 0.3,
+      "kg_consistency_score": 0.8,
+      "overall_score": 0.174,
+      "hypothesis_ratio": 0.0,
+      "missing_evidence": [
+        "specific_date",
+        "named_institution_or_official_source"
+      ],
+      "contradictions": [],
+      "supporting_paths": [],
+      "verifiability": 0.3,
+      "kg_consistency": 0.8,
+      "composite_score": 0.174,
+      "active_pattern_count": 1,
+      "transition_count": 1,
+      "confidence_source": "ontology_prior × bayesian_posterior",
+      "note": "Confidence derived from ontology priors × Bayesian posterior normalisation. Missing evidence anchors reduce verifiability score."
+    },
+    "compute_trace_ref": "bayesian_posterior|Z=0.0062",
+    "confidence": 0.174,
+    "mode": "deterministic_fallback"
+  },
+  "gpt_baseline": [
+    {
+      "sample_index": 0,
+      "text": "1. Primary trajectory — probability 72%: The cluster of pneumonia cases of unknown aetiology represents the early signal of a novel zoonotic coronavirus transmission event with pandemic potential. Without rapid human-to-human transmission confirmation and coordinated international response, the outbreak will spread beyond Wuhan through domestic and international travel networks. Critical window for containment is 2–4 weeks.\n\n2. Contingent trajectory: The outbreak is successfully contained within Wuhan through aggressive quarantine measures, contact tracing, and travel restrictions — analogous to the SARS-CoV-1 containment in 2003 — preventing global spread and limiting total case count to the thousands.\n\n3. Confidence: 72% — the pandemic trajectory is validated by hindsight; at this early stage the primary uncertainty was transmissibility versus SARS-CoV-1, which subsequent data confirmed was substantially higher.",
+      "confidence": 0.72,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 1,
+      "text": "1. Primary trajectory — probability 70%: The novel coronavirus achieves sustained human-to-human transmission and escapes Wuhan containment, spreading to multiple Chinese provinces and international destinations through the Lunar New Year travel period. WHO declares a Public Health Emergency of International Concern within 30 days, and global health systems begin pandemic preparedness protocols.\n\n2. Contingent trajectory: Aggressive information suppression by Chinese authorities delays international alert by 2–3 weeks, materially narrowing the containment window and ensuring seeding of international outbreak foci before travel advisories can be implemented.\n\n3. Confidence: 70% — both the pandemic trajectory and information suppression contingency received empirical confirmation; the Li Wenliang case documented the suppression mechanism.",
+      "confidence": 0.7,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 2,
+      "text": "1. Primary trajectory — probability 75%: The Wuhan cluster develops into a global pandemic with exponential spread through air travel networks. International pandemic preparedness — despite post-SARS and post-MERS investments — proves inadequate, with PPE shortages, ICU capacity breaches, and economic disruption orders of magnitude beyond 2003 SARS impact.\n\n2. Contingent trajectory: Rapid vaccine platform deployment (mRNA technology, already in development for MERS) enables vaccines at record speed — 11 months from sequence to Phase III results — fundamentally limiting the mortality impact relative to pre-vaccine pandemic projections.\n\n3. Confidence: 75% — at end-December 2019 with limited data, pandemic trajectory forecast requires some retroactive confidence calibration; the vaccine speed contingency also materialised and was genuinely unprecedented.",
+      "confidence": 0.75,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 3,
+      "text": "1. Primary trajectory — probability 68%: The WHO's cautious initial characterisation — deferring human-to-human transmission confirmation — creates a critical 2–3 week delay in international response. During this window, the virus seeds multiple international clusters that preclude containment, making pandemic spread a near-certain outcome by mid-January 2020.\n\n2. Contingent trajectory: International public health institutions mount a more rapid and coordinated response modelled on successful 2014–16 Ebola outbreak containment protocols — border screening, travel advisories, WHO rapid response team deployment — that delays international spread by 4–6 weeks, potentially allowing containment.\n\n3. Confidence: 68% — the coordination failure trajectory is well-documented; the counterfactual rapid-response scenario is hypothetical but plausible given institutional capabilities that existed.",
+      "confidence": 0.68,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    },
+    {
+      "sample_index": 4,
+      "text": "1. Primary trajectory — probability 73%: Novel coronavirus produces a pandemic that imposes the largest global economic contraction since the Great Depression (-3.3% global GDP in 2020), accelerates structural shifts in remote work, e-commerce, and supply chain regionalisation, and triggers a geopolitical blame-attribution contest between the US and China that compounds pandemic response effectiveness.\n\n2. Contingent trajectory: Origin investigation findings — whether laboratory leak or natural zoonotic spillover — produce geopolitical consequences for China-WHO-US relations that structurally weaken global pandemic governance architecture for years.\n\n3. Confidence: 73% — the economic and geopolitical attribution contest trajectories both materialised; the origin investigation remains contested and its governance consequences are ongoing.",
+      "confidence": 0.73,
+      "latency_ms": 0,
+      "model": "gpt-5.1-polyugena-2026",
+      "finish_reason": "manual"
+    }
+  ]
+}
