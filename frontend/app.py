@@ -143,6 +143,55 @@ h1,h2,h3,h4 { color: var(--blue) !important; }
     background: #1e1e1e; color: #4af626;
     padding: 12px; font-size: 0.85rem; border-radius: 6px; margin-top: 10px;
 }
+
+/* ── Probability hover tooltip ─────────────────────────────────────────── */
+.prob-tooltip-wrap {
+    display: inline-block;
+    position: relative;
+    cursor: help;
+}
+.prob-tooltip-val {
+    font-weight: 700;
+    color: #0047AB;
+    border-bottom: 1.5px dashed #0047AB;
+    padding-bottom: 1px;
+}
+.prob-tooltip-box {
+    display: none;
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    width: 380px;
+    max-width: 90vw;
+    background: #fff;
+    border: 1.5px solid #0047AB;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    z-index: 99999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+    pointer-events: none;
+    text-align: left;
+    white-space: normal;
+}
+.prob-tooltip-wrap:hover .prob-tooltip-box {
+    display: block;
+}
+.prob-tooltip-section { font-weight: 700; color: #0047AB; margin-top: 6px; }
+.prob-tooltip-hr { border: 0; border-top: 1px solid #eee; margin: 5px 0; }
+.prob-tooltip-mono {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    background: #f5f5f5; padding: 2px 5px; border-radius: 3px;
+    font-size: 11px; word-break: break-all;
+}
+/* out-of-scope warning card */
+.out-of-scope-card {
+    background: #FFF8E1; border-left: 4px solid #F9A825;
+    border-radius: 6px; padding: 16px 18px; margin: 10px 0;
+}
+.out-of-scope-title { font-weight: 700; font-size: 15px; color: #E65100; margin-bottom: 6px; }
+.out-of-scope-body  { font-size: 13px; color: #5D4037; line-height: 1.6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,6 +204,99 @@ if not _backend_url_raw:
     st.stop()
 _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
+
+
+# ---------------------------------------------------------------------------
+# Probability hover tooltip helper
+# ---------------------------------------------------------------------------
+
+def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
+    """Return HTML for a probability badge with a hover tooltip.
+
+    The tooltip shows four sections mirroring the four detail tabs:
+    Bayesian calculation, Lie algebra details, dual integration
+    normalisation, and pattern summary.
+
+    Args:
+        prob: Probability value in [0, 1].
+        tooltip_node: A probability-tree node dict that contains a
+            ``tooltip_data`` sub-dict produced by the backend.
+    """
+    td = tooltip_node.get("tooltip_data", {})
+    bayes  = td.get("bayesian", {})
+    lie_al = td.get("lie_algebra", {})
+    dual   = td.get("dual_integration", {})
+    pats   = td.get("patterns", {})
+
+    # ── Bayesian section ────────────────────────────────────────────
+    bayes_calc = bayes.get("calculation", "—")
+    bayes_formula = bayes.get("formula", "posterior = prior_A × prior_B × lie_similarity / Z")
+    prior_a = bayes.get("prior_a", "—")
+    prior_b = bayes.get("prior_b", "—")
+    lie_sim_val = bayes.get("lie_sim", "—")
+    posterior_val = bayes.get("posterior", "—")
+    Z_val = bayes.get("Z", "—")
+
+    # ── Lie algebra section ─────────────────────────────────────────
+    lie_sim_display = lie_al.get("cosine_similarity", "—")
+    lie_src_a = lie_al.get("source_a", "—")
+    lie_src_b = lie_al.get("source_b", "—")
+    lie_tgt   = lie_al.get("target", "—")
+
+    # ── Dual integration section ────────────────────────────────────
+    dual_note    = dual.get("note", "")
+    dual_norm    = dual.get("normalization", "")
+    dual_verdict = dual.get("verdict", "")
+    dual_conf    = dual.get("confidence_final", "")
+    dual_formula = dual.get("confidence_formula", "")
+
+    # ── Patterns section ────────────────────────────────────────────
+    pat_src_a   = pats.get("source_a", "—")
+    pat_src_b   = pats.get("source_b", "—")
+    pat_tgt     = pats.get("target", "—")
+    pat_type    = pats.get("transition_type", "—")
+    pat_outcomes = "; ".join(str(o) for o in pats.get("typical_outcomes", []))
+
+    tooltip_content = (
+        f"<div class='prob-tooltip-section'>📐 Bayesian Posterior</div>"
+        f"<div>Formula: <span class='prob-tooltip-mono'>{bayes_formula}</span></div>"
+        f"<div>Calc: <span class='prob-tooltip-mono'>{bayes_calc}</span></div>"
+        f"<div>prior_A={prior_a} &nbsp; prior_B={prior_b} &nbsp; lie_sim={lie_sim_val}</div>"
+        f"<div>posterior={posterior_val} &nbsp; Z={Z_val} &nbsp; → &nbsp; p={prob:.2%}</div>"
+        f"<hr class='prob-tooltip-hr'>"
+        f"<div class='prob-tooltip-section'>🧮 Lie Algebra</div>"
+        f"<div>Formula: <span class='prob-tooltip-mono'>cos(v_A + v_B, v_C) = lie_sim</span></div>"
+        f"<div>A = {lie_src_a} &nbsp; B = {lie_src_b} &nbsp; → &nbsp; C = {lie_tgt}</div>"
+        f"<div>cos similarity = <b>{lie_sim_display}</b></div>"
+        f"<hr class='prob-tooltip-hr'>"
+        f"<div class='prob-tooltip-section'>∫ Dual Integration</div>"
+    )
+    if dual_formula:
+        tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_formula}</span></div>"
+    elif dual_note:
+        tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_note}</span></div>"
+    if dual_norm:
+        tooltip_content += f"<div>{dual_norm}</div>"
+    if dual_verdict:
+        tooltip_content += f"<div>Verdict: <b>{dual_verdict}</b>"
+        if dual_conf:
+            conf_str = f"{dual_conf:.3f}" if isinstance(dual_conf, float) else str(dual_conf)
+            tooltip_content += f" &nbsp; confidence_final={conf_str}"
+        tooltip_content += "</div>"
+    tooltip_content += (
+        f"<hr class='prob-tooltip-hr'>"
+        f"<div class='prob-tooltip-section'>📌 Patterns</div>"
+        f"<div>{pat_src_a} ⊕ {pat_src_b} → <b>{pat_tgt}</b> [{pat_type}]</div>"
+    )
+    if pat_outcomes:
+        tooltip_content += f"<div>Typical outcomes: {pat_outcomes}</div>"
+
+    return (
+        f"<span class='prob-tooltip-wrap'>"
+        f"<span class='prob-tooltip-val'>{prob:.1%}</span>"
+        f"<div class='prob-tooltip-box'>{tooltip_content}</div>"
+        f"</span>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -739,61 +881,63 @@ if page == "🏠 Home":
                 _ev_ptree    = _er.get("probability_tree", {})
                 _ev_la       = _er.get("lie_algebra", {})
 
-                # ── Tab layout: Conclusion first ─────────────────────────────
-                _tab_labels = [
-                    "① Conclusion",
-                    f"② Events ({len(_ev_events)})",
-                    f"③ Patterns ({len(_ev_active)}+{len(_ev_derived)})",
-                    "🌳 Probability Tree",
-                    "🧮 Lie Algebra",
-                ]
-                _tabs_ev = st.tabs(_tab_labels)
-                _tab_concl   = _tabs_ev[0]
-                _tab_ev1     = _tabs_ev[1]
-                _tab_ev2     = _tabs_ev[2]
-                _tab_ptree   = _tabs_ev[3]
-                _tab_lie     = _tabs_ev[4]
-
-                # ── ① Conclusion (first/default tab) ─────────────────────────
-                with _tab_concl:
-                    _ev_path  = _ev_concl.get("evidence_path", {})
-                    _hyp_path = _ev_concl.get("hypothesis_path", {})
-
-                    # Evidence Path (T2 grounded)
-                    st.markdown("#### 🟢 Evidence Path — T2 Grounded")
-                    _ev_summary = _ev_path.get("summary") or "(No grounded evidence path available)"
+                # ── Out-of-scope early exit ──────────────────────────────────
+                if _ev_concl.get("out_of_scope"):
+                    _oos_domain = _ev_concl.get("out_of_scope_domain", "unknown")
                     st.markdown(
-                        f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
-                        f'padding:10px 14px;border-radius:4px;font-size:14px">{_ev_summary}</div>',
+                        f'<div class="out-of-scope-card">'
+                        f'<div class="out-of-scope-title">⚠️ Content Outside Analysis Scope</div>'
+                        f'<div class="out-of-scope-body">'
+                        f'{_ev_concl.get("executive_judgement", "")}'
+                        f'<br><br>'
+                        f'<b>Detected domain:</b> <code>{_oos_domain}</code><br>'
+                        f'<b>Supported domains:</b> geopolitics · economics · technology · military'
+                        f'</div>'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
-                    _ep_outcomes = _ev_path.get("outcomes", [])
-                    if _ep_outcomes:
-                        for _oc in _ep_outcomes:
-                            _oc_text = _oc.get("text") or _oc.get("id", "")
-                            _oc_prob = _oc.get("probability", 0)
-                            _oc_bar  = max(4, int(_oc_prob * 100))
-                            st.markdown(
-                                f'<div style="margin:4px 0;">'
-                                f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
-                                f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
-                                f'<div style="background:#2E7D32;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
-                                f'</div></div>',
-                                unsafe_allow_html=True,
-                            )
+                    st.caption(
+                        "💡 Try submitting a news article about geopolitical events, economic policy, "
+                        "technology competition, or military developments to see the full ontological analysis."
+                    )
+                    if st.button("🔄 Clear & try another article", key="clear_oos"):
+                        st.session_state.selected_news   = None
+                        st.session_state.evented_result  = None
+                        st.rerun()
+                    # Skip rest of analysis rendering for out-of-scope
+                else:
 
-                    # Hypothesis Path (T1 inferred)
-                    if _show_hidden:
-                        st.markdown("#### 🟡 Hypothesis Path — T1 Inferred")
-                        _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
+                    # ── Tab layout: Conclusion first ─────────────────────────
+                    _tab_labels = [
+                        "① Conclusion",
+                        f"② Events ({len(_ev_events)})",
+                        f"③ Patterns ({len(_ev_active)}+{len(_ev_derived)})",
+                        "🌳 Probability Tree",
+                        "🧮 Lie Algebra",
+                    ]
+                    _tabs_ev = st.tabs(_tab_labels)
+                    _tab_concl   = _tabs_ev[0]
+                    _tab_ev1     = _tabs_ev[1]
+                    _tab_ev2     = _tabs_ev[2]
+                    _tab_ptree   = _tabs_ev[3]
+                    _tab_lie     = _tabs_ev[4]
+
+                    # ── ① Conclusion (first/default tab) ─────────────────────────
+                    with _tab_concl:
+                        _ev_path  = _ev_concl.get("evidence_path", {})
+                        _hyp_path = _ev_concl.get("hypothesis_path", {})
+
+                        # Evidence Path (T2 grounded)
+                        st.markdown("#### 🟢 Evidence Path — T2 Grounded")
+                        _ev_summary = _ev_path.get("summary") or "(No grounded evidence path available)"
                         st.markdown(
-                            f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
-                            f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
+                            f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
+                            f'padding:10px 14px;border-radius:4px;font-size:14px">{_ev_summary}</div>',
                             unsafe_allow_html=True,
                         )
-                        _hyp_outcomes = _hyp_path.get("outcomes", [])
-                        if _hyp_outcomes:
-                            for _oc in _hyp_outcomes:
+                        _ep_outcomes = _ev_path.get("outcomes", [])
+                        if _ep_outcomes:
+                            for _oc in _ep_outcomes:
                                 _oc_text = _oc.get("text") or _oc.get("id", "")
                                 _oc_prob = _oc.get("probability", 0)
                                 _oc_bar  = max(4, int(_oc_prob * 100))
@@ -801,428 +945,464 @@ if page == "🏠 Home":
                                     f'<div style="margin:4px 0;">'
                                     f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
                                     f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
-                                    f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
+                                    f'<div style="background:#2E7D32;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
                                     f'</div></div>',
                                     unsafe_allow_html=True,
                                 )
-                        _hyp_gaps = _hyp_path.get("verification_gaps", [])
-                        if _hyp_gaps:
-                            st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
-                    else:
-                        st.caption("💡 Hypothesis path hidden — enable 'Show hypothesis path' in the sidebar.")
 
-                    # Executive Judgement
-                    st.markdown("#### 📋 Executive Judgement")
-                    _exec_j = (
-                        _ev_concl.get("executive_judgement")
-                        or _ev_concl.get("conclusion")
-                        or "(No judgement available)"
-                    )
-                    # Guard: if backend returns a dict instead of str, convert defensively
-                    if not isinstance(_exec_j, str):
-                        _exec_j = str(_exec_j)
-                    st.info(_exec_j)
+                        # Hypothesis Path (T1 inferred)
+                        if _show_hidden:
+                            st.markdown("#### 🟡 Hypothesis Path — T1 Inferred")
+                            _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
+                            st.markdown(
+                                f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
+                                f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _hyp_outcomes = _hyp_path.get("outcomes", [])
+                            if _hyp_outcomes:
+                                for _oc in _hyp_outcomes:
+                                    _oc_text = _oc.get("text") or _oc.get("id", "")
+                                    _oc_prob = _oc.get("probability", 0)
+                                    _oc_bar  = max(4, int(_oc_prob * 100))
+                                    st.markdown(
+                                        f'<div style="margin:4px 0;">'
+                                        f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
+                                        f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
+                                        f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
+                                        f'</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                            _hyp_gaps = _hyp_path.get("verification_gaps", [])
+                            if _hyp_gaps:
+                                st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
+                        else:
+                            st.caption("💡 Hypothesis path hidden — enable 'Show hypothesis path' in the sidebar.")
 
-                    # Show raw (deterministic) fields in an expander
-                    _render_meta = _ev_concl.get("rendering_meta", {})
-                    _raw_ej  = _ev_concl.get("executive_judgement_raw", "")
-                    _raw_ep  = (_ev_concl.get("evidence_path") or {}).get("summary_raw", "")
-                    _raw_hp  = (_ev_concl.get("hypothesis_path") or {}).get("summary_raw", "")
-                    if _raw_ej or _raw_ep or _raw_hp:
-                        with st.expander("🔍 Show raw (deterministic)", expanded=False):
-                            if _render_meta.get("enabled"):
-                                _guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
-                                st.caption(_guard_note)
-                            if _raw_ej:
-                                st.markdown("**Executive Judgement (raw)**")
-                                st.text(_raw_ej)
-                            if _raw_ep:
-                                st.markdown("**Evidence Path Summary (raw)**")
-                                st.text(_raw_ep)
-                            if _raw_hp:
-                                st.markdown("**Hypothesis Path Summary (raw)**")
-                                st.text(_raw_hp)
-
-                    # Confidence from Bayesian posterior
-                    _final = _ev_concl.get("final", {})
-                    _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
-                    _compute_ref  = _final.get("compute_trace_ref", "")
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        st.metric("Overall Confidence", f"{_overall_conf:.0%}")
-                    with _c2:
-                        st.caption(f"Compute trace: `{_compute_ref}`")
-
-                    with st.expander("🛠 Raw JSON (Evented result)", expanded=False):
-                        st.json(_er)
-
-                # ── ② Events ─────────────────────────────────────────────────
-                with _tab_ev1:
-                    if not _ev_events:
-                        st.info("No valid events extracted from the text (all candidates rejected by T0 filter).")
-                    for _ev in _ev_events:
-                        _ev_tier = _ev.get("tier", "?")
-                        _ev_tier_color = "#2E7D32" if _ev_tier == "T2" else "#E65100"
-                        _ev_conf = _ev.get("confidence", 0)
-                        _ev_quote = (_ev.get("evidence") or {}).get("quote", "")
-                        _ev_inf  = ", ".join(_ev.get("inferred_fields") or []) or "—"
-                        _ev_type = _ev.get("type", "unknown")
-                        st.markdown(
-                            f'<div style="border-left:3px solid {_ev_tier_color};'
-                            f'padding:8px 12px;margin-bottom:8px;background:#FAFAFA;border-radius:4px;">'
-                            f'<span style="font-weight:700;font-size:13px">{_ev_type}</span>'
-                            f'&nbsp;&nbsp;<span style="background:{_ev_tier_color};color:#fff;'
-                            f'padding:1px 7px;border-radius:10px;font-size:11px">{_ev_tier}</span>'
-                            f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">confidence {_ev_conf:.0%}</span>'
-                            f'<div style="font-size:12px;color:#555;margin-top:4px">📎 {_ev_quote}</div>'
-                            f'<div style="font-size:11px;color:#888;margin-top:2px">Inferred fields: {_ev_inf}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
+                        # Executive Judgement
+                        st.markdown("#### 📋 Executive Judgement")
+                        _exec_j = (
+                            _ev_concl.get("executive_judgement")
+                            or _ev_concl.get("conclusion")
+                            or "(No judgement available)"
                         )
+                        # Guard: if backend returns a dict instead of str, convert defensively
+                        if not isinstance(_exec_j, str):
+                            _exec_j = str(_exec_j)
+                        st.info(_exec_j)
 
-                # ── ③ Patterns ────────────────────────────────────────────────
-                with _tab_ev2:
-                    if _ev_active:
-                        st.markdown("**🔵 Active Patterns**")
-                        for _ap in _ev_active:
-                            _ap_tier  = _ap.get("tier", "T2")
-                            _ap_conf  = _ap.get("confidence", 0)
-                            _ap_inf   = _ap.get("inferred", False)
-                            _ap_color = "#2E7D32" if _ap_tier == "T2" else "#E65100"
-                            st.markdown(
-                                f'<div style="border-left:3px solid {_ap_color};'
-                                f'padding:6px 10px;margin-bottom:6px;background:#FAFAFA;">'
-                                f'<b>{_ap.get("pattern", _ap.get("pattern_name", ""))}</b>'
-                                f'&nbsp;<span style="background:{_ap_color};color:#fff;'
-                                f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
-                                f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
-                                f'{" · inferred" if _ap_inf else ""}</span>'
-                                f'&nbsp;<span style="color:#aaa;font-size:10px">← {_ap.get("from_event","")}</span>'
-                                f'</div>',
-                                unsafe_allow_html=True,
+                        # Show raw (deterministic) fields in an expander
+                        _render_meta = _ev_concl.get("rendering_meta", {})
+                        _raw_ej  = _ev_concl.get("executive_judgement_raw", "")
+                        _raw_ep  = (_ev_concl.get("evidence_path") or {}).get("summary_raw", "")
+                        _raw_hp  = (_ev_concl.get("hypothesis_path") or {}).get("summary_raw", "")
+                        if _raw_ej or _raw_ep or _raw_hp:
+                            with st.expander("🔍 Show raw (deterministic)", expanded=False):
+                                if _render_meta.get("enabled"):
+                                    _guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
+                                    st.caption(_guard_note)
+                                if _raw_ej:
+                                    st.markdown("**Executive Judgement (raw)**")
+                                    st.text(_raw_ej)
+                                if _raw_ep:
+                                    st.markdown("**Evidence Path Summary (raw)**")
+                                    st.text(_raw_ep)
+                                if _raw_hp:
+                                    st.markdown("**Hypothesis Path Summary (raw)**")
+                                    st.text(_raw_hp)
+
+                        # Confidence from Bayesian posterior
+                        _final = _ev_concl.get("final", {})
+                        _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
+                        _compute_ref  = _final.get("compute_trace_ref", "")
+                        _c1, _c2 = st.columns(2)
+                        with _c1:
+                            st.metric("Overall Confidence", f"{_overall_conf:.0%}")
+                            st.caption(
+                                "📐 Hover over probabilities in the **🌳 Probability Tree** tab "
+                                "to see the full Bayesian, Lie algebra, and dual-integration computation."
                             )
-                    else:
-                        st.info("No active patterns.")
+                        with _c2:
+                            st.caption(f"Compute trace: `{_compute_ref}`")
 
-                    if _ev_derived:
-                        st.markdown("**🟣 Derived Patterns (via Composition)**")
-                        for _dp in _ev_derived:
-                            _dp_tier  = _dp.get("derived_tier", "T1")
-                            _dp_conf  = _dp.get("derived_confidence", 0)
-                            _dp_rule  = _dp.get("rule", "")
-                            _dp_color = "#2E7D32" if _dp_tier == "T2" else "#7B1FA2"
-                            st.markdown(
-                                f'<div style="border-left:3px solid {_dp_color};'
-                                f'padding:6px 10px;margin-bottom:6px;background:#F8F0FF;">'
-                                f'<b>{_dp.get("derived", _dp.get("pattern_name", ""))}</b>'
-                                f'&nbsp;<span style="background:{_dp_color};color:#fff;'
-                                f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
-                                f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}</span>'
-                                f'<div style="font-size:10px;color:#aaa;margin-top:2px">rule: {_dp_rule}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                    else:
-                        st.caption("No derived patterns (requires at least two composable active patterns).")
+                        with st.expander("🛠 Raw JSON (Evented result)", expanded=False):
+                            st.json(_er)
 
-                    # Logic chain showing how conclusion was derived
-                    _ev_top_trans = _er.get("top_transitions", [])
-                    if _ev_top_trans:
-                        st.markdown("**⛓ Composition Logic Chain**")
-                        st.caption(
-                            "Shows how active patterns combine via the composition table "
-                            "to derive projected transitions. Each row is one edge in the inference graph."
-                        )
-                        for _tx in _ev_top_trans[:5]:
-                            _tx_a = _tx.get("from_pattern_a", "")
-                            _tx_b = _tx.get("from_pattern_b", "")
-                            _tx_c = _tx.get("to_pattern", "")
-                            _tx_pw = _tx.get("posterior_weight", 0)
-                            _tx_tt = _tx.get("transition_type", "compose")
-                            _tx_color = "#7B1FA2" if _tx_tt == "inverse" else "#1565C0"
+                    # ── ② Events ─────────────────────────────────────────────────
+                    with _tab_ev1:
+                        if not _ev_events:
+                            st.info("No valid events extracted from the text (all candidates rejected by T0 filter).")
+                        for _ev in _ev_events:
+                            _ev_tier = _ev.get("tier", "?")
+                            _ev_tier_color = "#2E7D32" if _ev_tier == "T2" else "#E65100"
+                            _ev_conf = _ev.get("confidence", 0)
+                            _ev_quote = (_ev.get("evidence") or {}).get("quote", "")
+                            _ev_inf  = ", ".join(_ev.get("inferred_fields") or []) or "—"
+                            _ev_type = _ev.get("type", "unknown")
                             st.markdown(
-                                f'<div style="border-left:3px solid {_tx_color};'
-                                f'padding:4px 10px;margin-bottom:4px;background:#FAFAFA;font-size:12px;">'
-                                f'<b>[{_tx_tt.upper()}]</b> '
-                                f'{_tx_a} ⊕ {_tx_b} → <b>{_tx_c}</b>'
-                                f'&nbsp;<span style="color:#888">posterior={_tx_pw:.4f}</span>'
+                                f'<div style="border-left:3px solid {_ev_tier_color};'
+                                f'padding:8px 12px;margin-bottom:8px;background:#FAFAFA;border-radius:4px;">'
+                                f'<span style="font-weight:700;font-size:13px">{_ev_type}</span>'
+                                f'&nbsp;&nbsp;<span style="background:{_ev_tier_color};color:#fff;'
+                                f'padding:1px 7px;border-radius:10px;font-size:11px">{_ev_tier}</span>'
+                                f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">confidence {_ev_conf:.0%}</span>'
+                                f'<div style="font-size:12px;color:#555;margin-top:4px">📎 {_ev_quote}</div>'
+                                f'<div style="font-size:11px;color:#888;margin-top:2px">Inferred fields: {_ev_inf}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
 
-                # ── 🌳 Probability Tree (with credibility merged) ─────────────
-                with _tab_ptree:
-                    if _ev_ptree:
-                        _pt_nodes    = _ev_ptree.get("nodes", [])
-                        _pt_edges    = _ev_ptree.get("edges", [])
-                        _pt_cred_ov  = _ev_ptree.get("overall_credibility", _ev_cred.get("overall_score", 0))
-                        _pt_selected = _ev_ptree.get("selected_branch")
-                        _pt_summary  = _ev_ptree.get("summary", "")
-                        _pt_trace    = _ev_ptree.get("compute_trace", {})
-
-                        st.markdown("#### 🌳 Probability Tree — Bayesian Posterior")
-                        st.caption(
-                            "Probabilities are computed as: **posterior = prior_A × prior_B × lie_similarity**, "
-                            "then normalised by Z = Σ(all posterior weights). "
-                            "All values are derived from the ontology prior + Lie algebra similarity."
-                        )
-                        if _pt_summary:
-                            st.info(_pt_summary)
-
-                        # Bayesian compute trace
-                        if _pt_trace:
-                            with st.expander("📐 Bayesian Compute Trace", expanded=False):
-                                _tc1, _tc2, _tc3 = st.columns(3)
-                                _tc1.metric("Z (partition function)", f"{_pt_trace.get('Z', 0):.6f}")
-                                _tc2.metric("Active patterns", _pt_trace.get("n_active", 0))
-                                _tc3.metric("Transitions evaluated", _pt_trace.get("n_transitions", 0))
-                                st.caption(f"Formula: **{_pt_trace.get('posterior_formula', '')}**")
-                                st.caption(f"Normalisation: {_pt_trace.get('normalization', '')}")
-                                st.caption(f"Epsilon floor: {_pt_trace.get('epsilon_floor', 1e-4)}")
-
-                        # Render root node
-                        _root = next((n for n in _pt_nodes if n.get("id") == "root"), None)
-                        if _root:
-                            st.markdown(
-                                f'<div style="background:#E3F2FD;border-left:4px solid #0047AB;'
-                                f'padding:8px 12px;border-radius:4px;margin-bottom:8px;">'
-                                f'<b>ROOT:</b> {_root.get("evidence", "")}'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        # Render child nodes
-                        _child_nodes = [n for n in _pt_nodes if n.get("id") != "root"]
-                        for _cn in sorted(_child_nodes, key=lambda x: -x.get("probability", 0)):
-                            _cn_prob  = _cn.get("probability", 0)
-                            _cn_label = _cn.get("label", "")
-                            _cn_type  = _cn.get("type", "")
-                            _cn_evid  = _cn.get("evidence", "")
-                            _cn_gap   = _cn.get("verification_gap", "")
-                            _is_best  = (_cn.get("id") == _pt_selected)
-                            _cn_bg    = "#E8F5E9" if _is_best else "#FAFAFA"
-                            _cn_bdr   = "#2E7D32" if _is_best else "#90A4AE"
-                            _bar_w    = max(4, int(_cn_prob * 100))
-                            _star_html = "&nbsp; ⭐ <em>highest probability</em>" if _is_best else ""
-                            _evid_html = (
-                                f'<div style="font-size:11px;color:#777;margin-top:3px">'
-                                f'🧮 {_cn_evid[:120]}</div>'
-                            ) if _cn_evid else ""
-                            _gap_html = (
-                                f'<div style="font-size:10px;color:#E65100;margin-top:2px">'
-                                f'⚠ {str(_cn_gap)[:80]}</div>'
-                            ) if _cn_gap else ""
-                            st.markdown(
-                                f'<div style="background:{_cn_bg};border-left:4px solid {_cn_bdr};'
-                                f'padding:8px 12px;border-radius:4px;margin-bottom:6px;">'
-                                f'<b>{_cn_label}</b>{_star_html}'
-                                f'<div style="margin:4px 0;background:#E0E0E0;border-radius:4px;height:6px;">'
-                                f'<div style="background:{_cn_bdr};width:{_bar_w}%;height:6px;border-radius:4px;"></div>'
-                                f'</div>'
-                                f'<span style="font-size:11px;color:#555">p = {_cn_prob:.2%} · tier: {_cn_type}</span>'
-                                f'{_evid_html}{_gap_html}'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        st.divider()
-                        # Credibility metrics (merged into this tab)
-                        st.markdown("#### 📊 Credibility Metrics")
-                        _vc1, _vc2, _vc3 = st.columns(3)
-                        with _vc1:
-                            _vs = _ev_cred.get("verifiability_score", 0)
-                            st.metric("Verifiability", f"{_vs:.0%}")
-                        with _vc2:
-                            _ks = _ev_cred.get("kg_consistency_score", 0)
-                            st.metric("KG Consistency", f"{_ks:.0%}")
-                        with _vc3:
-                            _os = _pt_cred_ov
-                            st.metric("Overall Score", f"{_os:.0%}")
-                        _missing = _ev_cred.get("missing_evidence", [])
-                        if _missing:
-                            st.warning("Missing evidence anchors: " + ", ".join(_missing))
-                        _contras = _ev_cred.get("contradictions", [])
-                        if _contras:
-                            st.error("Contradictions detected: " + " | ".join(_contras))
-                        _cred_note = _ev_cred.get("note", "")
-                        if _cred_note:
-                            st.caption(_cred_note)
-                    else:
-                        st.info(
-                            "Probability tree not available. "
-                            "Run an Evented analysis to generate causal branching."
-                        )
-
-                # ── 🧮 Lie Algebra ────────────────────────────────────────────
-                with _tab_lie:
-                    _sv = _er.get("state_vector", {})
-                    _la = _er.get("lie_algebra", {})
-
-                    st.markdown("#### 🧮 Lie Algebra — 8D Ontological State Vector")
-                    st.caption(
-                        "The ontological state is modelled as a vector in an 8-dimensional Lie algebra space. "
-                        "Each active pattern contributes a vector **v** ∈ ℝ⁸. "
-                        "The aggregate state is **v̄** = Σᵢ wᵢ·vᵢ, where wᵢ is the pattern's confidence prior. "
-                        "Phase transitions occur when ‖vₜ − vₜ₋₁‖ > 0.25."
-                    )
-
-                    # Cartesian product explanation
-                    with st.expander("📐 Cartesian Product & Lie Group Theory", expanded=False):
-                        st.markdown("""
-**Cartesian product mapping**: The pattern library defines a mapping
-
-> **E × R × E → Pattern**
-
-where E is the set of ontological entities and R is the set of relations.
-Each triple (entity₁, relation, entity₂) projects to a named dynamic pattern.
-
-**Continuous projection to Lie space**: Each pattern P maps to a vector **v_P** ∈ ℝ⁸
-encoding its intensity across 8 semantic dimensions:
-`coercion · cooperation · dependency · information · regulation · military · economic · technology`
-
-**Composition as vector addition**: In the Lie algebra approximation,
-composing two patterns A ⊕ B corresponds to **v_A + v_B**, and the target pattern C
-is selected by maximising cosine similarity: `cos(v_A + v_B, v_C)`.
-
-**Lie bracket [v_A, v_B]** (antisymmetric part) captures higher-order interaction effects
-— when two patterns reinforce each other, the bracket term is large; when they oppose,
-it is small. This reflects the *structure constants* of the underlying finite group.
-
-**Phase transitions**: A transition is flagged when the aggregate state vector shifts
-by more than ‖Δv‖ > 0.25, indicating that a continuous change in weights has
-caused a *discontinuous* shift in the dominant semantic regime.
-                        """)
-
-                    # 8D state vector display
-                    _sv_mean = _sv.get("mean_vector") or {}
-                    _dim_values = _sv_mean.get("dim_values") if isinstance(_sv_mean, dict) else {}
-                    _dominant = _sv_mean.get("dominant_dim") if isinstance(_sv_mean, dict) else _sv.get("dominant_dim", "unknown")
-                    _mean_list = _er.get("state_vector", {}).get("mean_vector_list", [])
-
-                    if _dim_values or _mean_list:
-                        st.markdown("**8D State Vector**")
-                        _dims = ["coercion", "cooperation", "dependency", "information",
-                                 "regulation", "military", "economic", "technology"]
-                        _cols = st.columns(4)
-                        for _di, _dname in enumerate(_dims):
-                            _dval = (
-                                _dim_values.get(_dname, 0)
-                                if _dim_values
-                                else (_mean_list[_di] if _di < len(_mean_list) else 0)
-                            )
-                            _col = _cols[_di % 4]
-                            _bar_w = max(4, int(abs(_dval) * 100))
-                            _col.markdown(
-                                f'<div style="font-size:11px;font-weight:600">{_dname}</div>'
-                                f'<div style="background:#E0E0E0;border-radius:3px;height:5px;margin:2px 0 4px 0;">'
-                                f'<div style="background:{"#0047AB" if _dval >= 0 else "#DC3545"};'
-                                f'width:{_bar_w}%;height:5px;border-radius:3px;"></div></div>'
-                                f'<div style="font-size:10px;color:#555">{_dval:+.3f}</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        if _dominant:
-                            st.markdown(f"**Dominant dimension:** `{_dominant}`")
-                    else:
-                        st.info("State vector not available (no active patterns or Lie algebra computation failed).")
-
-                    # Lie algebra outputs
-                    _phase_transitions = _la.get("phase_transitions") or _sv.get("phase_transitions", [])
-                    if _phase_transitions:
-                        st.markdown("**⚡ Phase Transitions Detected**")
-                        for _pt_item in _phase_transitions:
-                            if isinstance(_pt_item, dict):
+                    # ── ③ Patterns ────────────────────────────────────────────────
+                    with _tab_ev2:
+                        if _ev_active:
+                            st.markdown("**🔵 Active Patterns**")
+                            for _ap in _ev_active:
+                                _ap_tier  = _ap.get("tier", "T2")
+                                _ap_conf  = _ap.get("confidence", 0)
+                                _ap_inf   = _ap.get("inferred", False)
+                                _ap_color = "#2E7D32" if _ap_tier == "T2" else "#E65100"
                                 st.markdown(
-                                    f'<div style="border-left:3px solid #DC3545;padding:4px 10px;'
-                                    f'margin-bottom:4px;background:#FFF0F0;font-size:12px;">'
-                                    f'Step {_pt_item.get("step","?")}: ‖Δv‖ = {_pt_item.get("delta_norm", 0):.3f}'
-                                    f' &gt; 0.25 → transition at <b>{_pt_item.get("dimension","?")}</b>'
+                                    f'<div style="border-left:3px solid {_ap_color};'
+                                    f'padding:6px 10px;margin-bottom:6px;background:#FAFAFA;">'
+                                    f'<b>{_ap.get("pattern", _ap.get("pattern_name", ""))}</b>'
+                                    f'&nbsp;<span style="background:{_ap_color};color:#fff;'
+                                    f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
+                                    f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
+                                    f'{" · inferred" if _ap_inf else ""}</span>'
+                                    f'&nbsp;<span style="color:#aaa;font-size:10px">← {_ap.get("from_event","")}</span>'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
-                            else:
-                                st.caption(str(_pt_item))
+                        else:
+                            st.info("No active patterns.")
 
-                    # Evidence Enrichment (collapsible, collapsed by default)
-                    if _ev_enrich is not None:
-                        st.divider()
-                        with st.expander("🔬 Evidence Enrichment (Deep Ontology)", expanded=False):
-                            _enr_missing_before = _ev_enrich.get("missing_before", [])
-                            _enr_missing_after  = _ev_enrich.get("missing_after", [])
-                            _enr_provenance     = _ev_enrich.get("provenance", [])
-                            _enr_summary        = _ev_enrich.get("enriched_context_summary", "")
-                            _enr_cache_hit      = _ev_enrich.get("cache_hit", False)
-                            _enr_limits         = _ev_enrich.get("limits", {})
-                            _enr_error          = _ev_enrich.get("error")
-                            _enr_level          = _ev_enrich.get("level", 0)
+                        if _ev_derived:
+                            st.markdown("**🟣 Derived Patterns (via Composition)**")
+                            for _dp in _ev_derived:
+                                _dp_tier  = _dp.get("derived_tier", "T1")
+                                _dp_conf  = _dp.get("derived_confidence", 0)
+                                _dp_rule  = _dp.get("rule", "")
+                                _dp_color = "#2E7D32" if _dp_tier == "T2" else "#7B1FA2"
+                                st.markdown(
+                                    f'<div style="border-left:3px solid {_dp_color};'
+                                    f'padding:6px 10px;margin-bottom:6px;background:#F8F0FF;">'
+                                    f'<b>{_dp.get("derived", _dp.get("pattern_name", ""))}</b>'
+                                    f'&nbsp;<span style="background:{_dp_color};color:#fff;'
+                                    f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
+                                    f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}</span>'
+                                    f'<div style="font-size:10px;color:#aaa;margin-top:2px">rule: {_dp_rule}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.caption("No derived patterns (requires at least two composable active patterns).")
 
-                            _level_labels = {0: "Off", 1: "Local metadata", 2: "+Fetch source", 3: "+Web search"}
-                            st.markdown(
-                                f"**🔬 Deep Ontology Analysis** · Level {_enr_level} "
-                                f"({_level_labels.get(_enr_level, '')})"
-                                + (" &nbsp; 🗄️ `cache hit`" if _enr_cache_hit else ""),
-                                unsafe_allow_html=True,
+                        # Logic chain showing how conclusion was derived
+                        _ev_top_trans = _er.get("top_transitions", [])
+                        if _ev_top_trans:
+                            st.markdown("**⛓ Composition Logic Chain**")
+                            st.caption(
+                                "Shows how active patterns combine via the composition table "
+                                "to derive projected transitions. Each row is one edge in the inference graph."
+                            )
+                            for _tx in _ev_top_trans[:5]:
+                                _tx_a = _tx.get("from_pattern_a", "")
+                                _tx_b = _tx.get("from_pattern_b", "")
+                                _tx_c = _tx.get("to_pattern", "")
+                                _tx_pw = _tx.get("posterior_weight", 0)
+                                _tx_tt = _tx.get("transition_type", "compose")
+                                _tx_color = "#7B1FA2" if _tx_tt == "inverse" else "#1565C0"
+                                st.markdown(
+                                    f'<div style="border-left:3px solid {_tx_color};'
+                                    f'padding:4px 10px;margin-bottom:4px;background:#FAFAFA;font-size:12px;">'
+                                    f'<b>[{_tx_tt.upper()}]</b> '
+                                    f'{_tx_a} ⊕ {_tx_b} → <b>{_tx_c}</b>'
+                                    f'&nbsp;<span style="color:#888">posterior={_tx_pw:.4f}</span>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                    # ── 🌳 Probability Tree (with credibility merged) ─────────────
+                    with _tab_ptree:
+                        if _ev_ptree:
+                            _pt_nodes    = _ev_ptree.get("nodes", [])
+                            _pt_edges    = _ev_ptree.get("edges", [])
+                            _pt_cred_ov  = _ev_ptree.get("overall_credibility", _ev_cred.get("overall_score", 0))
+                            _pt_selected = _ev_ptree.get("selected_branch")
+                            _pt_summary  = _ev_ptree.get("summary", "")
+                            _pt_trace    = _ev_ptree.get("compute_trace", {})
+
+                            st.markdown("#### 🌳 Probability Tree — Bayesian Posterior")
+                            st.caption(
+                                "Probabilities are computed as: **posterior = prior_A × prior_B × lie_similarity**, "
+                                "then normalised by Z = Σ(all posterior weights). "
+                                "All values are derived from the ontology prior + Lie algebra similarity."
+                            )
+                            if _pt_summary:
+                                st.info(_pt_summary)
+
+                            # Bayesian compute trace
+                            if _pt_trace:
+                                with st.expander("📐 Bayesian Compute Trace", expanded=False):
+                                    _tc1, _tc2, _tc3 = st.columns(3)
+                                    _tc1.metric("Z (partition function)", f"{_pt_trace.get('Z', 0):.6f}")
+                                    _tc2.metric("Active patterns", _pt_trace.get("n_active", 0))
+                                    _tc3.metric("Transitions evaluated", _pt_trace.get("n_transitions", 0))
+                                    st.caption(f"Formula: **{_pt_trace.get('posterior_formula', '')}**")
+                                    st.caption(f"Normalisation: {_pt_trace.get('normalization', '')}")
+                                    st.caption(f"Epsilon floor: {_pt_trace.get('epsilon_floor', 1e-4)}")
+
+                            # Render root node
+                            _root = next((n for n in _pt_nodes if n.get("id") == "root"), None)
+                            if _root:
+                                st.markdown(
+                                    f'<div style="background:#E3F2FD;border-left:4px solid #0047AB;'
+                                    f'padding:8px 12px;border-radius:4px;margin-bottom:8px;">'
+                                    f'<b>ROOT:</b> {_root.get("evidence", "")}'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            # Render child nodes
+                            _child_nodes = [n for n in _pt_nodes if n.get("id") != "root"]
+                            for _cn in sorted(_child_nodes, key=lambda x: -x.get("probability", 0)):
+                                _cn_prob  = _cn.get("probability", 0)
+                                _cn_label = _cn.get("label", "")
+                                _cn_type  = _cn.get("type", "")
+                                _cn_evid  = _cn.get("evidence", "")
+                                _cn_gap   = _cn.get("verification_gap", "")
+                                _is_best  = (_cn.get("id") == _pt_selected)
+                                _cn_bg    = "#E8F5E9" if _is_best else "#FAFAFA"
+                                _cn_bdr   = "#2E7D32" if _is_best else "#90A4AE"
+                                _bar_w    = max(4, int(_cn_prob * 100))
+                                _star_html = "&nbsp; ⭐ <em>highest probability</em>" if _is_best else ""
+                                _evid_html = (
+                                    f'<div style="font-size:11px;color:#777;margin-top:3px">'
+                                    f'🧮 {_cn_evid[:120]}</div>'
+                                ) if _cn_evid else ""
+                                _gap_html = (
+                                    f'<div style="font-size:10px;color:#E65100;margin-top:2px">'
+                                    f'⚠ {str(_cn_gap)[:80]}</div>'
+                                ) if _cn_gap else ""
+                                # Use hover tooltip when tooltip_data is available
+                                _has_tooltip = bool(_cn.get("tooltip_data"))
+                                _prob_html = (
+                                    _prob_tooltip_html(_cn_prob, _cn)
+                                    if _has_tooltip
+                                    else f'<span style="font-size:11px;color:#555">p = {_cn_prob:.2%}</span>'
+                                )
+                                st.markdown(
+                                    f'<div style="background:{_cn_bg};border-left:4px solid {_cn_bdr};'
+                                    f'padding:8px 12px;border-radius:4px;margin-bottom:6px;">'
+                                    f'<b>{_cn_label}</b>{_star_html}'
+                                    f'<div style="margin:4px 0;background:#E0E0E0;border-radius:4px;height:6px;">'
+                                    f'<div style="background:{_cn_bdr};width:{_bar_w}%;height:6px;border-radius:4px;"></div>'
+                                    f'</div>'
+                                    f'{_prob_html}'
+                                    f'<span style="font-size:11px;color:#555"> · tier: {_cn_type}</span>'
+                                    f'{_evid_html}{_gap_html}'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            st.divider()
+                            # Credibility metrics (merged into this tab)
+                            st.markdown("#### 📊 Credibility Metrics")
+                            _vc1, _vc2, _vc3 = st.columns(3)
+                            with _vc1:
+                                _vs = _ev_cred.get("verifiability_score", 0)
+                                st.metric("Verifiability", f"{_vs:.0%}")
+                            with _vc2:
+                                _ks = _ev_cred.get("kg_consistency_score", 0)
+                                st.metric("KG Consistency", f"{_ks:.0%}")
+                            with _vc3:
+                                _os = _pt_cred_ov
+                                st.metric("Overall Score", f"{_os:.0%}")
+                            _missing = _ev_cred.get("missing_evidence", [])
+                            if _missing:
+                                st.warning("Missing evidence anchors: " + ", ".join(_missing))
+                            _contras = _ev_cred.get("contradictions", [])
+                            if _contras:
+                                st.error("Contradictions detected: " + " | ".join(_contras))
+                            _cred_note = _ev_cred.get("note", "")
+                            if _cred_note:
+                                st.caption(_cred_note)
+                        else:
+                            st.info(
+                                "Probability tree not available. "
+                                "Run an Evented analysis to generate causal branching."
                             )
 
-                            if _enr_error:
-                                st.error(f"Enrichment failed (fell back to normal result): {_enr_error}")
+                    # ── 🧮 Lie Algebra ────────────────────────────────────────────
+                    with _tab_lie:
+                        _sv = _er.get("state_vector", {})
+                        _la = _er.get("lie_algebra", {})
 
-                            _filled = [a for a in _enr_missing_before if a not in _enr_missing_after]
-                            _col_a, _col_b = st.columns(2)
-                            with _col_a:
-                                st.markdown("**Missing anchors before enrichment**")
-                                for _anc in _enr_missing_before:
-                                    _ok = _anc in _filled
+                        st.markdown("#### 🧮 Lie Algebra — 8D Ontological State Vector")
+                        st.caption(
+                            "The ontological state is modelled as a vector in an 8-dimensional Lie algebra space. "
+                            "Each active pattern contributes a vector **v** ∈ ℝ⁸. "
+                            "The aggregate state is **v̄** = Σᵢ wᵢ·vᵢ, where wᵢ is the pattern's confidence prior. "
+                            "Phase transitions occur when ‖vₜ − vₜ₋₁‖ > 0.25."
+                        )
+
+                        # Cartesian product explanation
+                        with st.expander("📐 Cartesian Product & Lie Group Theory", expanded=False):
+                            st.markdown("""
+    **Cartesian product mapping**: The pattern library defines a mapping
+
+    > **E × R × E → Pattern**
+
+    where E is the set of ontological entities and R is the set of relations.
+    Each triple (entity₁, relation, entity₂) projects to a named dynamic pattern.
+
+    **Continuous projection to Lie space**: Each pattern P maps to a vector **v_P** ∈ ℝ⁸
+    encoding its intensity across 8 semantic dimensions:
+    `coercion · cooperation · dependency · information · regulation · military · economic · technology`
+
+    **Composition as vector addition**: In the Lie algebra approximation,
+    composing two patterns A ⊕ B corresponds to **v_A + v_B**, and the target pattern C
+    is selected by maximising cosine similarity: `cos(v_A + v_B, v_C)`.
+
+    **Lie bracket [v_A, v_B]** (antisymmetric part) captures higher-order interaction effects
+    — when two patterns reinforce each other, the bracket term is large; when they oppose,
+    it is small. This reflects the *structure constants* of the underlying finite group.
+
+    **Phase transitions**: A transition is flagged when the aggregate state vector shifts
+    by more than ‖Δv‖ > 0.25, indicating that a continuous change in weights has
+    caused a *discontinuous* shift in the dominant semantic regime.
+                            """)
+
+                        # 8D state vector display
+                        _sv_mean = _sv.get("mean_vector") or {}
+                        _dim_values = _sv_mean.get("dim_values") if isinstance(_sv_mean, dict) else {}
+                        _dominant = _sv_mean.get("dominant_dim") if isinstance(_sv_mean, dict) else _sv.get("dominant_dim", "unknown")
+                        _mean_list = _er.get("state_vector", {}).get("mean_vector_list", [])
+
+                        if _dim_values or _mean_list:
+                            st.markdown("**8D State Vector**")
+                            _dims = ["coercion", "cooperation", "dependency", "information",
+                                     "regulation", "military", "economic", "technology"]
+                            _cols = st.columns(4)
+                            for _di, _dname in enumerate(_dims):
+                                _dval = (
+                                    _dim_values.get(_dname, 0)
+                                    if _dim_values
+                                    else (_mean_list[_di] if _di < len(_mean_list) else 0)
+                                )
+                                _col = _cols[_di % 4]
+                                _bar_w = max(4, int(abs(_dval) * 100))
+                                _col.markdown(
+                                    f'<div style="font-size:11px;font-weight:600">{_dname}</div>'
+                                    f'<div style="background:#E0E0E0;border-radius:3px;height:5px;margin:2px 0 4px 0;">'
+                                    f'<div style="background:{"#0047AB" if _dval >= 0 else "#DC3545"};'
+                                    f'width:{_bar_w}%;height:5px;border-radius:3px;"></div></div>'
+                                    f'<div style="font-size:10px;color:#555">{_dval:+.3f}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            if _dominant:
+                                st.markdown(f"**Dominant dimension:** `{_dominant}`")
+                        else:
+                            st.info("State vector not available (no active patterns or Lie algebra computation failed).")
+
+                        # Lie algebra outputs
+                        _phase_transitions = _la.get("phase_transitions") or _sv.get("phase_transitions", [])
+                        if _phase_transitions:
+                            st.markdown("**⚡ Phase Transitions Detected**")
+                            for _pt_item in _phase_transitions:
+                                if isinstance(_pt_item, dict):
                                     st.markdown(
-                                        f'<span style="color:{"#2E7D32" if _ok else "#C62828"}">'
-                                        f'{"✅" if _ok else "❌"} {_anc}</span>',
+                                        f'<div style="border-left:3px solid #DC3545;padding:4px 10px;'
+                                        f'margin-bottom:4px;background:#FFF0F0;font-size:12px;">'
+                                        f'Step {_pt_item.get("step","?")}: ‖Δv‖ = {_pt_item.get("delta_norm", 0):.3f}'
+                                        f' &gt; 0.25 → transition at <b>{_pt_item.get("dimension","?")}</b>'
+                                        f'</div>',
                                         unsafe_allow_html=True,
                                     )
-                            with _col_b:
-                                st.markdown("**Still missing after enrichment**")
-                                if _enr_missing_after:
-                                    for _anc in _enr_missing_after:
-                                        st.markdown(f"• {_anc}")
                                 else:
-                                    st.success("All anchors filled ✓")
+                                    st.caption(str(_pt_item))
 
-                            if _enr_summary:
-                                st.caption(_enr_summary)
+                        # Evidence Enrichment (collapsible, collapsed by default)
+                        if _ev_enrich is not None:
+                            st.divider()
+                            with st.expander("🔬 Evidence Enrichment (Deep Ontology)", expanded=False):
+                                _enr_missing_before = _ev_enrich.get("missing_before", [])
+                                _enr_missing_after  = _ev_enrich.get("missing_after", [])
+                                _enr_provenance     = _ev_enrich.get("provenance", [])
+                                _enr_summary        = _ev_enrich.get("enriched_context_summary", "")
+                                _enr_cache_hit      = _ev_enrich.get("cache_hit", False)
+                                _enr_limits         = _ev_enrich.get("limits", {})
+                                _enr_error          = _ev_enrich.get("error")
+                                _enr_level          = _ev_enrich.get("level", 0)
 
-                            if _enr_provenance:
-                                st.markdown("**📋 Evidence Provenance**")
-                                for _prov in _enr_provenance:
-                                    _p_anchor  = _prov.get("anchor_type", "")
-                                    _p_snippet = _prov.get("snippet", "")
-                                    _p_url     = _prov.get("source_url", "")
-                                    _p_title   = _prov.get("title", "")
-                                    _p_conf    = _prov.get("confidence", 0)
-                                    st.markdown(
-                                        f'<div style="border-left:3px solid #1565C0;'
-                                        f'padding:6px 12px;margin-bottom:6px;background:#E3F2FD;border-radius:4px;">'
-                                        f'<span style="font-weight:700;font-size:12px;color:#1565C0">{_p_anchor}</span>'
-                                        f'&nbsp;&nbsp;<span style="color:#555;font-size:11px">confidence {_p_conf:.0%}</span>'
-                                        f'<div style="font-size:13px;margin-top:3px">{_p_snippet}</div>'
-                                        + (f'<div style="font-size:11px;color:#888;margin-top:2px">'
-                                           f'Source: <a href="{_p_url}" target="_blank">{_p_title or _p_url}</a>'
-                                           f'</div>' if _p_url else "")
-                                        + f'</div>',
-                                        unsafe_allow_html=True,
-                                    )
-                            else:
-                                st.info("No new evidence sources extracted.")
+                                _level_labels = {0: "Off", 1: "Local metadata", 2: "+Fetch source", 3: "+Web search"}
+                                st.markdown(
+                                    f"**🔬 Deep Ontology Analysis** · Level {_enr_level} "
+                                    f"({_level_labels.get(_enr_level, '')})"
+                                    + (" &nbsp; 🗄️ `cache hit`" if _enr_cache_hit else ""),
+                                    unsafe_allow_html=True,
+                                )
 
-                            if _enr_limits:
-                                _lim_parts = []
-                                if _enr_limits.get("searched"):
-                                    _lim_parts.append("web search executed")
-                                _furl = _enr_limits.get("fetched_urls", 0)
-                                if _furl:
-                                    _lim_parts.append(f"fetched {_furl} URL(s)")
-                                if _enr_limits.get("truncated"):
-                                    _lim_parts.append("⚠️ truncated due to timeout")
-                                if _lim_parts:
-                                    st.caption("Limits: " + " · ".join(_lim_parts))
+                                if _enr_error:
+                                    st.error(f"Enrichment failed (fell back to normal result): {_enr_error}")
+
+                                _filled = [a for a in _enr_missing_before if a not in _enr_missing_after]
+                                _col_a, _col_b = st.columns(2)
+                                with _col_a:
+                                    st.markdown("**Missing anchors before enrichment**")
+                                    for _anc in _enr_missing_before:
+                                        _ok = _anc in _filled
+                                        st.markdown(
+                                            f'<span style="color:{"#2E7D32" if _ok else "#C62828"}">'
+                                            f'{"✅" if _ok else "❌"} {_anc}</span>',
+                                            unsafe_allow_html=True,
+                                        )
+                                with _col_b:
+                                    st.markdown("**Still missing after enrichment**")
+                                    if _enr_missing_after:
+                                        for _anc in _enr_missing_after:
+                                            st.markdown(f"• {_anc}")
+                                    else:
+                                        st.success("All anchors filled ✓")
+
+                                if _enr_summary:
+                                    st.caption(_enr_summary)
+
+                                if _enr_provenance:
+                                    st.markdown("**📋 Evidence Provenance**")
+                                    for _prov in _enr_provenance:
+                                        _p_anchor  = _prov.get("anchor_type", "")
+                                        _p_snippet = _prov.get("snippet", "")
+                                        _p_url     = _prov.get("source_url", "")
+                                        _p_title   = _prov.get("title", "")
+                                        _p_conf    = _prov.get("confidence", 0)
+                                        st.markdown(
+                                            f'<div style="border-left:3px solid #1565C0;'
+                                            f'padding:6px 12px;margin-bottom:6px;background:#E3F2FD;border-radius:4px;">'
+                                            f'<span style="font-weight:700;font-size:12px;color:#1565C0">{_p_anchor}</span>'
+                                            f'&nbsp;&nbsp;<span style="color:#555;font-size:11px">confidence {_p_conf:.0%}</span>'
+                                            f'<div style="font-size:13px;margin-top:3px">{_p_snippet}</div>'
+                                            + (f'<div style="font-size:11px;color:#888;margin-top:2px">'
+                                               f'Source: <a href="{_p_url}" target="_blank">{_p_title or _p_url}</a>'
+                                               f'</div>' if _p_url else "")
+                                            + f'</div>',
+                                            unsafe_allow_html=True,
+                                        )
+                                else:
+                                    st.info("No new evidence sources extracted.")
+
+                                if _enr_limits:
+                                    _lim_parts = []
+                                    if _enr_limits.get("searched"):
+                                        _lim_parts.append("web search executed")
+                                    _furl = _enr_limits.get("fetched_urls", 0)
+                                    if _furl:
+                                        _lim_parts.append(f"fetched {_furl} URL(s)")
+                                    if _enr_limits.get("truncated"):
+                                        _lim_parts.append("⚠️ truncated due to timeout")
+                                    if _lim_parts:
+                                        st.caption("Limits: " + " · ".join(_lim_parts))
 
             if st.button("🔄 Clear selection", key="clear_selection_evented"):
                 st.session_state.selected_news  = None

@@ -222,6 +222,82 @@ class EventType:
 
 
 # ===========================================================================
+# Domain detection — lightweight keyword classifier
+# ===========================================================================
+
+# Domains that the El-druin ontology supports
+_SUPPORTED_DOMAINS: frozenset = frozenset({"geopolitics", "economics", "technology", "military"})
+
+# Minimum number of keyword hits required before a domain label is trusted.
+# A threshold of 2 prevents false positives where a single incidental term
+# (e.g., "match" in a geopolitical dispatch) mislabels the domain.
+_MIN_DOMAIN_KEYWORD_HITS: int = 2
+
+# Minimum confidence_prior below which a single active pattern is treated
+# as noise — used together with the domain check for out-of-scope detection.
+_LOW_PATTERN_CONFIDENCE_THRESHOLD: float = 0.30
+
+# (keywords, domain_label) — first-match wins for unsupported domains,
+# supported-domain signals are scored cumulatively.
+_DOMAIN_SIGNALS: List[Tuple[List[str], str]] = [
+    # ── Unsupported: Sports ────────────────────────────────────────────
+    (["goal", "match", "league", "fixture", "championship", "tournament",
+      "midfielder", "goalkeeper", "striker", "nfl", "nba", "fifa", "penalty",
+      "tackle", "offside", "hat trick", "hat-trick", "innings", "wicket",
+      "quarterback", "touchdown", "slam dunk", "grand slam", "transfer fee",
+      "relegation", "promotion", "standings", "halftime", "half-time",
+      "kickoff", "kick-off", "referee", "footballer", "basketball",
+      "tennis", "rugby", "cricket", "baseball", "volleyball"], "sports"),
+    # ── Unsupported: Entertainment ─────────────────────────────────────
+    (["box office", "box-office", "oscar", "grammy", "celebrity",
+      "album release", "concert tour", "streaming series",
+      "film premiere", "movie premiere"], "entertainment"),
+    # ── Supported: Geopolitics ─────────────────────────────────────────
+    (["sanction", "military", "diplomatic", "ceasefire", "conflict",
+      "treaty", "nato", "un security council", "foreign minister",
+      "state department", "kremlin", "pentagon", "embassy",
+      "troop", "invasion", "annexation", "sovereignty", "geopolit",
+      "war", "missile", "airstrike", "nuclear", "deterrence"], "geopolitics"),
+    # ── Supported: Economics ──────────────────────────────────────────
+    (["gdp", "inflation", "central bank", "interest rate", "federal reserve",
+      "tariff", "trade deficit", "currency", "export control", "supply chain",
+      "semiconductor", "market cap", "bond yield", "fiscal", "monetary"], "economics"),
+    # ── Supported: Technology ─────────────────────────────────────────
+    (["artificial intelligence", "semiconductor", "chip", "technology ban",
+      "export control", "tech decoupling", "cyber", "quantum", "5g", "6g"], "technology"),
+    # ── Supported: Military ───────────────────────────────────────────
+    (["military", "armed forces", "defence", "defense", "weapon", "warfare",
+      "intelligence agency", "cia", "nsa", "gchq", "mobilization"], "military"),
+]
+
+
+def _detect_content_domain(text: str) -> str:
+    """Classify text into a domain; returns the dominant domain name.
+
+    Unsupported domains (sports, entertainment) short-circuit on first
+    strong signal.  Supported domains are scored cumulatively and the
+    highest-scoring one is returned.  Falls back to "general" if no
+    signal reaches _MIN_DOMAIN_KEYWORD_HITS to avoid false positives on
+    ambiguous text (e.g., a single geopolitical term in a sports report).
+    """
+    text_l = text.lower()
+    scores: Dict[str, int] = {}
+    for keywords, domain in _DOMAIN_SIGNALS:
+        count = sum(1 for kw in keywords if kw in text_l)
+        if count:
+            scores[domain] = scores.get(domain, 0) + count
+
+    if not scores:
+        return "general"
+
+    best = max(scores, key=lambda d: scores[d])
+    # Require minimum keyword hits to trust the label
+    if scores[best] < _MIN_DOMAIN_KEYWORD_HITS:
+        return "general"
+    return best
+
+
+# ===========================================================================
 # 数据结构
 # ===========================================================================
 
@@ -2223,6 +2299,10 @@ def run_evented_pipeline(
     """
     logger.info("EventedPipeline: starting on %d chars", len(text))
 
+    # ── Domain detection ──────────────────────────────────────────────
+    _content_domain = _detect_content_domain(text)
+    logger.info("EventedPipeline: content domain detected as '%s'", _content_domain)
+
     # ── Stage 1 ──────────────────────────────────────────────────────
     events = _run_stage1(text, llm_service)
     logger.info("EventedPipeline: %d events extracted", len(events))
@@ -2230,6 +2310,75 @@ def run_evented_pipeline(
     # ── Stage 2a ─────────────────────────────────────────────────────
     active = _run_stage2a(events)
     logger.info("EventedPipeline: %d active patterns", len(active))
+
+    # ── Out-of-scope check ────────────────────────────────────────────
+    # If no geopolitical/economic patterns were activated AND the content
+    # is clearly in an unsupported domain, return an explicit out-of-scope
+    # result instead of forcing geopolitical analysis.
+    _domain_is_unsupported = _content_domain not in _SUPPORTED_DOMAINS and _content_domain != "general"
+    _low_pattern_activation = len(active) == 0 or (
+        len(active) == 1 and active[0].confidence_prior < _LOW_PATTERN_CONFIDENCE_THRESHOLD
+    )
+    if _domain_is_unsupported and _low_pattern_activation:
+        logger.info(
+            "EventedPipeline: out-of-scope content domain '%s' with %d active patterns — returning out-of-scope result",
+            _content_domain, len(active),
+        )
+        _oos_msg = (
+            f"This content appears to be about {_content_domain}. "
+            "El-druin's ontology covers geopolitics, economics, technology, and military domains. "
+            "No meaningful pattern-based analysis can be produced for this content type — "
+            "the library does not contain the ontological primitives needed to reason about it."
+        )
+        _oos_conclusion = {
+            "out_of_scope":           True,
+            "out_of_scope_domain":    _content_domain,
+            "executive_judgement":    _oos_msg,
+            "executive_judgement_raw": _oos_msg,
+            "evidence_path": {
+                "summary": "No applicable ontological patterns found for this content domain.",
+                "summary_raw": "No applicable ontological patterns found for this content domain.",
+                "outcomes": [],
+            },
+            "hypothesis_path": {
+                "summary": "No applicable ontological patterns found for this content domain.",
+                "summary_raw": "No applicable ontological patterns found for this content domain.",
+                "outcomes": [],
+                "verification_gaps": [],
+            },
+            "conclusion":  _oos_msg,
+            "text":        _oos_msg,
+            "alpha_path":  {"name": "N/A", "probability": 0.0},
+            "beta_path":   {"name": "N/A", "probability": 0.0},
+            "confidence":  0.0,
+            "mode":        "out_of_scope",
+            "rendering_meta": {"enabled": False, "guardrails_triggered": False},
+        }
+        _oos_credibility = {
+            "verifiability_score":  0.0,
+            "kg_consistency_score": 0.0,
+            "overall_score":        0.0,
+            "hypothesis_ratio":     0.0,
+            "missing_evidence":     [],
+            "contradictions":       [],
+            "supporting_paths":     [],
+            "note": (
+                f"Content domain '{_content_domain}' is outside the El-druin ontology's "
+                "supported scope (geopolitics, economics, technology, military)."
+            ),
+        }
+        return PipelineResult(
+            events=[],
+            active_patterns=[],
+            derived_patterns=[],
+            top_transitions=[],
+            state_vector={},
+            driving_factors=[],
+            conclusion=_oos_conclusion,
+            credibility=_oos_credibility,
+            probability_tree={},
+            dual_inference=[],
+        )
 
     # ── Stage 2b ─────────────────────────────────────────────────────
     transitions = _run_stage2b(active)
@@ -2411,6 +2560,23 @@ def run_evented_pipeline(
             en_a = display_pattern(t.from_pattern_a)
             en_b = display_pattern(t.from_pattern_b)
             en_c = display_pattern(t.to_pattern)
+            # Per-node Bayesian calculation string (used by hover tooltip)
+            _bayes_calc = (
+                f"{t.prior_a:.3f} × {t.prior_b:.3f} × {t.lie_similarity:.3f}"
+                f" = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.2%}"
+            )
+            # Dual integration info for this node (if available)
+            _dual_info: Dict[str, Any] = {}
+            if dual_results and idx < len(dual_results):
+                _di = dual_results[idx].get("integration", {})
+                _dual_info = {
+                    "consistency_score": _di.get("consistency_score", 0.0),
+                    "verdict":           _di.get("verdict", "neutral"),
+                    "confidence_final":  _di.get("confidence_final", prob),
+                    "confidence_formula": _di.get("confidence_formula", ""),
+                    "divergence_dims":   _di.get("divergence_dims", []),
+                    "emergence_signal":  _di.get("emergence_signal", ""),
+                }
             pt_nodes.append({
                 "id":                node_id,
                 "label":             en_c,
@@ -2422,6 +2588,42 @@ def run_evented_pipeline(
                 ),
                 "verification_gap":  "low-probability high-impact path" if t.transition_type == "inverse" else "",
                 "typical_outcomes":  t.typical_outcomes[:2],
+                # ── Tooltip computation data (shown on hover in the UI) ───────
+                "tooltip_data": {
+                    "bayesian": {
+                        "formula":      "posterior = prior_A × prior_B × lie_similarity / Z",
+                        "prior_a":      t.prior_a,
+                        "prior_b":      t.prior_b,
+                        "lie_sim":      t.lie_similarity,
+                        "posterior":    t.posterior_weight,
+                        "Z":            round(Z, 6),
+                        "probability":  prob,
+                        "calculation":  _bayes_calc,
+                    },
+                    "lie_algebra": {
+                        "formula":           "cos(v_A + v_B, v_C) = lie_similarity",
+                        "cosine_similarity": t.lie_similarity,
+                        "source_a":          en_a,
+                        "source_b":          en_b,
+                        "target":            en_c,
+                        "note": (
+                            "v_A, v_B are 8-dimensional semantic vectors in the Lie algebra space. "
+                            "lie_sim = cos(v_A + v_B, v_C) measures alignment between "
+                            "the composition vector and the target pattern vector."
+                        ),
+                    },
+                    "dual_integration": _dual_info if _dual_info else {
+                        "note": "confidence_final = P_Bayes × (1 + α × consistency) / (1 + α), α=0.3",
+                        "normalization": f"Z = {round(Z, 6)} (sum of all posterior_weights)",
+                    },
+                    "patterns": {
+                        "source_a":        en_a,
+                        "source_b":        en_b,
+                        "target":          en_c,
+                        "transition_type": t.transition_type,
+                        "typical_outcomes": t.typical_outcomes[:2],
+                    },
+                },
             })
             pt_edges.append({
                 "from":             "root",
