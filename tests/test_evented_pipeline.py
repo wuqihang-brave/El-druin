@@ -1669,7 +1669,7 @@ class TestConclusionPhrasingAndCompute:
             )
 
     def test_no_forbidden_phrase_targeted_actor(self):
-        """'targeted actor' must not appear in any raw conclusion field."""
+        """'targeted actor' must not appear in any raw conclusion field (case-insensitive)."""
         result = self._run()
         concl = result.conclusion
         ej_raw = concl.get("executive_judgement_raw", "")
@@ -1679,7 +1679,9 @@ class TestConclusionPhrasingAndCompute:
             (ep_raw, "evidence_path.summary_raw"),
         ]:
             assert "targeted actor" not in text.lower(), (
-                f"Forbidden phrase 'targeted actor' found in {name}: {text!r}"
+                # Case-insensitive: "targeted actor" already lowercase; also catches
+                # "Targeted Actor", "TARGETED ACTOR", etc.
+                f"Forbidden phrase 'targeted actor' (case-insensitive) found in {name}: {text!r}"
             )
 
     # ── 2. Numeric probability in raw output ─────────────────────────────

@@ -1051,6 +1051,7 @@ if page == "🏠 Home":
                                 _kc_posterior = _kc_bayes.get("posterior", 0)
                                 _kc_Z         = _kc_bayes.get("Z", 1)
                                 _kc_p         = _kc_bayes.get("probability", 0)
+                                # Minimum 4% width so even tiny probabilities render a visible bar sliver
                                 _kc_bar_pct   = max(4, int(_kc_p * 100))
 
                                 st.markdown("**A · Bayesian Probability**")
@@ -1098,8 +1099,10 @@ if page == "🏠 Home":
                                 # Show top emergent dimensions as bars
                                 if _kc_top_dims and _kc_top_vals:
                                     _max_v = max(_kc_top_vals) if _kc_top_vals else 1.0
+                                    # Bar width scaled to 80px max; minimum 2px for visibility
+                                    _dim_bar_max_px = 80
                                     for _dim, _val in zip(_kc_top_dims[:3], _kc_top_vals[:3]):
-                                        _dim_bar = max(2, int(_val / max(_max_v, 1e-9) * 80))
+                                        _dim_bar = max(2, int(_val / max(_max_v, 1e-9) * _dim_bar_max_px))
                                         st.markdown(
                                             f'<div style="font-size:11px;margin:2px 0;display:flex;align-items:center;gap:6px">'
                                             f'<span style="display:inline-block;min-width:72px;color:#555">{_dim}</span>'
