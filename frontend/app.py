@@ -223,11 +223,11 @@ _api = APIClient(base_url=_backend_url)
 # ---------------------------------------------------------------------------
 
 def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
-    """Return HTML for a probability badge with a hover tooltip.
+    """Return HTML for a probability badge with a simplified hover tooltip.
 
-    The tooltip shows four sections mirroring the four detail tabs:
-    Bayesian calculation, Lie algebra details, dual integration
-    normalisation, and pattern summary.
+    The tooltip explains how the Bayesian and Lie algebra results combine into
+    the final dual confidence score, and directs users to the detail tabs for
+    full computation traces.
 
     Args:
         prob: Probability value in [0, 1].
@@ -238,93 +238,64 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     bayes  = td.get("bayesian", {})
     lie_al = td.get("lie_algebra", {})
     dual   = td.get("dual_integration", {})
-    pats   = td.get("patterns", {})
 
-    # ── Bayesian section ────────────────────────────────────────────
-    bayes_calc = bayes.get("calculation", "—")
-    bayes_formula = bayes.get("formula", "posterior = prior_A × prior_B × lie_sim^k / Z")
-    prior_a = bayes.get("prior_a", "—")
-    prior_b = bayes.get("prior_b", "—")
-    lie_sim_val = bayes.get("lie_sim", "—")
-    lie_sim_amplified = bayes.get("lie_sim_amplified", "—")
-    amplification = bayes.get("amplification", "")
-    posterior_val = bayes.get("posterior", "—")
-    Z_val = bayes.get("Z", "—")
+    # ── Bayesian brief ───────────────────────────────────────────────
+    k          = bayes.get("amplification", 4)
+    prior_a    = bayes.get("prior_a", "—")
+    prior_b    = bayes.get("prior_b", "—")
+    lie_sim    = bayes.get("lie_sim", "—")
+    Z_val      = bayes.get("Z", "—")
 
-    # ── Lie algebra section ─────────────────────────────────────────
-    lie_sim_display = lie_al.get("cosine_similarity", "—")
-    lie_src_a = lie_al.get("source_a", "—")
-    lie_src_b = lie_al.get("source_b", "—")
-    lie_tgt   = lie_al.get("target", "—")
-    lie_note  = lie_al.get("note", "")
+    # ── Lie algebra brief ────────────────────────────────────────────
+    cos_sim    = lie_al.get("cosine_similarity", lie_sim)
+    mat_norm   = lie_al.get("matrix_norm", None)
 
-    # ── Dual integration section ────────────────────────────────────
-    dual_note    = dual.get("note", "")
-    dual_norm    = dual.get("normalization", "")
-    dual_verdict = dual.get("verdict", "")
-    dual_conf    = dual.get("confidence_final", "")
-    dual_formula = dual.get("confidence_formula", "")
-    dual_consist = dual.get("consistency_score", "")
-    dual_nonlin_dims  = dual.get("lie_nonlinear_top", [])
-    dual_nonlin_vals  = dual.get("lie_nonlinear_vals", [])
+    # ── Dual integration brief ───────────────────────────────────────
+    consistency = dual.get("consistency_score", None)
+    verdict     = dual.get("verdict", "")
+    conf_final  = dual.get("confidence_final", None)
 
-    # ── Patterns section ────────────────────────────────────────────
-    pat_src_a   = pats.get("source_a", "—")
-    pat_src_b   = pats.get("source_b", "—")
-    pat_tgt     = pats.get("target", "—")
-    pat_type    = pats.get("transition_type", "—")
-    pat_outcomes = "; ".join(str(o) for o in pats.get("typical_outcomes", []))
-
-    # Format amplification display — only show when both fields are meaningful
-    amp_str = f"^{amplification}" if amplification else ""
-    lie_amp_str = (
-        f" ({lie_sim_amplified:.6f} after {amp_str} amplification)"
-        if amplification and isinstance(lie_sim_amplified, float) else ""
-    )
-
+    # ── Tooltip content ──────────────────────────────────────────────
     tooltip_content = (
-        f"<div class='prob-tooltip-section'>📐 Bayesian Posterior</div>"
-        f"<div>Formula: <span class='prob-tooltip-mono'>{bayes_formula}</span></div>"
-        f"<div>Calc: <span class='prob-tooltip-mono'>{bayes_calc}</span></div>"
-        f"<div>prior_A=<b>{prior_a}</b> &nbsp; prior_B=<b>{prior_b}</b>"
-        f" &nbsp; lie_sim=<b>{lie_sim_val}</b>{lie_amp_str}</div>"
-        f"<div>posterior=<b>{posterior_val}</b> &nbsp; Z={Z_val} &nbsp; → &nbsp; <b>p={prob:.1%}</b></div>"
+        f"<div class='prob-tooltip-section'>🔗 Dual Confidence: p = {prob:.1%}</div>"
+        f"<div style='font-size:10.5px;color:#555;margin-bottom:4px'>"
+        f"confidence_final = P_Bayes &times; (1 + &alpha; &times; consistency) / (1 + &alpha;), &alpha;=0.3"
+        f"</div>"
         f"<hr class='prob-tooltip-hr'>"
-        f"<div class='prob-tooltip-section'>🧮 Lie Algebra (so(8))</div>"
-        f"<div>A = <b>{lie_src_a}</b> &nbsp; B = <b>{lie_src_b}</b> &nbsp; → &nbsp; C = <b>{lie_tgt}</b></div>"
-        f"<div>cos(v_A + v_B, v_C) = <b>{lie_sim_display}</b></div>"
+        f"<div class='prob-tooltip-section'>📐 Bayesian &nbsp;<span style='font-weight:400;color:#777;font-size:10.5px'>(full detail → 🌳 Probability Tree tab)</span></div>"
+        f"<div style='font-size:11px'>"
+        f"P_Bayes = prior_A &times; prior_B &times; lie_sim^{k} / Z"
+        f"<br><span class='prob-tooltip-mono'>{prior_a} &times; {prior_b} &times; {lie_sim}^{k} / {Z_val}</span>"
+        f" = <b>{prob:.1%}</b>"
+        f"</div>"
+        f"<hr class='prob-tooltip-hr'>"
+        f"<div class='prob-tooltip-section'>🧮 Lie Algebra &nbsp;<span style='font-weight:400;color:#777;font-size:10.5px'>(full detail → 🧮 Lie Algebra tab)</span></div>"
+        f"<div style='font-size:11px'>cos(v_A + v_B, v_C) = <b>{cos_sim}</b>"
     )
-    if lie_note:
-        tooltip_content += f"<div style='font-size:10.5px;color:#555;margin-top:2px'>{lie_note}</div>"
-    tooltip_content += f"<hr class='prob-tooltip-hr'><div class='prob-tooltip-section'>∫ Dual Integration</div>"
-    if dual_formula:
-        tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_formula}</span></div>"
-    elif dual_note:
-        tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_note}</span></div>"
-    if dual_norm:
-        tooltip_content += f"<div>{dual_norm}</div>"
-    if dual_consist != "":
-        consist_str = f"{dual_consist:.3f}" if isinstance(dual_consist, float) else str(dual_consist)
-        tooltip_content += f"<div>consistency = <b>{consist_str}</b>"
-        if dual_verdict:
-            tooltip_content += f" &nbsp; verdict: <b>{dual_verdict}</b>"
-        if dual_conf:
-            conf_str = f"{dual_conf:.3f}" if isinstance(dual_conf, float) else str(dual_conf)
-            tooltip_content += f" &nbsp; conf_final={conf_str}"
-        tooltip_content += "</div>"
-    if dual_nonlin_dims:
-        _nonlin_pairs = ", ".join(
-            f"{d}:{v:.2f}" for d, v in zip(dual_nonlin_dims, dual_nonlin_vals)
+    if mat_norm is not None and mat_norm != 0.0:
+        tooltip_content += f" &nbsp; ‖[A,B]‖_F = <b>{mat_norm:.4f}</b>"
+    tooltip_content += "</div>"
+
+    if consistency is not None:
+        consist_str = f"{consistency:.3f}" if isinstance(consistency, float) else str(consistency)
+        tooltip_content += (
+            f"<hr class='prob-tooltip-hr'>"
+            f"<div class='prob-tooltip-section'>∫ Integration</div>"
+            f"<div style='font-size:11px'>consistency = <b>{consist_str}</b>"
         )
-        tooltip_content += f"<div>Lie nonlinear emergence: {_nonlin_pairs}</div>"
+        if verdict:
+            tooltip_content += f" &nbsp; verdict: <b>{verdict}</b>"
+        if conf_final is not None:
+            cf_str = f"{conf_final:.3f}" if isinstance(conf_final, float) else str(conf_final)
+            tooltip_content += f" &nbsp; conf_final = <b>{cf_str}</b>"
+        tooltip_content += "</div>"
+
     tooltip_content += (
         f"<hr class='prob-tooltip-hr'>"
-        f"<div class='prob-tooltip-section'>📌 Patterns</div>"
-        f"<div><b>{pat_src_a}</b> ⊕ <b>{pat_src_b}</b> → <b>{pat_tgt}</b>"
-        f" <span style='color:#777'>[{pat_type}]</span></div>"
+        f"<div style='font-size:10.5px;color:#777'>"
+        f"See <b>🌳 Probability Tree</b> and <b>🧮 Lie Algebra</b> tabs for full computation traces."
+        f"</div>"
     )
-    if pat_outcomes:
-        tooltip_content += f"<div style='font-size:11px;color:#555'>Typical: {pat_outcomes}</div>"
 
     return (
         f"<span class='prob-tooltip-wrap'>"
@@ -1050,29 +1021,134 @@ if page == "🏠 Home":
                         _final = _ev_concl.get("final", {})
                         _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
                         _compute_ref  = _final.get("compute_trace_ref", "")
+
+                        # ── Key Computation Process (always visible, non-hover) ──────
+                        # Extract top probability-tree node and dual inference data
+                        _concl_ptree = _ev_ptree.get("nodes", [])
+                        _top_node = next(
+                            (n for n in _concl_ptree if n.get("id") not in ("root",) and n.get("tooltip_data")),
+                            None,
+                        )
+                        _ev_dual_list = _er.get("dual_inference", [])
+                        _top_dual     = _ev_dual_list[0] if _ev_dual_list else {}
+
+                        if _top_node:
+                            _td = _top_node.get("tooltip_data", {})
+                            _kc_bayes = _td.get("bayesian", {})
+                            _kc_lie   = _td.get("lie_algebra", {})
+                            _kc_dual  = _td.get("dual_integration", {})
+
+                            st.markdown("#### 📐 Key Computation Process")
+                            _kca_col, _kcb_col = st.columns(2)
+
+                            # ── A: Bayesian probability line ───────────────────────
+                            with _kca_col:
+                                _kc_k         = _kc_bayes.get("amplification", 4)
+                                _kc_prior_a   = _kc_bayes.get("prior_a", 0)
+                                _kc_prior_b   = _kc_bayes.get("prior_b", 0)
+                                _kc_lie_sim   = _kc_bayes.get("lie_sim", 0)
+                                _kc_lie_amp   = _kc_bayes.get("lie_sim_amplified", 0)
+                                _kc_posterior = _kc_bayes.get("posterior", 0)
+                                _kc_Z         = _kc_bayes.get("Z", 1)
+                                _kc_p         = _kc_bayes.get("probability", 0)
+                                _kc_bar_pct   = max(4, int(_kc_p * 100))
+
+                                st.markdown("**A · Bayesian Probability**")
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-family:monospace;background:#F0F4FF;'
+                                    f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #0047AB">'
+                                    f'posterior = prior_A &times; prior_B &times; lie_sim^{_kc_k} / Z<br>'
+                                    f'= {_kc_prior_a:.3f} &times; {_kc_prior_b:.3f}'
+                                    f' &times; ({_kc_lie_sim:.3f})^{_kc_k} / {_kc_Z:.4f}<br>'
+                                    f'= <b>{_kc_lie_amp:.6f}</b> / {_kc_Z:.4f}'
+                                    f' &nbsp;→&nbsp; <b>p = {_kc_p:.1%}</b>'
+                                    f'</div>'
+                                    # horizontal bar: fill from left, length proportional to p
+                                    f'<div style="background:#D8E4F8;border-radius:4px;height:10px;margin:4px 0;">'
+                                    f'<div style="background:#0047AB;width:{_kc_bar_pct}%;height:10px;'
+                                    f'border-radius:4px;"></div></div>'
+                                    f'<div style="font-size:11px;color:#555">'
+                                    f'p = <b>{_kc_p:.1%}</b> &nbsp;|&nbsp; Z = {_kc_Z:.4f}'
+                                    f' &nbsp;|&nbsp; '
+                                    + (_prob_tooltip_html(_kc_p, _top_node) if _top_node else f'{_kc_p:.1%}')
+                                    + '</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            # ── B: Lie algebra line ────────────────────────────────
+                            with _kcb_col:
+                                _kc_mat_norm  = _kc_lie.get("matrix_norm") or _top_dual.get("lie_algebra", {}).get("matrix_norm", 0.0)
+                                _kc_sigma1    = _kc_lie.get("sigma1") or _top_dual.get("lie_algebra", {}).get("sigma1", 0.0)
+                                _kc_cos       = _kc_lie.get("cosine_similarity", _kc_bayes.get("lie_sim", 0.0))
+                                _kc_top_dims  = _kc_lie.get("top_emergent_dims") or _kc_dual.get("lie_nonlinear_top") or _top_dual.get("lie_algebra", {}).get("top_emergent_dims", [])
+                                _kc_top_vals  = _kc_lie.get("top_emergent_values") or _kc_dual.get("lie_nonlinear_vals") or _top_dual.get("lie_algebra", {}).get("top_emergent_values", [])
+
+                                st.markdown("**B · Lie Algebra ‖[X_A, X_B]‖**")
+                                _kc_mat_str   = f"‖[A,B]‖_F = {_kc_mat_norm:.4f}" if _kc_mat_norm else "‖[A,B]‖_F = —"
+                                _kc_sigma_str = f"  σ₁ = {_kc_sigma1:.4f}" if _kc_sigma1 else ""
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-family:monospace;background:#F5F0FF;'
+                                    f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #7B1FA2">'
+                                    f'<b>{_kc_mat_str}</b>{_kc_sigma_str}<br>'
+                                    f'cos(v_A + v_B, v_C) = <b>{_kc_cos:.4f}</b>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                                # Show top emergent dimensions as bars
+                                if _kc_top_dims and _kc_top_vals:
+                                    _max_v = max(_kc_top_vals) if _kc_top_vals else 1.0
+                                    for _dim, _val in zip(_kc_top_dims[:3], _kc_top_vals[:3]):
+                                        _dim_bar = max(2, int(_val / max(_max_v, 1e-9) * 80))
+                                        st.markdown(
+                                            f'<div style="font-size:11px;margin:2px 0;display:flex;align-items:center;gap:6px">'
+                                            f'<span style="display:inline-block;min-width:72px;color:#555">{_dim}</span>'
+                                            f'<span style="display:inline-block;background:#7B1FA2;height:6px;'
+                                            f'width:{_dim_bar}px;border-radius:2px"></span>'
+                                            f'<span style="color:#555">{_val:.3f}</span>'
+                                            f'</div>',
+                                            unsafe_allow_html=True,
+                                        )
+
+                                # Expand/collapse: inspect 8x8 bracket matrix
+                                _kc_bracket = _top_dual.get("lie_algebra", {}).get("bracket_matrix")
+                                if _kc_bracket:
+                                    import json as _json
+                                    _mat_json = _json.dumps(_kc_bracket, separators=(",", ":"))
+                                    with st.expander("🔎 Inspect 8×8 bracket matrix [X_A, X_B]", expanded=False):
+                                        st.caption(
+                                            "C = [X_A, X_B] = X_A @ X_B − X_B @ X_A (8×8 antisymmetric matrix). "
+                                            "Row i shows non-linear interference of dimension i on all others."
+                                        )
+                                        _rows = ["coercion", "cooperation", "dependency", "information",
+                                                 "regulation", "military", "economic", "technology"]
+                                        for _ri, _row in enumerate(_kc_bracket):
+                                            _row_vals = "  ".join(f"{v:+.3f}" for v in _row)
+                                            _row_label = _rows[_ri] if _ri < len(_rows) else f"dim{_ri}"
+                                            st.markdown(
+                                                f'<div style="font-size:10px;font-family:monospace;'
+                                                f'color:#333;padding:1px 0">'
+                                                f'<span style="color:#555;display:inline-block;width:80px">{_row_label}</span>'
+                                                f'{_row_vals}'
+                                                f'</div>',
+                                                unsafe_allow_html=True,
+                                            )
+                                        st.download_button(
+                                            label="⬇️ Download matrix JSON",
+                                            data=_mat_json,
+                                            file_name="bracket_matrix.json",
+                                            mime="application/json",
+                                        )
+                        else:
+                            st.caption(
+                                "📐 Run an analysis to see the Key Computation Process "
+                                "(Bayesian formula + Lie algebra results) displayed here."
+                            )
+
+                        # Confidence metric row
                         _c1, _c2 = st.columns(2)
                         with _c1:
                             st.metric("Overall Confidence", f"{_overall_conf:.0%}")
-                            # If probability tree has nodes with tooltip_data, show a
-                            # hoverable probability badge for the top-ranked transition.
-                            _concl_ptree = _ev_ptree.get("nodes", [])
-                            _top_node = next(
-                                (n for n in _concl_ptree if n.get("id") not in ("root",) and n.get("tooltip_data")),
-                                None,
-                            )
-                            if _top_node:
-                                _top_prob = _top_node.get("probability", 0)
-                                st.markdown(
-                                    f'<div style="margin-top:4px;font-size:12px;color:#555">'
-                                    f'Top outcome probability (hover for math): '
-                                    f'{_prob_tooltip_html(_top_prob, _top_node)}</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                st.caption(
-                                    "📐 Hover over probabilities in the **🌳 Probability Tree** tab "
-                                    "to see the full Bayesian, Lie algebra, and dual-integration computation."
-                                )
                         with _c2:
                             st.caption(f"Compute trace: `{_compute_ref}`")
 

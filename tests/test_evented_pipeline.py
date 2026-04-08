@@ -1614,3 +1614,198 @@ class TestTooltipDataFields:
                 f"for lie_sim ∈ [0,1] and k ≥ 1 this should never happen "
                 f"(lie_sim^k ≤ lie_sim when lie_sim ≤ 1)"
             )
+
+
+# ===========================================================================
+# O. Conclusion phrasing guardrails and computation wiring
+# ===========================================================================
+
+class TestConclusionPhrasingAndCompute:
+    """Verify conclusion phrasing, numeric probability, and math wiring requirements.
+
+    Requirements:
+    1. Conclusion must NOT contain forbidden template phrases.
+    2. Deterministic raw fields must include a numeric probability token.
+    3. tooltip_data.lie_algebra must include matrix_norm and emergent dimension data.
+    4. dual_inference output must include matrix_norm and cosine_similarity.
+    """
+
+    def _run(self):
+        from intelligence.evented_pipeline import run_evented_pipeline
+        return run_evented_pipeline(_SANCTION_FIXTURE, llm_service=None)
+
+    # ── 1. Forbidden phrase checks ────────────────────────────────────────
+
+    def test_no_forbidden_phrase_likely_outcome(self):
+        """'Likely outcome' must not appear in any deterministic raw field."""
+        result = self._run()
+        concl = result.conclusion
+        ep_raw = concl.get("evidence_path", {}).get("summary_raw", "")
+        hp_raw = concl.get("hypothesis_path", {}).get("summary_raw", "")
+        ej_raw = concl.get("executive_judgement_raw", "")
+        for text, name in [
+            (ep_raw, "evidence_path.summary_raw"),
+            (hp_raw, "hypothesis_path.summary_raw"),
+            (ej_raw, "executive_judgement_raw"),
+        ]:
+            assert "Likely outcome" not in text, (
+                f"Forbidden phrase 'Likely outcome' found in {name}: {text!r}"
+            )
+
+    def test_no_forbidden_phrase_lower_probability_alternative(self):
+        """'Lower-probability alternative' must not appear in any raw field."""
+        result = self._run()
+        concl = result.conclusion
+        ep_raw = concl.get("evidence_path", {}).get("summary_raw", "")
+        hp_raw = concl.get("hypothesis_path", {}).get("summary_raw", "")
+        ej_raw = concl.get("executive_judgement_raw", "")
+        for text, name in [
+            (ep_raw, "evidence_path.summary_raw"),
+            (hp_raw, "hypothesis_path.summary_raw"),
+            (ej_raw, "executive_judgement_raw"),
+        ]:
+            assert "Lower-probability alternative" not in text, (
+                f"Forbidden phrase 'Lower-probability alternative' found in {name}: {text!r}"
+            )
+
+    def test_no_forbidden_phrase_targeted_actor(self):
+        """'targeted actor' must not appear in any raw conclusion field."""
+        result = self._run()
+        concl = result.conclusion
+        ej_raw = concl.get("executive_judgement_raw", "")
+        ep_raw = concl.get("evidence_path", {}).get("summary_raw", "")
+        for text, name in [
+            (ej_raw, "executive_judgement_raw"),
+            (ep_raw, "evidence_path.summary_raw"),
+        ]:
+            assert "targeted actor" not in text.lower(), (
+                f"Forbidden phrase 'targeted actor' found in {name}: {text!r}"
+            )
+
+    # ── 2. Numeric probability in raw output ─────────────────────────────
+
+    def test_executive_judgement_raw_contains_numeric_probability(self):
+        """The deterministic raw executive_judgement must embed a numeric probability."""
+        from intelligence.evented_pipeline import _extract_numeric_values
+        result = self._run()
+        ej_raw = result.conclusion.get("executive_judgement_raw", "")
+        assert ej_raw, "executive_judgement_raw must not be empty"
+        nums = _extract_numeric_values(ej_raw)
+        assert nums, (
+            f"No numeric probability token found in executive_judgement_raw: {ej_raw!r}"
+        )
+
+    def test_evidence_path_summary_raw_contains_numeric_probability(self):
+        """The evidence_path.summary_raw must embed a numeric probability."""
+        from intelligence.evented_pipeline import _extract_numeric_values
+        result = self._run()
+        ep_raw = result.conclusion.get("evidence_path", {}).get("summary_raw", "")
+        assert ep_raw, "evidence_path.summary_raw must not be empty"
+        nums = _extract_numeric_values(ep_raw)
+        assert nums, (
+            f"No numeric probability token found in evidence_path.summary_raw: {ep_raw!r}"
+        )
+
+    # ── 3. tooltip_data.lie_algebra fields ────────────────────────────────
+
+    def test_lie_tooltip_has_matrix_norm(self):
+        """tooltip_data.lie_algebra must include a numeric matrix_norm field."""
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        top_node = next(
+            (n for n in nodes if n.get("id") != "root" and n.get("tooltip_data")),
+            None,
+        )
+        if top_node is None:
+            pytest.skip("No tooltip node in probability_tree")
+        lie_al = top_node["tooltip_data"].get("lie_algebra", {})
+        assert "matrix_norm" in lie_al, (
+            f"tooltip_data.lie_algebra missing 'matrix_norm'. Keys: {list(lie_al.keys())}"
+        )
+        assert isinstance(lie_al["matrix_norm"], (int, float)), (
+            f"matrix_norm must be numeric, got {lie_al['matrix_norm']!r}"
+        )
+
+    def test_lie_tooltip_has_sigma1(self):
+        """tooltip_data.lie_algebra must include a sigma1 field."""
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        top_node = next(
+            (n for n in nodes if n.get("id") != "root" and n.get("tooltip_data")),
+            None,
+        )
+        if top_node is None:
+            pytest.skip("No tooltip node in probability_tree")
+        lie_al = top_node["tooltip_data"].get("lie_algebra", {})
+        assert "sigma1" in lie_al, (
+            f"tooltip_data.lie_algebra missing 'sigma1'. Keys: {list(lie_al.keys())}"
+        )
+
+    def test_lie_tooltip_has_top_emergent_dims(self):
+        """tooltip_data.lie_algebra must include top_emergent_dims and top_emergent_values."""
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        top_node = next(
+            (n for n in nodes if n.get("id") != "root" and n.get("tooltip_data")),
+            None,
+        )
+        if top_node is None:
+            pytest.skip("No tooltip node in probability_tree")
+        lie_al = top_node["tooltip_data"].get("lie_algebra", {})
+        assert "top_emergent_dims" in lie_al, (
+            f"tooltip_data.lie_algebra missing 'top_emergent_dims'. Keys: {list(lie_al.keys())}"
+        )
+        assert "top_emergent_values" in lie_al, (
+            f"tooltip_data.lie_algebra missing 'top_emergent_values'. Keys: {list(lie_al.keys())}"
+        )
+        assert isinstance(lie_al["top_emergent_dims"], list), (
+            "top_emergent_dims must be a list"
+        )
+
+    # ── 4. dual_inference output fields ───────────────────────────────────
+
+    def test_dual_inference_lie_algebra_has_matrix_norm(self):
+        """dual_inference results must include matrix_norm in lie_algebra section."""
+        result = self._run()
+        dual_list = result.dual_inference or []
+        if not dual_list:
+            pytest.skip("No dual_inference results produced")
+        top = dual_list[0]
+        lie_sect = top.get("lie_algebra", {})
+        assert "matrix_norm" in lie_sect, (
+            f"dual_inference[0].lie_algebra missing 'matrix_norm'. Keys: {list(lie_sect.keys())}"
+        )
+        assert isinstance(lie_sect["matrix_norm"], (int, float)), (
+            f"dual_inference matrix_norm must be numeric, got {lie_sect['matrix_norm']!r}"
+        )
+
+    def test_dual_inference_lie_algebra_has_cosine_similarity(self):
+        """dual_inference lie_algebra must expose the cosine_similarity used."""
+        result = self._run()
+        dual_list = result.dual_inference or []
+        if not dual_list:
+            pytest.skip("No dual_inference results produced")
+        lie_sect = dual_list[0].get("lie_algebra", {})
+        assert "cosine_similarity" in lie_sect, (
+            f"dual_inference[0].lie_algebra missing 'cosine_similarity'. Keys: {list(lie_sect.keys())}"
+        )
+
+    def test_dual_inference_lie_algebra_has_bracket_matrix(self):
+        """dual_inference must include the 8x8 bracket_matrix for inspection."""
+        result = self._run()
+        dual_list = result.dual_inference or []
+        if not dual_list:
+            pytest.skip("No dual_inference results produced")
+        lie_sect = dual_list[0].get("lie_algebra", {})
+        assert "bracket_matrix" in lie_sect, (
+            f"dual_inference[0].lie_algebra missing 'bracket_matrix'. Keys: {list(lie_sect.keys())}"
+        )
+        mat = lie_sect["bracket_matrix"]
+        assert isinstance(mat, list) and len(mat) == 8, (
+            f"bracket_matrix must be an 8-element list-of-lists, got shape: {len(mat) if isinstance(mat, list) else type(mat)}"
+        )
+        for row in mat:
+            assert isinstance(row, list) and len(row) == 8, (
+                f"Each row of bracket_matrix must have 8 elements"
+            )
+

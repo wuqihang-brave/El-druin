@@ -403,9 +403,12 @@ def run_dual_inference(
                 },
                 "lie_algebra": {
                     "sigma1":             lie.sigma1,
+                    "matrix_norm":        round(float(np.linalg.norm(lie.bracket_matrix, "fro")), 4),
+                    "bracket_matrix":     lie.bracket_matrix.tolist(),
                     "top_emergent_dims":  lie.top_emergent_dims,
                     "top_emergent_values": lie.top_emergent_values,
                     "superlinear_dims":   lie.superlinear_dims,
+                    "cosine_similarity":  round(bayes.lie_sim, 4),
                 },
                 "integration": {
                     "consistency_score":  integration.consistency_score,
