@@ -81,6 +81,24 @@ _MIN_QUOTE_LEN: int = 15
 # Maximum confidence assigned to fallback events (clamped before entering the pipeline)
 _FALLBACK_MAX_CONFIDENCE: float = 0.35
 
+# Lie-similarity amplification exponent (k) applied to spread the probability
+# distribution. The composition table produces lie_sim values in [0.79, 1.0]
+# which, when used raw, compress all Bayesian posteriors to a narrow 40-55%
+# band. Raising lie_sim^k amplifies small differences before normalisation:
+#   k=1 → compressed (legacy, ~45/55 split for typical 2-way case)
+#   k=3 → moderate spread (~35/65 split)
+#   k=4 → recommended: clear dominant outcome (~28/72 split)
+_LIE_SIM_AMPLIFICATION: int = 4
+
+# Distribution-collapse detection thresholds.
+# "Collapse" here means the distribution is near-uniform (every outcome gets
+# a similar probability, e.g. 52%/48%), which makes predictions uninformative.
+# We check two criteria:
+#   1. top probability must exceed this floor
+#   2. gap between top-1 and top-2 must exceed this floor
+_COLLAPSE_TOP_PROB_FLOOR: float = 0.50   # top outcome should be > 50%
+_COLLAPSE_GAP_FLOOR: float = 0.10        # top-1 vs top-2 gap should be > 10%
+
 # ===========================================================================
 # Outcome catalogue: outcome_id → professional English phrasing
 # ===========================================================================
@@ -1248,12 +1266,16 @@ def _run_stage2b(
             lie_sim = 0.5
         else:
             lie_sim = float(np.dot(v_sum / n_sum, v_tgt / n_tgt))
-            # Clip negative but keep a minimum epsilon so posterior is never 0
-            lie_sim = max(0.05, lie_sim)
+            # Allow true zero weight for poorly-aligned transitions so the
+            # normalised distribution can spread beyond the legacy 40-55% band.
+            lie_sim = max(0.0, lie_sim)
 
-        posterior = prior_a * prior_b * lie_sim
-        # Ensure posterior is never rounded to exactly 0
-        posterior = max(posterior, 1e-4)
+        # Apply lie_sim amplification to widen probability differences.
+        # Because composition-table lie_sims cluster in [0.79, 1.0], raw
+        # posteriors are nearly equal.  Raising to _LIE_SIM_AMPLIFICATION
+        # power amplifies small geometric differences without changing ranking.
+        lie_sim_amplified = lie_sim ** _LIE_SIM_AMPLIFICATION
+        posterior = prior_a * prior_b * lie_sim_amplified
 
         # Typical outcomes for target pattern
         outcomes: List[str] = []
@@ -1291,12 +1313,13 @@ def _run_stage2b(
             n_tgt    = np.linalg.norm(v_tgt)
             lie_sim  = float(np.dot(v_inv / max(n_inv, 1e-9), v_tgt / max(n_tgt, 1e-9)))
             lie_sim  = max(0.0, lie_sim)
-            # Use epsilon floor to prevent zero posterior for inverse paths
+            # Inverse paths keep a small minimum floor so they remain non-zero
+            # (low-probability high-impact paths should still appear in the tree)
             lie_sim  = max(0.05, lie_sim)
+            # Apply same amplification as compose paths for consistency
+            lie_sim_amplified = lie_sim ** _LIE_SIM_AMPLIFICATION
             # Inverse-mode confidence discount (low-probability high-impact)
-            posterior = prior_a * 0.35 * lie_sim
-            # Ensure posterior is never exactly 0
-            posterior = max(posterior, 1e-4)
+            posterior = prior_a * 0.35 * lie_sim_amplified
 
             outcomes = []
             for pat in CARTESIAN_PATTERN_REGISTRY.values():
@@ -1518,6 +1541,30 @@ def _run_stage3(
     alpha_prob = round(transitions[0].posterior_weight / Z, 3) if transitions else 0.6
     beta_prob  = round(transitions[1].posterior_weight / Z, 3) if len(transitions) >= 2 else (1 - alpha_prob)
 
+    # Instrumentation: detect and warn about distribution collapse.
+    # "Collapse" means all outcomes have similar probability (near-uniform).
+    # We check: top probability > floor AND top1-top2 gap > floor.
+    if len(weights) >= 2:
+        _sorted_w = sorted(weights, reverse=True)
+        _top_prob = _sorted_w[0] / Z
+        _gap = (_sorted_w[0] - _sorted_w[1]) / Z
+        if _top_prob <= _COLLAPSE_TOP_PROB_FLOOR or _gap < _COLLAPSE_GAP_FLOOR:
+            logger.warning(
+                "Stage3: distribution collapse detected — top_prob=%.3f (floor=%.2f), "
+                "top1-top2 gap=%.3f (floor=%.2f). "
+                "Top weights: %s. Z=%.4f. "
+                "Consider increasing _LIE_SIM_AMPLIFICATION or reviewing priors.",
+                _top_prob, _COLLAPSE_TOP_PROB_FLOOR,
+                _gap, _COLLAPSE_GAP_FLOOR,
+                [round(w, 4) for w in _sorted_w[:5]],
+                Z,
+            )
+        else:
+            logger.info(
+                "Stage3: probability distribution well-spread — top_prob=%.3f, gap=%.3f",
+                _top_prob, _gap,
+            )
+
     # Alpha 路径 = 最高后验转移
     alpha_transition = transitions[0] if transitions else None
     beta_transition  = transitions[1] if len(transitions) >= 2 else None
@@ -1683,11 +1730,10 @@ def _run_stage3(
     # ── Raw (deterministic) summary strings ─────────────────────────────────
 
     _evidence_summary_raw = (
-        f"Primary projected outcome: {_alpha_primary_phrase} "
-        f"(p={alpha_path['probability']:.0%})."
+        f"Likely outcome ({alpha_path['probability']:.0%}): {_alpha_primary_phrase}."
     )
     _hypothesis_summary_raw = (
-        f"Contingent alternative (p={beta_path.get('probability', 0.0):.0%}): "
+        f"Lower-probability alternative ({beta_path.get('probability', 0.0):.0%}): "
         f"{_beta_primary_phrase}, "
         f"if {_trigger_clean}."
     )
@@ -2544,6 +2590,19 @@ def run_evented_pipeline(
             credibility.get("overall_score", 0.4), 3
         )
 
+        # Build a lookup from (raw pattern_a, raw pattern_b, raw pattern_c) to
+        # dual_inference result for correct pairing (dual_results are sorted by
+        # confidence_final, transitions are sorted by posterior_weight — different
+        # orderings so index-based pairing is wrong).
+        _dual_lookup: Dict[tuple, Dict[str, Any]] = {}
+        for _dr in (dual_results or []):
+            _key = (
+                _dr.get("pattern_a", ""),
+                _dr.get("pattern_b", ""),
+                _dr.get("pattern_c", ""),
+            )
+            _dual_lookup[_key] = _dr
+
         # Root node
         pt_nodes = [{
             "id":          "root",
@@ -2560,15 +2619,20 @@ def run_evented_pipeline(
             en_a = display_pattern(t.from_pattern_a)
             en_b = display_pattern(t.from_pattern_b)
             en_c = display_pattern(t.to_pattern)
-            # Per-node Bayesian calculation string (used by hover tooltip)
+            # Per-node Bayesian calculation string (used by hover tooltip).
+            # posterior = prior_A × prior_B × lie_sim^k / Z  where k=_LIE_SIM_AMPLIFICATION
             _bayes_calc = (
-                f"{t.prior_a:.3f} × {t.prior_b:.3f} × {t.lie_similarity:.3f}"
+                f"{t.prior_a:.3f} × {t.prior_b:.3f} × {t.lie_similarity:.3f}^{_LIE_SIM_AMPLIFICATION}"
                 f" = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.2%}"
             )
-            # Dual integration info for this node (if available)
+            # Dual integration info: look up by (raw) pattern names instead of
+            # array index, since dual_results and transitions may be sorted differently.
             _dual_info: Dict[str, Any] = {}
-            if dual_results and idx < len(dual_results):
-                _di = dual_results[idx].get("integration", {})
+            _dr_match = _dual_lookup.get(
+                (t.from_pattern_a, t.from_pattern_b, t.to_pattern)
+            )
+            if _dr_match:
+                _di = _dr_match.get("integration", {})
                 _dual_info = {
                     "consistency_score": _di.get("consistency_score", 0.0),
                     "verdict":           _di.get("verdict", "neutral"),
@@ -2576,6 +2640,8 @@ def run_evented_pipeline(
                     "confidence_formula": _di.get("confidence_formula", ""),
                     "divergence_dims":   _di.get("divergence_dims", []),
                     "emergence_signal":  _di.get("emergence_signal", ""),
+                    "lie_nonlinear_top": _dr_match.get("lie_algebra", {}).get("top_emergent_dims", []),
+                    "lie_nonlinear_vals": _dr_match.get("lie_algebra", {}).get("top_emergent_values", []),
                 }
             pt_nodes.append({
                 "id":                node_id,
@@ -2591,25 +2657,28 @@ def run_evented_pipeline(
                 # ── Tooltip computation data (shown on hover in the UI) ───────
                 "tooltip_data": {
                     "bayesian": {
-                        "formula":      "posterior = prior_A × prior_B × lie_similarity / Z",
+                        "formula":      f"posterior = prior_A × prior_B × lie_sim^{_LIE_SIM_AMPLIFICATION} / Z",
                         "prior_a":      t.prior_a,
                         "prior_b":      t.prior_b,
                         "lie_sim":      t.lie_similarity,
+                        "lie_sim_amplified": round(t.lie_similarity ** _LIE_SIM_AMPLIFICATION, 6),
+                        "amplification": _LIE_SIM_AMPLIFICATION,
                         "posterior":    t.posterior_weight,
                         "Z":            round(Z, 6),
                         "probability":  prob,
                         "calculation":  _bayes_calc,
                     },
                     "lie_algebra": {
-                        "formula":           "cos(v_A + v_B, v_C) = lie_similarity",
+                        "formula":           f"cos(v_A + v_B, v_C) = lie_sim; posterior uses lie_sim^{_LIE_SIM_AMPLIFICATION}",
                         "cosine_similarity": t.lie_similarity,
                         "source_a":          en_a,
                         "source_b":          en_b,
                         "target":            en_c,
                         "note": (
-                            "v_A, v_B are 8-dimensional semantic vectors in the Lie algebra space. "
-                            "lie_sim = cos(v_A + v_B, v_C) measures alignment between "
-                            "the composition vector and the target pattern vector."
+                            f"v_A, v_B are 8-dim semantic vectors in so(8) space. "
+                            f"lie_sim = cos(v_A + v_B, v_C) ∈ [0,1] measures geometric alignment. "
+                            f"Raised to power {_LIE_SIM_AMPLIFICATION} before Bayesian weighting "
+                            f"to spread the probability distribution beyond the raw [0.79, 1.0] cluster."
                         ),
                     },
                     "dual_integration": _dual_info if _dual_info else {
