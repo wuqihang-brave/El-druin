@@ -228,6 +228,15 @@ class EventType:
 # Domains that the El-druin ontology supports
 _SUPPORTED_DOMAINS: frozenset = frozenset({"geopolitics", "economics", "technology", "military"})
 
+# Minimum number of keyword hits required before a domain label is trusted.
+# A threshold of 2 prevents false positives where a single incidental term
+# (e.g., "match" in a geopolitical dispatch) mislabels the domain.
+_MIN_DOMAIN_KEYWORD_HITS: int = 2
+
+# Minimum confidence_prior below which a single active pattern is treated
+# as noise — used together with the domain check for out-of-scope detection.
+_LOW_PATTERN_CONFIDENCE_THRESHOLD: float = 0.30
+
 # (keywords, domain_label) — first-match wins for unsupported domains,
 # supported-domain signals are scored cumulatively.
 _DOMAIN_SIGNALS: List[Tuple[List[str], str]] = [
@@ -268,7 +277,8 @@ def _detect_content_domain(text: str) -> str:
     Unsupported domains (sports, entertainment) short-circuit on first
     strong signal.  Supported domains are scored cumulatively and the
     highest-scoring one is returned.  Falls back to "general" if no
-    signal exceeds 2 keyword hits.
+    signal reaches _MIN_DOMAIN_KEYWORD_HITS to avoid false positives on
+    ambiguous text (e.g., a single geopolitical term in a sports report).
     """
     text_l = text.lower()
     scores: Dict[str, int] = {}
@@ -281,8 +291,8 @@ def _detect_content_domain(text: str) -> str:
         return "general"
 
     best = max(scores, key=lambda d: scores[d])
-    # Require at least 2 keyword hits to trust the label
-    if scores[best] < 2:
+    # Require minimum keyword hits to trust the label
+    if scores[best] < _MIN_DOMAIN_KEYWORD_HITS:
         return "general"
     return best
 
@@ -2307,7 +2317,7 @@ def run_evented_pipeline(
     # result instead of forcing geopolitical analysis.
     _domain_is_unsupported = _content_domain not in _SUPPORTED_DOMAINS and _content_domain != "general"
     _low_pattern_activation = len(active) == 0 or (
-        len(active) == 1 and active[0].confidence_prior < 0.30
+        len(active) == 1 and active[0].confidence_prior < _LOW_PATTERN_CONFIDENCE_THRESHOLD
     )
     if _domain_is_unsupported and _low_pattern_activation:
         logger.info(

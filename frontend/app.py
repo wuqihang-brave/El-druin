@@ -280,7 +280,8 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     if dual_verdict:
         tooltip_content += f"<div>Verdict: <b>{dual_verdict}</b>"
         if dual_conf:
-            tooltip_content += f" &nbsp; confidence_final={dual_conf:.3f}" if isinstance(dual_conf, float) else f" &nbsp; confidence_final={dual_conf}"
+            conf_str = f"{dual_conf:.3f}" if isinstance(dual_conf, float) else str(dual_conf)
+            tooltip_content += f" &nbsp; confidence_final={conf_str}"
         tooltip_content += "</div>"
     tooltip_content += (
         f"<hr class='prob-tooltip-hr'>"
