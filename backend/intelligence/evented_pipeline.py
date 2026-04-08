@@ -296,6 +296,8 @@ class PipelineResult:
     credibility:     Dict[str, Any]
     # 兼容字段
     probability_tree: Dict[str, Any] = field(default_factory=dict)
+    # Dual Inference Engine results
+    dual_inference:  List[Dict[str, Any]] = field(default_factory=list)
 
 
 # ===========================================================================
@@ -2250,6 +2252,20 @@ def run_evented_pipeline(
     # ── Stage 2d ─────────────────────────────────────────────────────
     driving_factors = _run_stage2d(active, transitions)
 
+    # ── Dual Inference Engine ─────────────────────────────────────────
+    try:
+        from ontology.dual_inference_engine import run_dual_inference
+        dual_results = run_dual_inference(
+            active_patterns=[
+                {"pattern_name": p.pattern_name, "confidence_prior": p.confidence_prior}
+                for p in active
+            ],
+            transitions=transitions,
+        )
+    except Exception as exc:
+        logger.warning("dual_inference_engine unavailable: %s", exc)
+        dual_results = []
+
     # ── Stage 3 ──────────────────────────────────────────────────────
     conclusion, credibility = _run_stage3(
         text=text,
@@ -2260,6 +2276,12 @@ def run_evented_pipeline(
         driving_factors=driving_factors,
         llm_service=llm_service,
     )
+
+    # Update confidence from dual inference; best_confidence is already clipped to [0,1]
+    # by the integrate() function, so no further bounds check is needed.
+    if dual_results:
+        best_confidence = dual_results[0]["integration"]["confidence_final"]
+        conclusion["confidence"] = round(best_confidence, 3)
 
     # ── 序列化 ──────────────────────────────────────────────────────
     def _pat_to_dict(p: PatternNode) -> Dict[str, Any]:
@@ -2462,6 +2484,7 @@ def run_evented_pipeline(
         conclusion=conclusion,
         credibility=credibility,
         probability_tree=prob_tree,
+        dual_inference=dual_results,
     )
 
     logger.info(
