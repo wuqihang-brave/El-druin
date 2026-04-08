@@ -1604,10 +1604,13 @@ class TestTooltipDataFields:
             "tooltip_data.bayesian must include lie_sim_amplified "
             "(the actual value used in the posterior, lie_sim^k)"
         )
-        # lie_sim_amplified must be ≤ lie_sim (since lie_sim ≤ 1 and k ≥ 1)
+        # For lie_sim ∈ [0, 1] and k ≥ 1: lie_sim^k ≤ lie_sim.
+        # (lie_sim^k equals lie_sim only when lie_sim = 0 or lie_sim = 1 or k = 1)
         raw = bayes.get("lie_sim", 1.0)
         amp = bayes.get("lie_sim_amplified", 1.0)
         if isinstance(raw, (int, float)) and isinstance(amp, (int, float)):
             assert amp <= raw + 1e-9, (
-                f"lie_sim_amplified ({amp}) > lie_sim ({raw}), impossible for k ≥ 1"
+                f"lie_sim_amplified ({amp:.6f}) > lie_sim ({raw:.6f}): "
+                f"for lie_sim ∈ [0,1] and k ≥ 1 this should never happen "
+                f"(lie_sim^k ≤ lie_sim when lie_sim ≤ 1)"
             )

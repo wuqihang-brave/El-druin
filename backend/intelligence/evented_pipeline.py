@@ -1730,7 +1730,7 @@ def _run_stage3(
     # ── Raw (deterministic) summary strings ─────────────────────────────────
 
     _evidence_summary_raw = (
-        f"Likely outcome ({alpha_path['probability']:.0%}): {_alpha_primary_phrase}."
+        f"Likely outcome ({alpha_path['probability']:.1%}): {_alpha_primary_phrase}."
     )
     _hypothesis_summary_raw = (
         f"Lower-probability alternative ({beta_path.get('probability', 0.0):.0%}): "
@@ -2621,9 +2621,11 @@ def run_evented_pipeline(
             en_c = display_pattern(t.to_pattern)
             # Per-node Bayesian calculation string (used by hover tooltip).
             # posterior = prior_A × prior_B × lie_sim^k / Z  where k=_LIE_SIM_AMPLIFICATION
+            _lie_sim_amp_val = round(t.lie_similarity ** _LIE_SIM_AMPLIFICATION, 6)
             _bayes_calc = (
-                f"{t.prior_a:.3f} × {t.prior_b:.3f} × {t.lie_similarity:.3f}^{_LIE_SIM_AMPLIFICATION}"
-                f" = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.2%}"
+                f"{t.prior_a:.3f} × {t.prior_b:.3f} × ({t.lie_similarity:.3f})^{_LIE_SIM_AMPLIFICATION}"
+                f" [{_lie_sim_amp_val:.6f}]"
+                f" = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.1%}"
             )
             # Dual integration info: look up by (raw) pattern names instead of
             # array index, since dual_results and transitions may be sorted differently.

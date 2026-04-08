@@ -275,11 +275,11 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     pat_type    = pats.get("transition_type", "—")
     pat_outcomes = "; ".join(str(o) for o in pats.get("typical_outcomes", []))
 
-    # Format amplification display
+    # Format amplification display — only show when both fields are meaningful
     amp_str = f"^{amplification}" if amplification else ""
     lie_amp_str = (
-        f" (lie_sim{amp_str} = {lie_sim_amplified:.6f})"
-        if isinstance(lie_sim_amplified, float) else ""
+        f" ({lie_sim_amplified:.6f} after {amp_str} amplification)"
+        if amplification and isinstance(lie_sim_amplified, float) else ""
     )
 
     tooltip_content = (
