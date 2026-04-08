@@ -145,6 +145,16 @@ h1,h2,h3,h4 { color: var(--blue) !important; }
 }
 
 /* ── Probability hover tooltip ─────────────────────────────────────────── */
+/* Override Streamlit container overflow so the absolutely-positioned
+   tooltip box is not clipped by parent layout elements. */
+[data-testid="stMarkdownContainer"],
+[data-testid="stMarkdown"],
+.stMarkdown,
+div[data-testid="column"],
+.stTabs [data-baseweb="tab-panel"],
+[data-testid="stTabsContent"] {
+    overflow: visible !important;
+}
 .prob-tooltip-wrap {
     display: inline-block;
     position: relative;
@@ -160,9 +170,10 @@ h1,h2,h3,h4 { color: var(--blue) !important; }
     display: none;
     position: absolute;
     left: 0;
-    bottom: calc(100% + 8px);
-    width: 380px;
-    max-width: 90vw;
+    top: calc(100% + 6px);  /* show BELOW to avoid clipping from top-overflow */
+    bottom: auto;
+    width: 400px;
+    max-width: 92vw;
     background: #fff;
     border: 1.5px solid #0047AB;
     border-radius: 8px;
@@ -174,6 +185,7 @@ h1,h2,h3,h4 { color: var(--blue) !important; }
     pointer-events: none;
     text-align: left;
     white-space: normal;
+    color: #222;
 }
 .prob-tooltip-wrap:hover .prob-tooltip-box {
     display: block;
@@ -230,10 +242,12 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
 
     # ── Bayesian section ────────────────────────────────────────────
     bayes_calc = bayes.get("calculation", "—")
-    bayes_formula = bayes.get("formula", "posterior = prior_A × prior_B × lie_similarity / Z")
+    bayes_formula = bayes.get("formula", "posterior = prior_A × prior_B × lie_sim^k / Z")
     prior_a = bayes.get("prior_a", "—")
     prior_b = bayes.get("prior_b", "—")
     lie_sim_val = bayes.get("lie_sim", "—")
+    lie_sim_amplified = bayes.get("lie_sim_amplified", "—")
+    amplification = bayes.get("amplification", "")
     posterior_val = bayes.get("posterior", "—")
     Z_val = bayes.get("Z", "—")
 
@@ -242,6 +256,7 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     lie_src_a = lie_al.get("source_a", "—")
     lie_src_b = lie_al.get("source_b", "—")
     lie_tgt   = lie_al.get("target", "—")
+    lie_note  = lie_al.get("note", "")
 
     # ── Dual integration section ────────────────────────────────────
     dual_note    = dual.get("note", "")
@@ -249,6 +264,9 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     dual_verdict = dual.get("verdict", "")
     dual_conf    = dual.get("confidence_final", "")
     dual_formula = dual.get("confidence_formula", "")
+    dual_consist = dual.get("consistency_score", "")
+    dual_nonlin_dims  = dual.get("lie_nonlinear_top", [])
+    dual_nonlin_vals  = dual.get("lie_nonlinear_vals", [])
 
     # ── Patterns section ────────────────────────────────────────────
     pat_src_a   = pats.get("source_a", "—")
@@ -257,39 +275,56 @@ def _prob_tooltip_html(prob: float, tooltip_node: Dict[str, Any]) -> str:
     pat_type    = pats.get("transition_type", "—")
     pat_outcomes = "; ".join(str(o) for o in pats.get("typical_outcomes", []))
 
+    # Format amplification display — only show when both fields are meaningful
+    amp_str = f"^{amplification}" if amplification else ""
+    lie_amp_str = (
+        f" ({lie_sim_amplified:.6f} after {amp_str} amplification)"
+        if amplification and isinstance(lie_sim_amplified, float) else ""
+    )
+
     tooltip_content = (
         f"<div class='prob-tooltip-section'>📐 Bayesian Posterior</div>"
         f"<div>Formula: <span class='prob-tooltip-mono'>{bayes_formula}</span></div>"
         f"<div>Calc: <span class='prob-tooltip-mono'>{bayes_calc}</span></div>"
-        f"<div>prior_A={prior_a} &nbsp; prior_B={prior_b} &nbsp; lie_sim={lie_sim_val}</div>"
-        f"<div>posterior={posterior_val} &nbsp; Z={Z_val} &nbsp; → &nbsp; p={prob:.2%}</div>"
+        f"<div>prior_A=<b>{prior_a}</b> &nbsp; prior_B=<b>{prior_b}</b>"
+        f" &nbsp; lie_sim=<b>{lie_sim_val}</b>{lie_amp_str}</div>"
+        f"<div>posterior=<b>{posterior_val}</b> &nbsp; Z={Z_val} &nbsp; → &nbsp; <b>p={prob:.1%}</b></div>"
         f"<hr class='prob-tooltip-hr'>"
-        f"<div class='prob-tooltip-section'>🧮 Lie Algebra</div>"
-        f"<div>Formula: <span class='prob-tooltip-mono'>cos(v_A + v_B, v_C) = lie_sim</span></div>"
-        f"<div>A = {lie_src_a} &nbsp; B = {lie_src_b} &nbsp; → &nbsp; C = {lie_tgt}</div>"
-        f"<div>cos similarity = <b>{lie_sim_display}</b></div>"
-        f"<hr class='prob-tooltip-hr'>"
-        f"<div class='prob-tooltip-section'>∫ Dual Integration</div>"
+        f"<div class='prob-tooltip-section'>🧮 Lie Algebra (so(8))</div>"
+        f"<div>A = <b>{lie_src_a}</b> &nbsp; B = <b>{lie_src_b}</b> &nbsp; → &nbsp; C = <b>{lie_tgt}</b></div>"
+        f"<div>cos(v_A + v_B, v_C) = <b>{lie_sim_display}</b></div>"
     )
+    if lie_note:
+        tooltip_content += f"<div style='font-size:10.5px;color:#555;margin-top:2px'>{lie_note}</div>"
+    tooltip_content += f"<hr class='prob-tooltip-hr'><div class='prob-tooltip-section'>∫ Dual Integration</div>"
     if dual_formula:
         tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_formula}</span></div>"
     elif dual_note:
         tooltip_content += f"<div><span class='prob-tooltip-mono'>{dual_note}</span></div>"
     if dual_norm:
         tooltip_content += f"<div>{dual_norm}</div>"
-    if dual_verdict:
-        tooltip_content += f"<div>Verdict: <b>{dual_verdict}</b>"
+    if dual_consist != "":
+        consist_str = f"{dual_consist:.3f}" if isinstance(dual_consist, float) else str(dual_consist)
+        tooltip_content += f"<div>consistency = <b>{consist_str}</b>"
+        if dual_verdict:
+            tooltip_content += f" &nbsp; verdict: <b>{dual_verdict}</b>"
         if dual_conf:
             conf_str = f"{dual_conf:.3f}" if isinstance(dual_conf, float) else str(dual_conf)
-            tooltip_content += f" &nbsp; confidence_final={conf_str}"
+            tooltip_content += f" &nbsp; conf_final={conf_str}"
         tooltip_content += "</div>"
+    if dual_nonlin_dims:
+        _nonlin_pairs = ", ".join(
+            f"{d}:{v:.2f}" for d, v in zip(dual_nonlin_dims, dual_nonlin_vals)
+        )
+        tooltip_content += f"<div>Lie nonlinear emergence: {_nonlin_pairs}</div>"
     tooltip_content += (
         f"<hr class='prob-tooltip-hr'>"
         f"<div class='prob-tooltip-section'>📌 Patterns</div>"
-        f"<div>{pat_src_a} ⊕ {pat_src_b} → <b>{pat_tgt}</b> [{pat_type}]</div>"
+        f"<div><b>{pat_src_a}</b> ⊕ <b>{pat_src_b}</b> → <b>{pat_tgt}</b>"
+        f" <span style='color:#777'>[{pat_type}]</span></div>"
     )
     if pat_outcomes:
-        tooltip_content += f"<div>Typical outcomes: {pat_outcomes}</div>"
+        tooltip_content += f"<div style='font-size:11px;color:#555'>Typical: {pat_outcomes}</div>"
 
     return (
         f"<span class='prob-tooltip-wrap'>"
@@ -1018,10 +1053,26 @@ if page == "🏠 Home":
                         _c1, _c2 = st.columns(2)
                         with _c1:
                             st.metric("Overall Confidence", f"{_overall_conf:.0%}")
-                            st.caption(
-                                "📐 Hover over probabilities in the **🌳 Probability Tree** tab "
-                                "to see the full Bayesian, Lie algebra, and dual-integration computation."
+                            # If probability tree has nodes with tooltip_data, show a
+                            # hoverable probability badge for the top-ranked transition.
+                            _concl_ptree = _ev_ptree.get("nodes", [])
+                            _top_node = next(
+                                (n for n in _concl_ptree if n.get("id") not in ("root",) and n.get("tooltip_data")),
+                                None,
                             )
+                            if _top_node:
+                                _top_prob = _top_node.get("probability", 0)
+                                st.markdown(
+                                    f'<div style="margin-top:4px;font-size:12px;color:#555">'
+                                    f'Top outcome probability (hover for math): '
+                                    f'{_prob_tooltip_html(_top_prob, _top_node)}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                st.caption(
+                                    "📐 Hover over probabilities in the **🌳 Probability Tree** tab "
+                                    "to see the full Bayesian, Lie algebra, and dual-integration computation."
+                                )
                         with _c2:
                             st.caption(f"Compute trace: `{_compute_ref}`")
 

@@ -705,9 +705,11 @@ class TestConclusionProfessionalStruct:
         assert not summary.startswith("Evidence path (T2"), (
             f"evidence_path.summary still uses old meta-commentary prefix: {summary[:100]}"
         )
-        # Must start with outcome-first language
-        assert summary.startswith("Primary projected outcome:"), (
-            f"evidence_path.summary should start with 'Primary projected outcome:'. Got: {summary[:100]}"
+        # Must start with analyst-language outcome-first phrasing:
+        # either the new format "Likely outcome (XX%):" or the old "Primary projected outcome:"
+        _valid_starts = ("Likely outcome", "Primary projected outcome")
+        assert any(summary.startswith(s) for s in _valid_starts), (
+            f"evidence_path.summary should start with analyst outcome language. Got: {summary[:120]}"
         )
 
     def test_hypothesis_path_summary_no_chinese(self):

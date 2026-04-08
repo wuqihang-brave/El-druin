@@ -40,6 +40,9 @@ from intelligence.evented_pipeline import (
     _T0_CONF_THRESHOLD,
     _T2_CONF_THRESHOLD,
     _MIN_QUOTE_LEN,
+    _LIE_SIM_AMPLIFICATION,
+    _COLLAPSE_TOP_PROB_FLOOR,
+    _COLLAPSE_GAP_FLOOR,
 )
 from ontology.relation_schema import (
     validate_inverses,
@@ -1464,3 +1467,150 @@ class TestNoCJKInPipelineOutput:
         assert not has_cjk(result), (
             f"display_pattern fallback did not strip CJK: {result!r}"
         )
+
+
+# ===========================================================================
+# N. Probability distribution spread and tooltip_data fields
+# ===========================================================================
+
+_SANCTION_FIXTURE = (
+    "The United States Treasury Department imposed sweeping sanctions on Chinese technology firms, "
+    "citing national security concerns over dual-use semiconductor exports. "
+    "The measures, announced on 15 January 2025, restrict access to US financial systems "
+    "and ban technology transfer to the listed entities. "
+    "Beijing condemned the action and pledged retaliatory steps."
+)
+
+
+class TestProbabilityDistributionSpread:
+    """Verify that the probability distribution across transitions is not collapsed
+    (i.e. all probabilities must not be near-uniform after lie_sim amplification).
+    """
+
+    def _run(self):
+        from intelligence.evented_pipeline import run_evented_pipeline
+        return run_evented_pipeline(_SANCTION_FIXTURE, llm_service=None)
+
+    def test_probability_tree_nodes_present(self):
+        """Probability tree must contain at least one non-root node."""
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        child_nodes = [n for n in nodes if n.get("id") != "root"]
+        assert child_nodes, "probability_tree should contain at least one transition node"
+
+    def test_top_probability_above_50pct(self):
+        """After lie_sim amplification, the top transition should exceed 50% probability
+        when there are multiple competing transitions (not compressed to ~50/50).
+        This detects distribution collapse.
+        """
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        child_nodes = [n for n in nodes if n.get("id") != "root"]
+        if len(child_nodes) < 2:
+            pytest.skip("Only one transition — cannot test spread")
+        probs = sorted([n.get("probability", 0) for n in child_nodes], reverse=True)
+        top1, top2 = probs[0], probs[1]
+        # With lie_sim^_LIE_SIM_AMPLIFICATION amplification the top outcome
+        # should exceed _COLLAPSE_TOP_PROB_FLOOR (not compressed to ~50/50).
+        assert top1 > _COLLAPSE_TOP_PROB_FLOOR, (
+            f"Top probability {top1:.3f} ≤ {_COLLAPSE_TOP_PROB_FLOOR} — distribution may be collapsed. "
+            f"All probs: {probs}. Check _LIE_SIM_AMPLIFICATION (currently {_LIE_SIM_AMPLIFICATION})."
+        )
+
+    def test_top1_top2_gap_at_least_10pct(self):
+        """Gap between top1 and top2 probabilities should be at least 10% when
+        the lie_sim values are from different classes (0.797 vs 0.886 vs 1.0).
+        """
+        result = self._run()
+        nodes = result.probability_tree.get("nodes", [])
+        child_nodes = [n for n in nodes if n.get("id") != "root"]
+        if len(child_nodes) < 2:
+            pytest.skip("Only one transition — cannot test spread")
+        probs = sorted([n.get("probability", 0) for n in child_nodes], reverse=True)
+        gap = probs[0] - probs[1]
+        assert gap >= _COLLAPSE_GAP_FLOOR, (
+            f"Top1-Top2 gap {gap:.3f} < {_COLLAPSE_GAP_FLOOR} — distribution is too uniform. "
+            f"Probs: {probs}. This indicates distribution collapse."
+        )
+
+
+class TestTooltipDataFields:
+    """Verify that tooltip_data in probability_tree nodes contains all required fields."""
+
+    def _get_top_node(self):
+        from intelligence.evented_pipeline import run_evented_pipeline
+        result = run_evented_pipeline(_SANCTION_FIXTURE, llm_service=None)
+        nodes = result.probability_tree.get("nodes", [])
+        return next((n for n in nodes if n.get("id") not in ("root",) and n.get("tooltip_data")), None)
+
+    def test_tooltip_data_present(self):
+        node = self._get_top_node()
+        assert node is not None, "No non-root node with tooltip_data found in probability_tree"
+        assert isinstance(node.get("tooltip_data"), dict)
+
+    def test_bayesian_section_fields(self):
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        bayes = node["tooltip_data"].get("bayesian", {})
+        for field in ("formula", "prior_a", "prior_b", "lie_sim", "posterior", "Z", "probability", "calculation"):
+            assert field in bayes, f"tooltip_data.bayesian missing field: {field}"
+
+    def test_bayesian_formula_mentions_amplification(self):
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        formula = node["tooltip_data"]["bayesian"].get("formula", "")
+        # Formula should mention the power/amplification
+        assert "^" in formula or "amplif" in formula.lower() or "k" in formula, (
+            f"tooltip_data.bayesian.formula does not mention amplification: {formula!r}"
+        )
+
+    def test_lie_algebra_section_fields(self):
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        lie_al = node["tooltip_data"].get("lie_algebra", {})
+        for field in ("cosine_similarity", "source_a", "source_b", "target", "note"):
+            assert field in lie_al, f"tooltip_data.lie_algebra missing field: {field}"
+
+    def test_dual_integration_section_present(self):
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        dual = node["tooltip_data"].get("dual_integration", {})
+        assert isinstance(dual, dict), "tooltip_data.dual_integration must be a dict"
+        # Must contain at least a note or a formula
+        assert dual.get("note") or dual.get("confidence_formula") or dual.get("verdict"), (
+            "tooltip_data.dual_integration must contain note, confidence_formula, or verdict"
+        )
+
+    def test_patterns_section_fields(self):
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        pats = node["tooltip_data"].get("patterns", {})
+        for field in ("source_a", "source_b", "target", "transition_type"):
+            assert field in pats, f"tooltip_data.patterns missing field: {field}"
+
+    def test_lie_sim_amplified_field_present(self):
+        """Backend must include lie_sim_amplified so tooltip can show the actual
+        value used in the posterior calculation."""
+        node = self._get_top_node()
+        if node is None:
+            pytest.skip("No tooltip node available")
+        bayes = node["tooltip_data"].get("bayesian", {})
+        assert "lie_sim_amplified" in bayes, (
+            "tooltip_data.bayesian must include lie_sim_amplified "
+            "(the actual value used in the posterior, lie_sim^k)"
+        )
+        # For lie_sim ∈ [0, 1] and k ≥ 1: lie_sim^k ≤ lie_sim.
+        # (lie_sim^k equals lie_sim only when lie_sim = 0 or lie_sim = 1 or k = 1)
+        raw = bayes.get("lie_sim", 1.0)
+        amp = bayes.get("lie_sim_amplified", 1.0)
+        if isinstance(raw, (int, float)) and isinstance(amp, (int, float)):
+            assert amp <= raw + 1e-9, (
+                f"lie_sim_amplified ({amp:.6f}) > lie_sim ({raw:.6f}): "
+                f"for lie_sim ∈ [0,1] and k ≥ 1 this should never happen "
+                f"(lie_sim^k ≤ lie_sim when lie_sim ≤ 1)"
+            )
