@@ -12,6 +12,7 @@
 > Repository: https://github.com/wuqihang-brave/El-druin
 
 ---
+```mermaid
 graph TD
     classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
     classDef processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
