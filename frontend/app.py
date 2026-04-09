@@ -2531,7 +2531,7 @@ elif page == "Assessments":
                     "▶ Run Assessment",
                     type="primary",
                     use_container_width=True,
-                    key="ca_run_evented",
+                    key="ca_run_assessment",
                 )
             with _ca_btn_c2:
                 _ca_run_gr = st.button(
