@@ -56,7 +56,7 @@ graph TD
         K --> L((Final User Output))
     end
     class S6 output;
-
+---
 ## ⚡ 60-Second Overview
 
 EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces LLM-generated confidence scores with **provably traceable, algebraically derived** confidence values.
