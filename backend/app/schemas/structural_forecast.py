@@ -190,5 +190,5 @@ class StructuralForecastMetrics(BaseModel):
     expected_cross_domain_sequence: list[str]
     nonlinear_confidence: float
     structural_novelty: float
-    update_delta: dict
+    update_delta: dict[str, Any]
     updated_at: datetime
