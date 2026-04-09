@@ -11,52 +11,7 @@
 > Author: Qihang Wu — The Hong Kong Polytechnic University  
 > Repository: https://github.com/wuqihang-brave/El-druin
 
----
-```mermaid
-graph TD
-    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-    classDef inference fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    classDef integration fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-    classDef output fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
 
-    subgraph S1 [1. Text Processing & Event Extraction]
-        A[Text Input] --> B[Events Extraction<br/>T2/T1 + Evidence Anchors]
-    end
-    class S1 input;
-
-    subgraph S2 [2. Mechanism & Pattern Mapping]
-        B --> C[Mechanism Labels]
-        C --> D[Cartesian Pattern Mapping]
-    end
-    class S2 processing;
-
-    subgraph S3 [3. Transition Candidates]
-        D --> E[Transition Generation]
-    end
-    class S3 processing;
-
-    subgraph S4 [4. Dual Inference Engine]
-        E --> F1[Bayesian: P_Bayes C]
-        E --> F2[Lie: Nonlinear Activation 8D]
-    end
-    class S4 inference;
-
-    subgraph S5 [5. Integration & Diagnostics]
-        F1 --> G[Consistency Alignment]
-        F2 --> G
-        G --> H[Final Confidence]
-        H --> I[Divergence/Emergence Diagnostics]
-    end
-    class S5 integration;
-
-    subgraph S6 [6. Rendering & Output]
-        I --> J[Path Rendering]
-        J --> K[Strip/Escape Keys]
-        K --> L((Final User Output))
-    end
-    class S6 output;
----
 ## ⚡ 60-Second Overview
 
 EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces LLM-generated confidence scores with **provably traceable, algebraically derived** confidence values.
