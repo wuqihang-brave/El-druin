@@ -452,7 +452,8 @@ def run_dual_inference(
 
         # Inverse transitions use a synthetic "(inverse)" marker for pb;
         # there is no meaningful two-pattern Lie bracket to compute.
-        if pb == "(inverse)" or not pa or not pb or not pc:
+        # Also skip entries where any key is missing/empty.
+        if pb == "(inverse)" or not pa or not pc:
             continue
 
         key = (pa, pb, pc)

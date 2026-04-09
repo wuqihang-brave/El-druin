@@ -135,20 +135,20 @@ def strip_cjk(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Reverse mapping: English display label → internal CJK key
 # ---------------------------------------------------------------------------
-# Built lazily from PATTERN_DISPLAY_EN (value → key).  Used ONLY in the rare
-# case where an already-serialised display label must be fed back into an
-# internal computation path (e.g. recovering a CJK key from a serialised
-# JSON field).  Normal internal computation paths must use raw CJK keys
-# directly and must NOT call this function for every lookup.
+# Built lazily on first use from PATTERN_DISPLAY_EN (value → key).  Used
+# ONLY in the rare case where an already-serialised display label must be fed
+# back into an internal computation path.  Normal computation paths must use
+# raw CJK keys directly and must NOT call internal_pattern() for every lookup.
 # ---------------------------------------------------------------------------
 
-_DISPLAY_TO_INTERNAL: Dict[str, str] = {v: k for k, v in PATTERN_DISPLAY_EN.items()}
+_DISPLAY_TO_INTERNAL: Dict[str, str] = {}
+_DISPLAY_TO_INTERNAL_BUILT: bool = False
 
 
 def internal_pattern(display_name: str) -> str:
     """Return the raw internal CJK key for an English display label.
 
-    If *display_name* is already a CJK key (not found in the reverse map),
+    If *display_name* is already a CJK key (found directly in PATTERN_DISPLAY_EN),
     it is returned unchanged so callers can pass through internal keys safely.
 
     IMPORTANT: this function must only be called on paths where a display label
@@ -156,9 +156,13 @@ def internal_pattern(display_name: str) -> str:
     paths must use raw CJK keys throughout; call ``display_pattern()`` only at
     the final serialisation boundary.
     """
+    global _DISPLAY_TO_INTERNAL, _DISPLAY_TO_INTERNAL_BUILT  # noqa: PLW0603
     # Fast path: already an internal key
     if display_name in PATTERN_DISPLAY_EN:
         return display_name
-    # Reverse lookup
+    # Build the reverse map lazily on first use
+    if not _DISPLAY_TO_INTERNAL_BUILT:
+        _DISPLAY_TO_INTERNAL = {v: k for k, v in PATTERN_DISPLAY_EN.items()}
+        _DISPLAY_TO_INTERNAL_BUILT = True
     internal = _DISPLAY_TO_INTERNAL.get(display_name)
     return internal if internal is not None else display_name
