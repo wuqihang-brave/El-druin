@@ -71,6 +71,7 @@ logger = logging.getLogger(__name__)
 _ALPHA = 0.30
 _EMERGENCE_THRESHOLD = 2.5
 _DIVERGENCE_THRESHOLD = 0.20
+_NEAR_ZERO = 1e-9   # threshold for treating a float as numerically zero
 
 
 @dataclass
@@ -156,7 +157,7 @@ def _compute_bayesian_posteriors(
             continue
         v_c = _vec(pc)
         n_c = np.linalg.norm(v_c)
-        if n_sum > 1e-9 and n_c > 1e-9:
+        if n_sum > _NEAR_ZERO and n_c > _NEAR_ZERO:
             cos_sim = float(np.dot(v_sum / n_sum, v_c / n_c))
         else:
             cos_sim = 0.0
@@ -250,7 +251,7 @@ def run_bayesian_inference(
     n_sum = np.linalg.norm(v_sum)
     n_c = np.linalg.norm(v_c)
 
-    if n_sum > 1e-9 and n_c > 1e-9:
+    if n_sum > _NEAR_ZERO and n_c > _NEAR_ZERO:
         lie_sim = float(np.dot(v_sum / n_sum, v_c / n_c))
     else:
         lie_sim = 0.0
@@ -259,7 +260,7 @@ def run_bayesian_inference(
 
     # Per-pair probability (w(C) / Z_pair): used as the initial estimate.
     # Will be overwritten by run_dual_inference with the global-normalised value.
-    if Z_pair > 1e-9:
+    if Z_pair > _NEAR_ZERO:
         probability = weights.get(pattern_c, 0.0) / Z_pair
     elif weights:
         # Fallback: uniform distribution over candidates in this pair
@@ -296,7 +297,7 @@ def integrate(
     n_c = np.linalg.norm(v_c)
     n_na = np.linalg.norm(na)
 
-    if n_c > 1e-9 and n_na > 1e-9:
+    if n_c > _NEAR_ZERO and n_na > _NEAR_ZERO:
         consistency_score = float(np.dot(na / n_na, v_c / n_c))
     else:
         consistency_score = 0.0
@@ -321,7 +322,7 @@ def integrate(
 
     # Dimensions where the two paths conflict (negative dot product contribution)
     divergence_dims: List[str] = []
-    if n_c > 1e-9 and n_na > 1e-9:
+    if n_c > _NEAR_ZERO and n_na > _NEAR_ZERO:
         for i in range(len(SEMANTIC_DIMS)):
             if (na[i] / n_na) * (v_c[i] / n_c) < -0.05:
                 divergence_dims.append(SEMANTIC_DIMS[i])
@@ -460,7 +461,7 @@ def run_dual_inference(
     # prevents P_Bayes from incorrectly showing as 1.0 when the composition
     # table has only one C per (A, B) pair (which is the typical case).
     Z_global = sum(b.posterior_weight for _, _, _, b, _ in raw_items)
-    if Z_global < 1e-9:
+    if Z_global < _NEAR_ZERO:
         Z_global = 1.0
 
     # ── Pass 3: update probability with global normalisation and integrate ────
@@ -534,11 +535,11 @@ def diagnose_independence(
     lie_inf = run_lie_algebra_inference(pattern_a, pattern_b)
 
     n_sum = np.linalg.norm(v_sum)
-    v_sum_normed = v_sum / n_sum if n_sum > 1e-9 else v_sum
+    v_sum_normed = v_sum / n_sum if n_sum > _NEAR_ZERO else v_sum
 
     na = lie_inf.nonlinear_activation
     n_na = np.linalg.norm(na)
-    na_normed = na / n_na if n_na > 1e-9 else na
+    na_normed = na / n_na if n_na > _NEAR_ZERO else na
 
     # Cross-correlation between the two path inputs
     cross_corr = float(np.dot(v_sum_normed, na_normed))

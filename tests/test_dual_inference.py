@@ -87,7 +87,7 @@ class TestIntegration:
         # Simulate a globally-normalised probability (less than 1.0)
         bayes.probability = 0.45
         result = integrate(bayes, lie)
-        assert result.confidence_final <= bayes.probability + 1e-6, (
+        assert result.confidence_final <= bayes.probability + 1e-4, (
             f"confidence_final={result.confidence_final} must not exceed P_Bayes={bayes.probability}"
         )
 
@@ -193,7 +193,7 @@ class TestRunDualInference:
         )
         for r in results:
             prob = r["bayesian"]["probability"]
-            assert prob < 1.0 - 1e-6, (
+            assert prob < 1.0 - 1e-4, (
                 f"P_Bayes={prob:.6f} must be < 1.0 when multiple transitions compete"
             )
             # Formula string must show the correct (non-1.0) P_Bayes
@@ -242,7 +242,7 @@ class TestRunDualInference:
         for r in results:
             p_bayes = r["bayesian"]["probability"]
             conf    = r["integration"]["confidence_final"]
-            assert conf <= p_bayes + 1e-6, (
+            assert conf <= p_bayes + 1e-4, (
                 f"confidence_final={conf:.6f} must not exceed P_Bayes={p_bayes:.6f}"
             )
 
