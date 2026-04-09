@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="EL-DRUIN - Ontological Intelligence",
+    page_title="EL-DRUIN Intelligence Platform",
     page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -337,7 +337,7 @@ def get_graph_context_for_news(query_text: str) -> str:
 # ---------------------------------------------------------------------------
 _STATE_DEFAULTS = {
     "initialized": False,
-    "current_page": "🏠 Home",
+    "current_page": "Dashboard",
     "selected_entity": "",
     "graph_data": {"entities": [], "relations": [], "status": "not_loaded"},
     "entity_cache": {},
@@ -502,9 +502,9 @@ def _domain_class(domain: str) -> str:
 
 
 # ===========================================================================
-# Page: 🏠 Home
+# Page: Dashboard
 # ===========================================================================
-if page == "🏠 Home":
+if page == "Dashboard":
     st.markdown("""
     <style>
     .compact-news { padding:10px 12px; border-left:3px solid #0047AB; background:#fff;
@@ -1598,9 +1598,9 @@ if page == "🏠 Home":
 
 
 # ===========================================================================
-# Page: 📰 Intelligence Feed
+# Page: Streams
 # ===========================================================================
-elif page == "📰 Intelligence Feed":
+elif page == "Streams":
     st.title("📰 Real-Time Intelligence Feed")
     st.caption(
         "Aggregated news from monitored sources. Click **Run Ontological Analysis** "
@@ -1673,7 +1673,7 @@ elif page == "📰 Intelligence Feed":
                             st.session_state.selected_news    = article
                             st.session_state.deduction_result = None
                             st.session_state.evented_result   = None
-                            st.session_state.current_page     = "🏠 Home"
+                            st.session_state.current_page     = "Dashboard"
                             st.rerun()
 
                         # Knowledge graph extraction
@@ -1731,9 +1731,9 @@ elif page == "📰 Intelligence Feed":
 
 
 # ===========================================================================
-# Page: 📝 Custom Analysis
+# Page: Assessments
 # ===========================================================================
-elif page == "📝 Custom Analysis":
+elif page == "Assessments":
     st.title("📝 Custom Content Analysis")
     st.caption(
         "Analyse your own text content (and optionally a source URL) using the "
@@ -1958,9 +1958,9 @@ elif page == "📝 Custom Analysis":
 
 
 # ===========================================================================
-# Page: 🕸 KG Tools
+# Page: Knowledge
 # ===========================================================================
-elif page == "🕸 KG Tools":
+elif page == "Knowledge":
     st.title("🕸 Knowledge Graph Tools")
     st.caption(
         "View and query the Knowledge Graph stored in KuzuDB. "
@@ -2230,9 +2230,9 @@ elif page == "🕸 KG Tools":
 
 
 # ===========================================================================
-# Page: 🔮 Forecast
+# Page: Audit
 # ===========================================================================
-elif page == "🔮 Forecast":
+elif page == "Audit":
     st.title("🔮 Ontological Forecast")
     st.caption(
         "Forward simulation of ontological trajectories. Starting from a named relationship or scenario, "
