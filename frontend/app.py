@@ -836,17 +836,55 @@ if page == "Dashboard":
     """, unsafe_allow_html=True)
 
     # ── Top bar ──────────────────────────────────────────────────────────
-    _tb_col1, _tb_col2, _tb_col3, _tb_col4 = st.columns([4, 2, 2, 2])
+    _tb_col1, _tb_col2, _tb_col3, _tb_col4, _tb_col5 = st.columns([4, 2, 2, 1, 2])
     with _tb_col1:
         st.markdown("### ASSESSMENT WORKSPACE")
     with _tb_col2:
-        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Last updated</div><div style='font-size:13px;font-weight:600'>{datetime.now().strftime('%H:%M UTC')}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;"
+            f"letter-spacing:0.6px'>Last updated</div>"
+            f"<div style='font-size:13px;font-weight:600'>"
+            f"{datetime.now().strftime('%H:%M')}</div>",
+            unsafe_allow_html=True,
+        )
     with _tb_col3:
         _feed_count = len(st.session_state.get("_dashboard_feed", []))
-        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Evidence items</div><div style='font-size:13px;font-weight:600'>{_feed_count} new</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;"
+            f"letter-spacing:0.6px'>Evidence items</div>"
+            f"<div style='font-size:13px;font-weight:600'>{_feed_count} articles</div>",
+            unsafe_allow_html=True,
+        )
     with _tb_col4:
         _engine_label = st.session_state.get("cfg_engine", "Evented")
-        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Engine</div><div style='font-size:13px;font-weight:600'>{_engine_label}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;"
+            f"letter-spacing:0.6px'>Engine</div>"
+            f"<div style='font-size:13px;font-weight:600'>{_engine_label}</div>",
+            unsafe_allow_html=True,
+        )
+    with _tb_col5:
+        # Alert Status — driven by current regime from the last evented result
+        _tb_er = st.session_state.get("evented_result")
+        if _tb_er:
+            _tb_rd = _classify_regime(_tb_er.get("lie_algebra", {}), _tb_er.get("state_vector", {}))
+            _tb_regime = _tb_rd["regime"]
+            _alert_map = {
+                "Nonlinear Escalation": ("ELEVATED",    "#E05050"),
+                "Cascade Risk":         ("CRITICAL",    "#FF4444"),
+                "Stress Accumulation":  ("WATCH",       "#C8A84B"),
+                "Linear":               ("NOMINAL",     "#4CAF72"),
+            }
+            _alert_label, _alert_color = _alert_map.get(_tb_regime, ("NOMINAL", "#4CAF72"))
+        else:
+            _alert_label, _alert_color = "NOMINAL", "#7A8FA6"
+        st.markdown(
+            f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;"
+            f"letter-spacing:0.6px'>Alert Status</div>"
+            f"<div style='font-size:13px;font-weight:700;color:{_alert_color}'>"
+            f"● {_alert_label}</div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
@@ -2429,6 +2467,36 @@ border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:
 
     # ─── RIGHT: Evidence + Traceability ──────────────────────────────────
     with col_right:
+        # Entity lookup — quick search in entity cache
+        _lookup_val = st.text_input(
+            "Entity lookup",
+            placeholder="Search entity…",
+            key="right_entity_lookup",
+            label_visibility="collapsed",
+        )
+        if _lookup_val and len(_lookup_val) >= 3:
+            _lookup_lower = _lookup_val.lower()
+            _lookup_hits = [
+                k for k in st.session_state.entity_cache.keys()
+                if _lookup_lower in k.lower()
+            ][:6]
+            if _lookup_hits:
+                for _hit in _lookup_hits:
+                    _hit_entity = st.session_state.entity_cache.get(_hit, {})
+                    _hit_type = _hit_entity.get("type", "")
+                    st.markdown(
+                        f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                        f'border-radius:2px;padding:5px 10px;margin-bottom:3px;font-size:12px;'
+                        f'color:var(--text-strong,#EDF2F7);">'
+                        f'{_hit}'
+                        + (f'<span style="color:var(--muted,#7A8FA6);font-size:10px;margin-left:6px">[{_hit_type}]</span>' if _hit_type else '')
+                        + f'</div>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.caption(f"No entities matching '{_lookup_val}'")
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+
         st.markdown("""
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
         color:var(--muted,#7A8FA6);margin-bottom:8px">Evidence Provenance</div>
@@ -2544,10 +2612,16 @@ border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:
 # Page: Streams
 # ===========================================================================
 elif page == "Streams":
-    st.title("Intelligence Streams")
+    st.markdown("""
+<div style="margin-bottom:2px">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+    color:var(--muted,#7A8FA6)">EVIDENCE INTAKE — INTELLIGENCE STREAMS</span>
+</div>
+""", unsafe_allow_html=True)
+    st.markdown("## Streams Monitor")
     st.caption(
-        "Aggregated evidence intake from monitored sources. "
-        "Attach any article to an active assessment or run a new assessment directly."
+        "Incoming evidence is automatically classified by domain and assessed for signal quality. "
+        "Attach articles to an active assessment or route directly to the Dashboard for full analysis."
     )
 
     # ── Compact filter bar ────────────────────────────────────────────────────
@@ -2595,29 +2669,22 @@ elif page == "Streams":
         if search_query:
             st.info(f"🔍 Found {len(articles)} results")
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Articles", len(articles))
-        m2.metric("Categories", len({a.get("category", "?") for a in articles}))
-        m3.metric("Sources", len({a.get("source", "?") for a in articles}))
-        m4.metric("Time Range", f"{int(hours)} h")
-        st.divider()
-
         import hashlib as _hashlib
 
         # Domain auto-tag mapping based on category field
         _DOMAIN_TAG_MAP: Dict[str, str] = {
-            "geopolitics": "🌍 Geopolitics",
-            "geopolitical": "🌍 Geopolitics",
-            "military": "⚔️ Military",
-            "defense": "⚔️ Military",
-            "defence": "⚔️ Military",
-            "economic": "📈 Economic",
-            "economics": "📈 Economic",
-            "finance": "📈 Economic",
-            "financial": "📈 Economic",
-            "technology": "💻 Technology",
-            "tech": "💻 Technology",
-            "science": "💻 Technology",
+            "geopolitics": "GEOPOLITICS",
+            "geopolitical": "GEOPOLITICS",
+            "military": "MILITARY",
+            "defense": "MILITARY",
+            "defence": "MILITARY",
+            "economic": "ECONOMIC",
+            "economics": "ECONOMIC",
+            "finance": "ECONOMIC",
+            "financial": "ECONOMIC",
+            "technology": "TECHNOLOGY",
+            "tech": "TECHNOLOGY",
+            "science": "TECHNOLOGY",
         }
 
         def _domain_tag(article: Dict[str, Any]) -> str:
@@ -2625,20 +2692,86 @@ elif page == "Streams":
             for _key, _label in _DOMAIN_TAG_MAP.items():
                 if _key in _cat:
                     return _label
-            return "📋 General"
+            return "GENERAL"
 
-        # ── Evidence Intake view ──────────────────────────────────────────────
-        st.markdown(
-            '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-            'letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:8px">'
-            'EVIDENCE INTAKE</div>',
-            unsafe_allow_html=True,
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Articles", len(articles))
+        m2.metric("Categories", len({a.get("category", "?") for a in articles}))
+        m3.metric("Sources", len({a.get("source", "?") for a in articles}))
+        m4.metric("Time Range", f"{int(hours)} h")
+
+        _domains_found: Dict[str, int] = {}
+        for _a in articles:
+            _d = _domain_tag(_a)
+            _domains_found[_d] = _domains_found.get(_d, 0) + 1
+
+        # Signal quality strip
+        _sq_col1, _sq_col2 = st.columns([3, 2])
+        with _sq_col1:
+            st.markdown(
+                '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;'
+                'color:var(--muted,#7A8FA6);margin-bottom:8px">DOMAIN DISTRIBUTION</div>',
+                unsafe_allow_html=True,
+            )
+            _domain_colors = {
+                "GEOPOLITICS": "#C8A84B",
+                "MILITARY":    "#E05050",
+                "ECONOMIC":    "#4CAF72",
+                "TECHNOLOGY":  "#4A8FD4",
+                "GENERAL":     "#7A8FA6",
+            }
+            for _dn, _dc in _domains_found.items():
+                _dcolor = _domain_colors.get(_dn, "#7A8FA6")
+                _dpct = _dc / max(len(articles), 1)
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+                    f'<span style="font-size:11px;color:{_dcolor};min-width:100px">{_dn}</span>'
+                    f'<div style="flex:1;background:var(--surface,#162030);border-radius:2px;height:6px;">'
+                    f'<div style="background:{_dcolor};width:{int(_dpct*100)}%;height:6px;border-radius:2px;"></div>'
+                    f'</div>'
+                    f'<span style="font-size:11px;color:var(--muted,#7A8FA6);min-width:20px;text-align:right">{_dc}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        with _sq_col2:
+            st.markdown(
+                '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;'
+                'color:var(--muted,#7A8FA6);margin-bottom:8px">INTAKE STATUS</div>',
+                unsafe_allow_html=True,
+            )
+            _high_signal = sum(1 for _a in articles if len(_a.get("description") or "") > 100)
+            _low_signal  = len(articles) - _high_signal
+            st.markdown(
+                f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                f'border-radius:3px;padding:10px 12px;">'
+                f'<div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600;margin-bottom:4px">'
+                f'High signal: <span style="color:#4CAF72">{_high_signal}</span></div>'
+                f'<div style="font-size:12px;color:var(--text,#D4DDE6);">'
+                f'Low signal: <span style="color:var(--muted,#7A8FA6)">{_low_signal}</span></div>'
+                f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-top:6px">'
+                f'Signal = description length > 100 chars</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+
+        _all_domains = sorted(set(_domain_tag(a) for a in articles))
+        _selected_domain = st.selectbox(
+            "Filter by domain",
+            options=["All"] + _all_domains,
+            index=0,
+            key="streams_domain_filter",
+            label_visibility="collapsed",
         )
+        _display_articles = articles
+        if _selected_domain != "All":
+            _display_articles = [a for a in articles if _domain_tag(a) == _selected_domain]
 
         if not articles:
             st.info("No articles found. Adjust filters or refresh.")
 
-        for i, article in enumerate(articles, 1):
+        for i, article in enumerate(_display_articles, 1):
             title_preview = (article.get("title") or "(no title)")[:100]
             _key_src   = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
             _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
@@ -2664,7 +2797,7 @@ elif page == "Streams":
                         unsafe_allow_html=True,
                     )
                 with _ic3:
-                    st.caption(f"⏰ {_pub_date}" if _pub_date else "⏰ N/A")
+                    st.caption(f"{_pub_date}" if _pub_date else "N/A")
                 with _ic4:
                     if _kg_done:
                         st.markdown(
@@ -2673,8 +2806,18 @@ elif page == "Streams":
                         )
 
                 st.write(article.get("description") or "(no summary)")
-                if article.get("link"):
-                    st.markdown(f"[📖 Read original]({article['link']})")
+                _desc_len = len(article.get("description") or "")
+                _has_link = bool(article.get("link"))
+                _signal_label = "High" if _desc_len > 100 else "Low"
+                _signal_color = "#4CAF72" if _desc_len > 100 else "#7A8FA6"
+                st.markdown(
+                    f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-top:4px;margin-bottom:6px;">'
+                    f'Signal quality: <span style="color:{_signal_color};font-weight:700">{_signal_label}</span>'
+                    f' &nbsp;·&nbsp; Description: {_desc_len} chars'
+                    + (f' &nbsp;·&nbsp; <a href="{article["link"]}" target="_blank" style="color:#4A8FD4">Source →</a>' if _has_link else '')
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
 
                 _btn_c1, _btn_c2 = st.columns(2)
                 # Run Assessment button
@@ -2711,11 +2854,11 @@ elif page == "Streams":
                     _entities_kg  = _kg_data.get("entities", [])
                     _relations_kg = _kg_data.get("relations", [])
                     with st.expander(
-                        f"🕸️ KG Result (entities: {len(_entities_kg)}, relations: {len(_relations_kg)})",
+                        f"KG Result (entities: {len(_entities_kg)}, relations: {len(_relations_kg)})",
                         expanded=True,
                     ):
                         if _entities_kg:
-                            st.write("**📋 Entities**")
+                            st.write("**Entities**")
                             try:
                                 import pandas as pd
                                 st.dataframe(pd.DataFrame([
@@ -2727,7 +2870,7 @@ elif page == "Streams":
                                 for _e in _entities_kg:
                                     st.write(f"- **{_e.get('name')}** ({_e.get('type','?')})")
                         if _relations_kg:
-                            st.write("**🔗 Relations**")
+                            st.write("**Relations**")
                             try:
                                 import pandas as pd
                                 st.dataframe(pd.DataFrame([
@@ -2826,9 +2969,9 @@ elif page == "Assessments":
                 )
 
                 if _ca_run_ev:
-                    with st.status("⚙️ Running Evented analysis…", expanded=True) as _ca_st:
+                    with st.status("Running Evented analysis…", expanded=True) as _ca_st:
                         try:
-                            st.write("📡 Calling evented_deduce…")
+                            st.write("Calling evented_deduce…")
                             _ca_ev_resp = _api.evented_deduce(
                                 _ca_news,
                                 deep_mode=_ca_is_deep,
@@ -2837,11 +2980,11 @@ elif page == "Assessments":
                             if _ca_ev_resp.get("status") == "success" or "events" in _ca_ev_resp:
                                 _ca_st.update(label="✅ Evented analysis complete", state="complete")
                             else:
-                                _ca_st.update(label="⚠ Analysis failed", state="error")
+                                _ca_st.update(label="Analysis failed", state="error")
                                 st.error(str(_ca_ev_resp.get("error") or _ca_ev_resp.get("detail", "Unknown error")))
                                 _ca_ev_resp = None
                         except Exception as _ca_exc:
-                            _ca_st.update(label="⚠ Connection failed", state="error")
+                            _ca_st.update(label="Connection failed", state="error")
                             st.error(str(_ca_exc))
                             _ca_ev_resp = None
 
@@ -2935,18 +3078,18 @@ elif page == "Assessments":
                             st.json(_ca_ev_resp)
 
                 elif _ca_run_gr:
-                    with st.status("⚙️ Running Grounded analysis…", expanded=True) as _ca_st:
+                    with st.status("Running Grounded analysis…", expanded=True) as _ca_st:
                         try:
-                            st.write("📡 Calling grounded_deduce…")
+                            st.write("Calling grounded_deduce…")
                             _ca_gr_resp = _api.grounded_deduce(_ca_news)
                             if "error" in _ca_gr_resp and "deduction_result" not in _ca_gr_resp:
-                                _ca_st.update(label="⚠ Analysis failed", state="error")
+                                _ca_st.update(label="Analysis failed", state="error")
                                 st.error(str(_ca_gr_resp["error"]))
                                 _ca_gr_resp = None
                             else:
                                 _ca_st.update(label="✅ Grounded analysis complete", state="complete")
                         except Exception as _ca_exc:
-                            _ca_st.update(label="⚠ Connection failed", state="error")
+                            _ca_st.update(label="Connection failed", state="error")
                             st.error(str(_ca_exc))
                             _ca_gr_resp = None
 
