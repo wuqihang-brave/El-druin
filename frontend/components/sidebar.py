@@ -48,10 +48,9 @@ _INLINE_LABELS: list[str] = [
 ]
 
 # Pages living in the pages/ directory – (label, bootstrap-icon, relative path from root)
-_EXTERNAL_PAGES: list[tuple[str, str, str]] = [
-    ("🔬 Logic Audit",      "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
-    ("🔮 Oracle Lab (Beta)", "stars",           "pages/10_🔮_Oracle_Laboratory.py"),
-]
+# Logic Audit and Oracle Lab have been removed from the backend; their page entries
+# are intentionally absent here to keep the navigation consistent.
+_EXTERNAL_PAGES: list[tuple[str, str, str]] = []
 
 _EXTERNAL_LABELS: list[str] = [ep[0] for ep in _EXTERNAL_PAGES]
 
@@ -62,8 +61,6 @@ _ALL_ICONS: list[str] = [
     "broadcast",       # Forecast
     "diagram-3-fill",  # KG Tools
     "newspaper",       # Intelligence Feed
-    "binoculars-fill", # Logic Audit
-    "stars",           # Oracle Lab
 ]
 
 

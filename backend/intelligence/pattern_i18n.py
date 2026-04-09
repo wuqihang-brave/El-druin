@@ -99,6 +99,16 @@ _CJK_RE = re.compile(
 
 
 # ---------------------------------------------------------------------------
+# Reverse mapping: English display label → internal CJK key
+# ---------------------------------------------------------------------------
+# Used when internal CJK keys are needed but only English display names are
+# available (e.g. serialised active_patterns fed back to Lie-algebra routines).
+# ---------------------------------------------------------------------------
+
+_DISPLAY_TO_CJK: Dict[str, str] = {v: k for k, v in PATTERN_DISPLAY_EN.items()}
+
+
+# ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
 
@@ -120,6 +130,24 @@ def display_pattern(name: str) -> str:
     cleaned = _CJK_RE.sub("", name).strip(" /\u3000")
     # If stripping left nothing (entire string was CJK), return a safe placeholder
     return cleaned if cleaned else "(unrecognized pattern)"
+
+
+def internal_pattern(display_name: str) -> str:
+    """Return the internal CJK key for an English display label.
+
+    If *display_name* is already a known CJK key it is returned unchanged.
+    If no reverse mapping exists the input is returned as-is (e.g. synthetic
+    fallbacks such as "Status Quo Continuation" have no CJK form).
+
+    Use this function whenever an English display name must be passed back into
+    routines that require raw CJK keys — chiefly the Lie-algebra vector lookups
+    ``_vec()`` / ``compute_pattern_trajectory()``.
+    """
+    # Already a known CJK key → return directly
+    if display_name in PATTERN_DISPLAY_EN:
+        return display_name
+    # Reverse lookup
+    return _DISPLAY_TO_CJK.get(display_name, display_name)
 
 
 def has_cjk(text: str) -> bool:

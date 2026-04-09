@@ -1500,6 +1500,60 @@ if page == "🏠 Home":
                                 else:
                                     st.caption(str(_pt_item))
 
+                        # ── Per-transition dual inference Lie algebra results ──────────
+                        _dual_inf_list = _er.get("dual_inference", [])
+                        if _dual_inf_list:
+                            st.divider()
+                            st.markdown("**🔀 Per-Transition Lie Algebra · Dual Inference Results**")
+                            st.caption(
+                                "Each row shows one (Pattern A ⊕ Pattern B → C) transition. "
+                                "**σ₁** is the largest singular value of the Lie bracket [X_A, X_B]; "
+                                "**emergent dims** are the dimensions where non-linear interaction "
+                                "exceeds the superlinear threshold; "
+                                "**verdict** reports whether the Bayesian and Lie algebra paths converge."
+                            )
+                            for _di_item in _dual_inf_list[:5]:
+                                _di_pa   = _di_item.get("pattern_a", "")
+                                _di_pb   = _di_item.get("pattern_b", "")
+                                _di_pc   = _di_item.get("pattern_c", "")
+                                _di_lie  = _di_item.get("lie_algebra", {})
+                                _di_intg = _di_item.get("integration", {})
+                                _di_sigma1   = _di_lie.get("sigma1", 0)
+                                _di_norm     = _di_lie.get("matrix_norm", 0)
+                                _di_em_dims  = _di_lie.get("top_emergent_dims", [])
+                                _di_super    = _di_lie.get("superlinear_dims", [])
+                                _di_verdict  = _di_intg.get("verdict", "")
+                                _di_conf     = _di_intg.get("confidence_final", 0)
+                                _di_summary  = _di_intg.get("summary", "")
+                                _verdict_color = {
+                                    "convergent": "#2E7D32", "divergent": "#C62828",
+                                    "emergent": "#E65100", "neutral": "#555555",
+                                }.get(_di_verdict, "#555555")
+                                with st.expander(
+                                    f"{_di_pa} ⊕ {_di_pb} → **{_di_pc}** "
+                                    f"| conf={_di_conf:.0%} | verdict={_di_verdict}",
+                                    expanded=False,
+                                ):
+                                    _c1, _c2, _c3 = st.columns(3)
+                                    _c1.metric("σ₁ (Lie bracket)", f"{_di_sigma1:.3f}")
+                                    _c2.metric("‖[X_A,X_B]‖_F", f"{_di_norm:.3f}")
+                                    _c3.metric(
+                                        "Integration verdict",
+                                        _di_verdict.capitalize() if _di_verdict else "—",
+                                    )
+                                    if _di_em_dims:
+                                        st.markdown(
+                                            "**Top emergent dimensions:** "
+                                            + " · ".join(f"`{d}`" for d in _di_em_dims[:3])
+                                        )
+                                    if _di_super:
+                                        st.markdown(
+                                            "**Superlinear dims (‖row‖ > threshold):** "
+                                            + " · ".join(f"`{d}`" for d in _di_super)
+                                        )
+                                    if _di_summary:
+                                        st.caption(_di_summary)
+
                         # Evidence Enrichment (collapsible, collapsed by default)
                         if _ev_enrich is not None:
                             st.divider()

@@ -871,15 +871,30 @@ def analyze_with_evented_pipeline(
         }
 
         # Lie algebra vector space analysis (bounded, optional)
+        # The pattern names in result.active_patterns are English display labels
+        # (serialised by _pat_to_dict → display_pattern).  compute_pattern_trajectory
+        # uses _vec() internally which expects raw CJK keys, so we must reverse-map
+        # them back with internal_pattern() before calling.
         try:
             from ontology.lie_algebra_space import compute_pattern_trajectory  # type: ignore
-            active_names  = [ap.get("pattern", ap.get("pattern_name", "")) for ap in result.active_patterns]
-            derived_names = [dp.get("pattern", dp.get("pattern_name", "")) for dp in result.derived_patterns]
+            from intelligence.pattern_i18n import internal_pattern  # type: ignore
+            active_names  = [
+                internal_pattern(ap.get("pattern", ap.get("pattern_name", "")))
+                for ap in result.active_patterns
+            ]
+            derived_names = [
+                internal_pattern(dp.get("pattern", dp.get("pattern_name", "")))
+                for dp in result.derived_patterns
+            ]
             lie_algebra = compute_pattern_trajectory(active_names, derived_names)
         except Exception as lie_exc:
             logger.debug("Lie algebra computation skipped: %s", lie_exc)
             lie_algebra = {"enabled": False, "reason": "computation_unavailable"}
         response["lie_algebra"] = lie_algebra
+
+        # Expose dual inference results so the frontend can display per-transition
+        # Lie algebra signals (bracket matrix, emergent dims, integration verdict).
+        response["dual_inference"] = result.dual_inference
 
         if enrichment_dict is not None:
             response["enrichment"] = enrichment_dict

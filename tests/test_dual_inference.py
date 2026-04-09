@@ -113,3 +113,43 @@ class TestRunDualInference:
             assert "confidence_final" in r["integration"]
             assert "verdict" in r["integration"]
             assert "consistency_score" in r["integration"]
+
+    def test_transition_pass_produces_results_with_one_active_pattern(self):
+        """Pass 2: transitions list should produce Lie algebra results even when
+        only ONE source pattern is in active_patterns (the other uses registry priors)."""
+        from ontology.dual_inference_engine import run_dual_inference
+
+        class _FakeTransition:
+            from_pattern_a = "霸權制裁模式"
+            from_pattern_b = "雙邊貿易依存模式"
+            to_pattern = "金融孤立 / SWIFT 切斷模式"
+            prior_a = 0.80
+            prior_b = 0.50
+
+        active = [{"pattern_name": "霸權制裁模式", "confidence_prior": 0.80}]
+        results = run_dual_inference(active, [_FakeTransition()])
+        assert len(results) >= 1, "Transition-based pass must produce ≥1 result with one active pattern"
+        r = results[0]
+        # Lie algebra computation must have run (sigma1 > 0 for non-parallel patterns)
+        assert r["lie_algebra"]["sigma1"] > 0.0, "Lie bracket must be non-zero for non-parallel patterns"
+        # Required keys present
+        assert "verdict" in r["integration"]
+        assert "confidence_final" in r["integration"]
+
+    def test_inverse_transitions_are_skipped(self):
+        """Pass 2 must skip inverse-mode transitions (from_pattern_b == '(inverse)')."""
+        from ontology.dual_inference_engine import run_dual_inference
+
+        class _InverseTransition:
+            from_pattern_a = "霸權制裁模式"
+            from_pattern_b = "(inverse)"
+            to_pattern = "制裁解除 / 正常化模式"
+            prior_a = 0.80
+            prior_b = 0.35
+
+        active = [{"pattern_name": "霸權制裁模式", "confidence_prior": 0.80}]
+        results = run_dual_inference(active, [_InverseTransition()])
+        # Inverse transitions cannot have a valid Lie bracket — they must not appear
+        for r in results:
+            assert r["pattern_b"] != "(inverse)", "Inverse-mode transition leaked into dual inference"
+

@@ -243,6 +243,11 @@ class EventType:
 # Domains that the El-druin ontology supports
 _SUPPORTED_DOMAINS: frozenset = frozenset({"geopolitics", "economics", "technology", "military"})
 
+# Domains that are *always* out-of-scope regardless of how many patterns fire.
+# For these, incidental keyword overlap with geopolitical terms (e.g. "national
+# team", "championship war") must not force geopolitical analysis.
+_HARD_UNSUPPORTED_DOMAINS: frozenset = frozenset({"sports", "entertainment"})
+
 # Minimum number of keyword hits required before a domain label is trusted.
 # A threshold of 2 prevents false positives where a single incidental term
 # (e.g., "match" in a geopolitical dispatch) mislabels the domain.
@@ -1809,13 +1814,18 @@ def _run_stage3(
     )
 
     # ── LLM rendering pass (post-deterministic paraphrase) ──────────────────
-    # Extract entity strings from events for the allowed-entity list
+    # Extract entity strings from events for the allowed-entity list.
+    # EventNode.entities is Dict[str, List[str]], e.g. {"actor": ["US"], "target": ["China"]}.
     _allowed_entities: List[str] = []
     for ev in events:
-        _args = ev.args if hasattr(ev, "args") else {}
-        for _v in _args.values():
-            if isinstance(_v, str) and _v:
-                _allowed_entities.append(_v)
+        _ents = ev.entities if hasattr(ev, "entities") else {}
+        for _vlist in _ents.values():
+            if isinstance(_vlist, list):
+                for _v in _vlist:
+                    if isinstance(_v, str) and _v:
+                        _allowed_entities.append(_v)
+            elif isinstance(_vlist, str) and _vlist:
+                _allowed_entities.append(_vlist)
     # Deduplicate, keep order
     _seen: set = set()
     _allowed_entities_dedup: List[str] = []
@@ -1829,8 +1839,10 @@ def _run_stage3(
         executive_judgement_raw=_executive_judgement_raw,
         evidence_summary_raw=_evidence_summary_raw,
         hypothesis_summary_raw=_hypothesis_summary_raw,
-        alpha_prob=alpha_prob,
-        beta_prob=beta_prob,
+        # Use confidence_final from integration layer when available (overrides raw Bayesian).
+        # alpha_path["probability"] was already updated with confidence_final in _run_stage3.
+        alpha_prob=alpha_path.get("probability", alpha_prob),
+        beta_prob=beta_path.get("probability", beta_prob),
         composite_confidence=composite,
         verification_gaps=[_trigger_clean],
         allowed_entities=_allowed_entities_dedup,
@@ -2475,10 +2487,14 @@ def run_evented_pipeline(
     # is clearly in an unsupported domain, return an explicit out-of-scope
     # result instead of forcing geopolitical analysis.
     _domain_is_unsupported = _content_domain not in _SUPPORTED_DOMAINS and _content_domain != "general"
+    _hard_unsupported = _content_domain in _HARD_UNSUPPORTED_DOMAINS
     _low_pattern_activation = len(active) == 0 or (
         len(active) == 1 and active[0].confidence_prior < _LOW_PATTERN_CONFIDENCE_THRESHOLD
     )
-    if _domain_is_unsupported and _low_pattern_activation:
+    # Hard-unsupported domains (sports, entertainment) always trigger out-of-scope,
+    # regardless of how many patterns activated (keyword overlap is not analysis).
+    # Other unsupported domains still require low-pattern-activation as a safety net.
+    if _hard_unsupported or (_domain_is_unsupported and _low_pattern_activation):
         logger.info(
             "EventedPipeline: out-of-scope content domain '%s' with %d active patterns — returning out-of-scope result",
             _content_domain, len(active),

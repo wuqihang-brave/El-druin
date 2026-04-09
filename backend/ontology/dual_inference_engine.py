@@ -348,11 +348,20 @@ def run_dual_inference(
     transitions: List[Any],
 ) -> List[Dict[str, Any]]:
     """
-    Run dual inference for all active (A, B) pairs that appear in composition_table.
+    Run dual inference (Bayesian ∥ Lie algebra) for pattern pairs.
+
+    Two passes are performed:
+    1. Composition-table pass — only pairs where BOTH patterns are active.
+       (Highest-confidence results; uses actual active priors.)
+    2. Transition-based pass — uses pre-computed TransitionEdge objects to cover
+       pairs where only ONE pattern is active.  This ensures that Lie algebra
+       emergence signals are computed for every generated transition, not just
+       the rare case where both source patterns are simultaneously active.
 
     Args:
         active_patterns: list of dicts with "pattern_name" and "confidence_prior" keys
-        transitions: existing transition list (unused, kept for API compatibility)
+        transitions: List[TransitionEdge] pre-computed by _run_stage2b; used in the
+                     second pass to guarantee Lie algebra coverage.
 
     Returns:
         list of dicts with "bayesian", "lie_algebra", "integration" keys,
@@ -363,7 +372,7 @@ def run_dual_inference(
     except ImportError:
         return []
 
-    # Build prior lookup
+    # Build prior lookup from active patterns
     pattern_priors: Dict[str, float] = {
         p["pattern_name"]: float(p.get("confidence_prior", 0.5))
         for p in active_patterns
@@ -373,23 +382,17 @@ def run_dual_inference(
     results: List[Dict[str, Any]] = []
     processed: set = set()
 
-    for (pa, pb), pc in composition_table.items():
-        if pa not in pattern_priors or pb not in pattern_priors:
-            continue
+    def _append_result(pa: str, pb: str, pc: str, prior_a: float, prior_b: float) -> None:
+        """Compute dual inference for one (A, B → C) triple and append to results."""
         key = (pa, pb, pc)
         if key in processed:
-            continue
+            return
         processed.add(key)
-
-        prior_a = pattern_priors[pa]
-        prior_b = pattern_priors[pb]
-
         try:
             posteriors = _compute_bayesian_posteriors(pa, pb, prior_a, prior_b)
             bayes = run_bayesian_inference(pa, pb, pc, prior_a, prior_b, posteriors)
             lie = run_lie_algebra_inference(pa, pb)
             integration = integrate(bayes, lie)
-
             results.append({
                 "pattern_a": pa,
                 "pattern_b": pb,
@@ -402,13 +405,13 @@ def run_dual_inference(
                     "evidence_basis":    bayes.evidence_basis,
                 },
                 "lie_algebra": {
-                    "sigma1":             lie.sigma1,
-                    "matrix_norm":        round(float(np.linalg.norm(lie.bracket_matrix, "fro")), 4),
-                    "bracket_matrix":     lie.bracket_matrix.tolist(),
-                    "top_emergent_dims":  lie.top_emergent_dims,
+                    "sigma1":              lie.sigma1,
+                    "matrix_norm":         round(float(np.linalg.norm(lie.bracket_matrix, "fro")), 4),
+                    "bracket_matrix":      lie.bracket_matrix.tolist(),
+                    "top_emergent_dims":   lie.top_emergent_dims,
                     "top_emergent_values": lie.top_emergent_values,
-                    "superlinear_dims":   lie.superlinear_dims,
-                    "cosine_similarity":  round(bayes.lie_sim, 4),
+                    "superlinear_dims":    lie.superlinear_dims,
+                    "cosine_similarity":   round(bayes.lie_sim, 4),
                 },
                 "integration": {
                     "consistency_score":  integration.consistency_score,
@@ -424,6 +427,28 @@ def run_dual_inference(
             logger.warning(
                 "run_dual_inference: error for (%s, %s) → %s: %s", pa, pb, pc, exc
             )
+
+    # ── Pass 1: composition-table entries where BOTH patterns are active ──
+    for (pa, pb), pc in composition_table.items():
+        if pa not in pattern_priors or pb not in pattern_priors:
+            continue
+        _append_result(pa, pb, pc, pattern_priors[pa], pattern_priors[pb])
+
+    # ── Pass 2: transitions where only ONE pattern may be active ──────────
+    # TransitionEdge objects carry already-computed prior_a / prior_b (with
+    # registry defaults applied for the inactive side), so we can safely use
+    # them for the Lie algebra / integration computation without needing both
+    # patterns to be in pattern_priors.
+    for t in (transitions or []):
+        pa = getattr(t, "from_pattern_a", "") or ""
+        pb = getattr(t, "from_pattern_b", "") or ""
+        pc = getattr(t, "to_pattern", "") or ""
+        # Skip inverse-mode transitions (pb sentinel) and degenerate cases
+        if not pa or not pc or not pb or pb == "(inverse)":
+            continue
+        prior_a = float(getattr(t, "prior_a", 0.5))
+        prior_b = float(getattr(t, "prior_b", 0.5))
+        _append_result(pa, pb, pc, prior_a, prior_b)
 
     results.sort(key=lambda r: r["integration"]["confidence_final"], reverse=True)
     return results
