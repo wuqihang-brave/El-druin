@@ -642,6 +642,71 @@ def _domain_class(domain: str) -> str:
             "technology": "domain-tech", "military": "domain-mil"}.get(domain.lower(), "")
 
 
+def _classify_regime(lie_algebra_data: Dict[str, Any], state_vector_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Map Lie algebra outputs to a discrete structural regime classification."""
+    _sigma1_raw = lie_algebra_data.get("sigma1")
+    sigma1 = float(_sigma1_raw) if _sigma1_raw is not None else 0.0
+    _mat_norm_raw = lie_algebra_data.get("matrix_norm")
+    mat_norm = float(_mat_norm_raw) if _mat_norm_raw is not None else 0.0
+    phase_transitions = lie_algebra_data.get("phase_transitions") or []
+    _dom_raw = state_vector_data.get("dominant_dim")
+    if _dom_raw is None and isinstance(state_vector_data.get("mean_vector"), dict):
+        _dom_raw = state_vector_data.get("mean_vector", {}).get("dominant_dim")
+    dominant_dim = _dom_raw if _dom_raw is not None else "unknown"
+
+    # Regime classification thresholds (checked in priority order)
+    if sigma1 >= 6.0 or mat_norm >= 2.0 or len(phase_transitions) >= 2:
+        regime = "Nonlinear Escalation"
+        regime_css = "regime-nonlinear"
+        trigger_sensitivity = "High"
+        attractor_direction = "Escalatory"
+        forecast_implication = "Elevated probability of discontinuous repricing or policy shifts. Minor triggers may produce outsized downstream effects."
+    elif sigma1 >= 5.0 and mat_norm >= 1.5:
+        regime = "Cascade Risk"
+        regime_css = "regime-cascade"
+        trigger_sensitivity = "Extreme"
+        attractor_direction = "Cascading"
+        forecast_implication = "Cross-domain cascade risk is elevated. Expect propagation across multiple domains simultaneously."
+    elif sigma1 >= 3.5 or mat_norm >= 1.0 or len(phase_transitions) == 1:
+        regime = "Stress Accumulation"
+        regime_css = "regime-stress"
+        trigger_sensitivity = "Moderate"
+        attractor_direction = "Accumulating"
+        forecast_implication = "Structural stress is building. System remains in controlled range but approaching nonlinear threshold."
+    else:
+        regime = "Linear"
+        regime_css = "regime-linear"
+        trigger_sensitivity = "Low"
+        attractor_direction = "Stable"
+        forecast_implication = "System is operating within a linear propagation regime. Standard causal pathways apply."
+
+    # Dominant coupling axis from dimension data
+    dim_labels = {
+        "military": "Military → sanctions → energy",
+        "economic": "Economic → trade → institutional",
+        "coercion": "Coercion → compliance → diplomatic",
+        "technology": "Technology → supply chain → geopolitical",
+        "regulation": "Regulatory → financial → market",
+        "cooperation": "Cooperation → institutional → stabilising",
+        "dependency": "Dependency → leverage → coercive",
+        "information": "Information → perception → political",
+    }
+    coupling_axis = dim_labels.get(str(dominant_dim).lower(), f"{dominant_dim} → downstream domains")
+
+    return {
+        "regime": regime,
+        "regime_css": regime_css,
+        "trigger_sensitivity": trigger_sensitivity,
+        "attractor_direction": attractor_direction,
+        "forecast_implication": forecast_implication,
+        "coupling_axis": coupling_axis,
+        "dominant_dim": dominant_dim,
+        "sigma1": sigma1,
+        "mat_norm": mat_norm,
+        "phase_transitions_count": len(phase_transitions),
+    }
+
+
 # ===========================================================================
 # Page: Dashboard
 # ===========================================================================
@@ -903,6 +968,15 @@ if page == "Dashboard":
                 <div style="font-size:13px;margin-top:8px;">The system will use the KuzuDB graph + Cartesian pattern library for causal reasoning</div>
             </div>
             """, unsafe_allow_html=True)
+            st.markdown(
+                "<div style='background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);"
+                "border-radius:3px;padding:16px;margin-top:16px;'>"
+                "<div style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;"
+                "color:var(--muted,#7A8FA6);margin-bottom:8px'>STRUCTURAL REGIME ANALYSIS</div>"
+                "<div style='font-size:12px;color:var(--muted,#7A8FA6)'>Run an analysis to detect structural regime.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
         elif _mode_key == "Grounded":
             _sel_title = _selected.get("title", "(no title)")
             _sel_desc  = _selected.get("description") or _selected.get("summary") or ""
@@ -1099,6 +1173,37 @@ if page == "Dashboard":
                 with _tab_debug:
                     with st.expander("🛠 Raw Backend deduction_result JSON", expanded=False):
                         st.json(_dr)
+
+                # ── Structural Regime Analysis Panel (Grounded — minimal) ──
+                st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                st.markdown(
+                    "<div style='font-size:9px;font-weight:700;text-transform:uppercase;"
+                    "letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:10px'>"
+                    "STRUCTURAL REGIME ANALYSIS</div>",
+                    unsafe_allow_html=True,
+                )
+                _conf_raw_gr = _dr.get("confidence", 0.5)
+                try:
+                    _conf_raw_gr = float(_conf_raw_gr)
+                except Exception:
+                    _conf_raw_gr = 0.5
+                _gr_regime_data = _classify_regime({}, {})
+                st.markdown(
+                    f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                    f"letter-spacing:0.8px;margin-bottom:4px'>Current Regime</div>"
+                    f"<span class='regime-badge {_gr_regime_data['regime_css']}'>{_gr_regime_data['regime']}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<div style='background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);"
+                    f"border-left:3px solid #4A8FD4;border-radius:3px;padding:10px 14px;margin-top:10px;"
+                    f"font-size:12px;color:var(--text,#D4DDE6);line-height:1.6'>"
+                    f"<span style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;"
+                    f"color:var(--muted,#7A8FA6)'>NOTE</span><br>"
+                    f"Full structural analysis available in Evented mode."
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
             if st.button("Clear Assessment", key="clear_selection"):
                 st.session_state.selected_news    = None
@@ -1879,6 +1984,76 @@ if page == "Dashboard":
                                         _lim_parts.append("⚠️ truncated due to timeout")
                                     if _lim_parts:
                                         st.caption("Limits: " + " · ".join(_lim_parts))
+
+                    # ── Structural Regime Analysis Panel ─────────────────────────────────
+                    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:9px;font-weight:700;text-transform:uppercase;"
+                        "letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:10px'>"
+                        "STRUCTURAL REGIME ANALYSIS</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    _regime_data = _classify_regime(_er.get("lie_algebra", {}), _er.get("state_vector", {}))
+
+                    _ra_col1, _ra_col2 = st.columns(2)
+                    with _ra_col1:
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin-bottom:4px'>Current Regime</div>"
+                            f"<span class='regime-badge {_regime_data['regime_css']}'>{_regime_data['regime']}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Dominant Coupling Axis</div>"
+                            f"<div style='font-size:12px;color:var(--text,#D4DDE6)'>{_regime_data['coupling_axis']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Trigger Sensitivity</div>"
+                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
+                            f"{_regime_data['trigger_sensitivity']}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                    with _ra_col2:
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin-bottom:4px'>Attractor Direction</div>"
+                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
+                            f"{_regime_data['attractor_direction']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        _phase_count = _regime_data["phase_transitions_count"]
+                        _phase_color = "#E05050" if _phase_count > 0 else "var(--muted,#7A8FA6)"
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Phase Transitions</div>"
+                            f"<div style='font-size:13px;font-weight:700;color:{_phase_color}'>"
+                            f"{'None detected' if _phase_count == 0 else f'{_phase_count} detected'}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        _sigma1_disp = _regime_data['sigma1']
+                        st.markdown(
+                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
+                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Structural Intensity (σ₁)</div>"
+                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
+                            f"{_sigma1_disp:.3f}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                    st.markdown(
+                        f"<div style='background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);"
+                        f"border-left:3px solid #4A8FD4;border-radius:3px;padding:10px 14px;margin-top:10px;"
+                        f"font-size:12px;color:var(--text,#D4DDE6);line-height:1.6'>"
+                        f"<span style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;"
+                        f"color:var(--muted,#7A8FA6)'>FORECAST IMPLICATION</span><br>"
+                        f"{_regime_data['forecast_implication']}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
             if st.button("Clear Assessment", key="clear_selection_evented"):
                 st.session_state.selected_news  = None
