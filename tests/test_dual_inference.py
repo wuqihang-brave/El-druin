@@ -30,28 +30,30 @@ class TestLieAlgebraInference:
 
 
 class TestBayesianInference:
-    def test_posteriors_sum_to_one(self):
+    def test_posteriors_return_weights_and_Z(self):
         from ontology.dual_inference_engine import _compute_bayesian_posteriors
-        posteriors = _compute_bayesian_posteriors("霸權制裁模式", "正式軍事同盟模式", 0.72, 0.72)
-        if posteriors:
-            total = sum(posteriors.values())
-            assert abs(total - 1.0) < 1e-3, f"Posteriors must sum to 1, got {total}"
+        weights, Z_pair = _compute_bayesian_posteriors("霸權制裁模式", "正式軍事同盟模式", 0.72, 0.72)
+        # weights may be empty if no composition_table entry; if non-empty, all non-negative
+        for k, v in weights.items():
+            assert v >= 0.0, f"Negative weight for {k}: {v}"
+        assert Z_pair >= 0.0
 
     def test_posteriors_all_nonnegative(self):
         from ontology.dual_inference_engine import _compute_bayesian_posteriors
-        posteriors = _compute_bayesian_posteriors("霸權制裁模式", "正式軍事同盟模式", 0.72, 0.72)
-        for k, v in posteriors.items():
-            assert v >= 0.0, f"Negative posterior for {k}: {v}"
+        weights, Z_pair = _compute_bayesian_posteriors("霸權制裁模式", "正式軍事同盟模式", 0.72, 0.72)
+        for k, v in weights.items():
+            assert v >= 0.0, f"Negative weight for {k}: {v}"
 
 
 class TestIntegration:
     def test_verdict_is_valid(self):
         from ontology.dual_inference_engine import run_lie_algebra_inference, run_bayesian_inference, integrate
         lie = run_lie_algebra_inference("霸權制裁模式", "正式軍事同盟模式")
-        posteriors = {"多邊聯盟制裁模式": 1.0}
+        weights = {"多邊聯盟制裁模式": 0.5184}  # prior_a * prior_b * lie_sim ≈ 0.72*0.72*1.0
+        Z_pair = sum(weights.values())
         bayes = run_bayesian_inference(
             "霸權制裁模式", "正式軍事同盟模式", "多邊聯盟制裁模式",
-            0.72, 0.72, posteriors
+            0.72, 0.72, weights, Z_pair,
         )
         result = integrate(bayes, lie)
         assert result.verdict in ("convergent", "neutral", "divergent", "emergent")
@@ -62,14 +64,32 @@ class TestIntegration:
     def test_confidence_formula_is_traceable(self):
         from ontology.dual_inference_engine import run_lie_algebra_inference, run_bayesian_inference, integrate
         lie = run_lie_algebra_inference("霸權制裁模式", "正式軍事同盟模式")
-        posteriors = {"多邊聯盟制裁模式": 1.0}
+        weights = {"多邊聯盟制裁模式": 0.5184}
+        Z_pair = sum(weights.values())
         bayes = run_bayesian_inference(
             "霸權制裁模式", "正式軍事同盟模式", "多邊聯盟制裁模式",
-            0.72, 0.72, posteriors
+            0.72, 0.72, weights, Z_pair,
         )
         result = integrate(bayes, lie)
         assert "P_Bayes" in result.confidence_formula
         assert str(round(result.confidence_final, 3)) in result.confidence_formula
+
+    def test_confidence_final_never_exceeds_p_bayes(self):
+        """confidence_final must be ≤ P_Bayes (integration formula only scales down)."""
+        from ontology.dual_inference_engine import run_lie_algebra_inference, run_bayesian_inference, integrate
+        lie = run_lie_algebra_inference("霸權制裁模式", "正式軍事同盟模式")
+        weights = {"多邊聯盟制裁模式": 0.5184}
+        Z_pair = sum(weights.values())
+        bayes = run_bayesian_inference(
+            "霸權制裁模式", "正式軍事同盟模式", "多邊聯盟制裁模式",
+            0.72, 0.72, weights, Z_pair,
+        )
+        # Simulate a globally-normalised probability (less than 1.0)
+        bayes.probability = 0.45
+        result = integrate(bayes, lie)
+        assert result.confidence_final <= bayes.probability + 1e-6, (
+            f"confidence_final={result.confidence_final} must not exceed P_Bayes={bayes.probability}"
+        )
 
 
 class TestDiagnoseIndependence:
@@ -151,6 +171,99 @@ class TestRunDualInference:
             assert "top_emergent_values" in lie
             assert lie["sigma1"] > 0.0, "sigma1 must be non-zero for non-trivial pattern pairs"
             assert lie["matrix_norm"] > 0.0, "matrix_norm must be non-zero"
+
+    def test_p_bayes_not_one_with_multiple_transitions(self):
+        """
+        Regression: P_Bayes must NOT be 1.0 when multiple transitions compete.
+        Use three active patterns so two composition_table entries are found,
+        giving two results. After global normalisation each probability < 1.0.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        # Three active patterns produce two composition_table matches:
+        #   霸權制裁模式 + 正式軍事同盟模式 → 多邊聯盟制裁模式
+        #   霸權制裁模式 + 實體清單技術封鎖模式 → 科技脫鉤/技術鐵幕模式
+        active = [
+            {"pattern_name": "霸權制裁模式",         "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式",      "confidence_prior": 0.70},
+            {"pattern_name": "實體清單技術封鎖模式",  "confidence_prior": 0.65},
+        ]
+        results = run_dual_inference(active, [])
+        assert len(results) >= 2, (
+            "Expected at least 2 dual_inference results for three active patterns"
+        )
+        for r in results:
+            prob = r["bayesian"]["probability"]
+            assert prob < 1.0 - 1e-6, (
+                f"P_Bayes={prob:.6f} must be < 1.0 when multiple transitions compete"
+            )
+            # Formula string must show the correct (non-1.0) P_Bayes
+            formula = r["integration"]["confidence_formula"]
+            assert "P_Bayes=1.0000" not in formula, (
+                f"Integration formula must not display P_Bayes=1.0000: {formula}"
+            )
+
+    def test_p_bayes_consistent_with_probability_tree(self):
+        """
+        P_Bayes in the integration formula must equal posterior_weight / Z_global,
+        matching the probability shown in the probability tree for each transition.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        active = [
+            {"pattern_name": "霸權制裁模式",         "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式",      "confidence_prior": 0.70},
+            {"pattern_name": "實體清單技術封鎖模式",  "confidence_prior": 0.65},
+        ]
+        results = run_dual_inference(active, [])
+        if not results:
+            return
+        Z_global = sum(r["bayesian"]["posterior_weight"] for r in results)
+        if Z_global < 1e-9:
+            return
+        for r in results:
+            expected_prob = r["bayesian"]["posterior_weight"] / Z_global
+            actual_prob   = r["bayesian"]["probability"]
+            assert abs(actual_prob - expected_prob) < 1e-4, (
+                f"P_Bayes mismatch: expected {expected_prob:.6f}, got {actual_prob:.6f}"
+            )
+
+    def test_confidence_final_le_p_bayes_for_all_results(self):
+        """
+        confidence_final must be ≤ P_Bayes for every result.
+        Integration formula scales by (1+α×max(0,c))/(1+α) ≤ 1, so
+        confidence_final can only equal or reduce P_Bayes, never exceed it.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        active = [
+            {"pattern_name": "霸權制裁模式",         "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式",      "confidence_prior": 0.70},
+            {"pattern_name": "實體清單技術封鎖模式",  "confidence_prior": 0.65},
+        ]
+        results = run_dual_inference(active, [])
+        for r in results:
+            p_bayes = r["bayesian"]["probability"]
+            conf    = r["integration"]["confidence_final"]
+            assert conf <= p_bayes + 1e-6, (
+                f"confidence_final={conf:.6f} must not exceed P_Bayes={p_bayes:.6f}"
+            )
+
+    def test_partition_function_is_z_global(self):
+        """partition_function stored in bayesian dict must equal Z_global."""
+        from ontology.dual_inference_engine import run_dual_inference
+        active = [
+            {"pattern_name": "霸權制裁模式",         "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式",      "confidence_prior": 0.70},
+            {"pattern_name": "實體清單技術封鎖模式",  "confidence_prior": 0.65},
+        ]
+        results = run_dual_inference(active, [])
+        if not results:
+            return
+        Z_global = sum(r["bayesian"]["posterior_weight"] for r in results)
+        for r in results:
+            pf = r["bayesian"].get("partition_function", None)
+            assert pf is not None, "bayesian dict must include 'partition_function'"
+            assert abs(pf - Z_global) < 1e-4, (
+                f"partition_function={pf:.6f} should equal Z_global={Z_global:.6f}"
+            )
 
 
 class TestDistributionSharpening:

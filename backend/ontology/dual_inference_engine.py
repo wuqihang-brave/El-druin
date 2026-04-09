@@ -127,20 +127,23 @@ def _compute_bayesian_posteriors(
     pattern_b: str,
     prior_a: float,
     prior_b: float,
-) -> Dict[str, float]:
+) -> tuple:
     """
-    Compute P(C | A, B) as a proper normalized distribution over all
-    patterns C such that compose(A, B) = C is in composition_table.
+    Compute unnormalized weights w(C) = π(A) × π(B) × cos(v_A + v_B, v_C)
+    for all patterns C such that compose(A, B) = C is in composition_table.
 
-    Weight formula: w(C) = π(A) × π(B) × cos(v_A + v_B, v_C)
-    Normalization: P(C) = w(C) / Σ_C w(C)
+    Returns (weights_dict, Z_pair) where:
+      weights_dict: {C: w(C)} — unnormalized weights (not yet divided by Z)
+      Z_pair: Σ_C w(C) for this (A, B) pair
 
+    Callers that need a proper per-pair distribution should divide by Z_pair.
+    Global normalization across all (A, B) pairs is done in run_dual_inference.
     If cos is negative (opposing direction), clip to 0 to ensure valid prob.
     """
     try:
         from ontology.relation_schema import composition_table
     except ImportError:
-        return {}
+        return {}, 0.0
 
     v_a = _vec(pattern_a)
     v_b = _vec(pattern_b)
@@ -160,13 +163,8 @@ def _compute_bayesian_posteriors(
         w = prior_a * prior_b * max(0.0, cos_sim)
         weights[pc] = weights.get(pc, 0.0) + w
 
-    Z = sum(weights.values())
-    if Z < 1e-9:
-        # Fallback: uniform over candidates
-        n = len(weights)
-        return {k: 1.0 / n for k in weights} if n > 0 else {}
-
-    return {k: round(v / Z, 4) for k, v in weights.items()}
+    Z_pair = sum(weights.values())
+    return weights, Z_pair
 
 
 def run_lie_algebra_inference(
@@ -231,11 +229,18 @@ def run_bayesian_inference(
     pattern_c: str,
     prior_a: float,
     prior_b: float,
-    posteriors: Dict[str, float],
+    weights: Dict[str, float],
+    Z_pair: float,
+    Z_global: float = 0.0,
 ) -> BayesianInference:
     """
-    Bayesian path: given normalized posteriors from _compute_bayesian_posteriors,
-    extract the probability for target pattern_c and compute the additive similarity.
+    Bayesian path: given unnormalized weights from _compute_bayesian_posteriors,
+    compute the posterior probability for target pattern_c and its additive similarity.
+
+    probability is initially set to w(C)/Z_pair (per-pair normalization) and is
+    later updated to w(C)/Z_global by run_dual_inference for cross-pair consistency.
+
+    partition_function stores Z_pair (true unnormalized weight sum for this pair).
     """
     v_a = _vec(pattern_a)
     v_b = _vec(pattern_b)
@@ -250,15 +255,23 @@ def run_bayesian_inference(
     else:
         lie_sim = 0.0
 
-    probability = posteriors.get(pattern_c, 0.0)
     posterior_weight = prior_a * prior_b * max(0.0, lie_sim)
-    partition_function = sum(posteriors.values()) if posteriors else 1.0
+
+    # Per-pair probability (w(C) / Z_pair): used as the initial estimate.
+    # Will be overwritten by run_dual_inference with the global-normalised value.
+    if Z_pair > 1e-9:
+        probability = weights.get(pattern_c, 0.0) / Z_pair
+    elif weights:
+        # Fallback: uniform distribution over candidates in this pair
+        probability = 1.0 / len(weights)
+    else:
+        probability = 0.0
 
     return BayesianInference(
         target_pattern=pattern_c,
-        probability=probability,
+        probability=round(probability, 6),
         posterior_weight=round(posterior_weight, 6),
-        partition_function=round(partition_function, 6),
+        partition_function=round(Z_pair, 6),
         prior_a=prior_a,
         prior_b=prior_b,
         lie_sim=round(lie_sim, 4),
@@ -385,47 +398,21 @@ def run_dual_inference(
     results: List[Dict[str, Any]] = []
     processed: set = set()
 
-    def _compute_and_append(pa: str, pb: str, pc: str, prior_a: float, prior_b: float) -> None:
-        """Shared helper: compute bayesian + lie algebra + integration and append result."""
-        try:
-            posteriors = _compute_bayesian_posteriors(pa, pb, prior_a, prior_b)
-            bayes = run_bayesian_inference(pa, pb, pc, prior_a, prior_b, posteriors)
-            lie = run_lie_algebra_inference(pa, pb)
-            integration = integrate(bayes, lie)
+    # ── Collect raw Bayesian + Lie results (no final integration yet) ─────────
+    # We need all posterior_weights first to compute Z_global for proper normalization.
+    raw_items: List[tuple] = []  # (pa, pb, pc, bayes, lie)
 
-            results.append({
-                "pattern_a": pa,
-                "pattern_b": pb,
-                "pattern_c": pc,
-                "bayesian": {
-                    "target_pattern":    bayes.target_pattern,
-                    "probability":       bayes.probability,
-                    "posterior_weight":  bayes.posterior_weight,
-                    "lie_sim":           bayes.lie_sim,
-                    "evidence_basis":    bayes.evidence_basis,
-                },
-                "lie_algebra": {
-                    "sigma1":             lie.sigma1,
-                    "matrix_norm":        round(float(np.linalg.norm(lie.bracket_matrix, "fro")), 4),
-                    "bracket_matrix":     lie.bracket_matrix.tolist(),
-                    "top_emergent_dims":  lie.top_emergent_dims,
-                    "top_emergent_values": lie.top_emergent_values,
-                    "superlinear_dims":   lie.superlinear_dims,
-                    "cosine_similarity":  round(bayes.lie_sim, 4),
-                },
-                "integration": {
-                    "consistency_score":  integration.consistency_score,
-                    "verdict":            integration.verdict,
-                    "confidence_final":   integration.confidence_final,
-                    "confidence_formula": integration.confidence_formula,
-                    "divergence_dims":    integration.divergence_dims,
-                    "emergence_signal":   integration.emergence_signal,
-                    "summary":            integration.summary,
-                },
-            })
+    def _collect(pa: str, pb: str, pc: str, prior_a: float, prior_b: float) -> None:
+        """Compute raw Bayesian and Lie results; defer integration until Z_global is known."""
+        try:
+            weights, Z_pair = _compute_bayesian_posteriors(pa, pb, prior_a, prior_b)
+            bayes = run_bayesian_inference(pa, pb, pc, prior_a, prior_b, weights, Z_pair)
+            lie = run_lie_algebra_inference(pa, pb)
+            raw_items.append((pa, pb, pc, bayes, lie))
         except Exception as exc:
             logger.warning(
-                "run_dual_inference: error for (%s, %s) → %s: %s", pa, pb, pc, exc
+                "run_dual_inference: error computing raw result for (%s, %s) → %s: %s",
+                pa, pb, pc, exc,
             )
 
     # ── Pass 1: composition_table pairs where BOTH patterns are active ────────
@@ -436,7 +423,7 @@ def run_dual_inference(
         if key in processed:
             continue
         processed.add(key)
-        _compute_and_append(pa, pb, pc, pattern_priors[pa], pattern_priors[pb])
+        _collect(pa, pb, pc, pattern_priors[pa], pattern_priors[pb])
 
     # ── Pass 2: TransitionEdge list — cover single-active-pattern transitions ─
     # _run_stage2b emits edges where only ONE of (pa, pb) is active but a
@@ -464,7 +451,63 @@ def run_dual_inference(
         # Use whatever priors are available; default to 0.5 for non-active patterns
         prior_a = pattern_priors.get(pa, 0.5)
         prior_b = pattern_priors.get(pb, 0.5)
-        _compute_and_append(pa, pb, pc, prior_a, prior_b)
+        _collect(pa, pb, pc, prior_a, prior_b)
+
+    # ── Global normalisation: P_Bayes(C) = posterior_weight(C) / Z_global ────
+    # Z_global = Σ posterior_weights across ALL collected (A, B, C) triples.
+    # This ensures the displayed P_Bayes matches the probability tree (which
+    # also normalises each transition weight against the global sum), and
+    # prevents P_Bayes from incorrectly showing as 1.0 when the composition
+    # table has only one C per (A, B) pair (which is the typical case).
+    Z_global = sum(b.posterior_weight for _, _, _, b, _ in raw_items)
+    if Z_global < 1e-9:
+        Z_global = 1.0
+
+    # ── Pass 3: update probability with global normalisation and integrate ────
+    for pa, pb, pc, bayes, lie in raw_items:
+        try:
+            # Overwrite probability with globally normalised value
+            bayes.probability = round(bayes.posterior_weight / Z_global, 6)
+            # Store true global partition function so callers can verify normalisation
+            bayes.partition_function = round(Z_global, 6)
+
+            integration = integrate(bayes, lie)
+
+            results.append({
+                "pattern_a": pa,
+                "pattern_b": pb,
+                "pattern_c": pc,
+                "bayesian": {
+                    "target_pattern":    bayes.target_pattern,
+                    "probability":       bayes.probability,
+                    "posterior_weight":  bayes.posterior_weight,
+                    "partition_function": bayes.partition_function,
+                    "lie_sim":           bayes.lie_sim,
+                    "evidence_basis":    bayes.evidence_basis,
+                },
+                "lie_algebra": {
+                    "sigma1":             lie.sigma1,
+                    "matrix_norm":        round(float(np.linalg.norm(lie.bracket_matrix, "fro")), 4),
+                    "bracket_matrix":     lie.bracket_matrix.tolist(),
+                    "top_emergent_dims":  lie.top_emergent_dims,
+                    "top_emergent_values": lie.top_emergent_values,
+                    "superlinear_dims":   lie.superlinear_dims,
+                    "cosine_similarity":  round(bayes.lie_sim, 4),
+                },
+                "integration": {
+                    "consistency_score":  integration.consistency_score,
+                    "verdict":            integration.verdict,
+                    "confidence_final":   integration.confidence_final,
+                    "confidence_formula": integration.confidence_formula,
+                    "divergence_dims":    integration.divergence_dims,
+                    "emergence_signal":   integration.emergence_signal,
+                    "summary":            integration.summary,
+                },
+            })
+        except Exception as exc:
+            logger.warning(
+                "run_dual_inference: error integrating (%s, %s) → %s: %s", pa, pb, pc, exc
+            )
 
     results.sort(key=lambda r: r["integration"]["confidence_final"], reverse=True)
     return results
