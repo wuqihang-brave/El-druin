@@ -81,14 +81,11 @@ _MIN_QUOTE_LEN: int = 15
 # Maximum confidence assigned to fallback events (clamped before entering the pipeline)
 _FALLBACK_MAX_CONFIDENCE: float = 0.35
 
-# Lie-similarity amplification exponent (k) applied to spread the probability
-# distribution. The composition table produces lie_sim values in [0.79, 1.0]
-# which, when used raw, compress all Bayesian posteriors to a narrow 40-55%
-# band. Raising lie_sim^k amplifies small differences before normalisation:
-#   k=1 → compressed (legacy, ~45/55 split for typical 2-way case)
-#   k=3 → moderate spread (~35/65 split)
-#   k=4 → recommended: clear dominant outcome (~28/72 split)
-_LIE_SIM_AMPLIFICATION: int = 4
+# Bayesian Bayesian weight formula: prior_A × prior_B × cos(v_A+v_B, v_C).
+# lie_sim = cos(v_A + v_B, v_C) is the additive vector similarity used as the
+# Bayesian weight only. It is NOT raised to a power and NOT multiplied into the
+# Lie algebra path — the two paths are parallel and independent.
+# (The _LIE_SIM_AMPLIFICATION constant has been removed as architecturally wrong.)
 
 # Distribution-collapse detection thresholds.
 # "Collapse" here means the distribution is near-uniform (every outcome gets
@@ -1270,12 +1267,11 @@ def _run_stage2b(
             # normalised distribution can spread beyond the legacy 40-55% band.
             lie_sim = max(0.0, lie_sim)
 
-        # Apply lie_sim amplification to widen probability differences.
-        # Because composition-table lie_sims cluster in [0.79, 1.0], raw
-        # posteriors are nearly equal.  Raising to _LIE_SIM_AMPLIFICATION
-        # power amplifies small geometric differences without changing ranking.
-        lie_sim_amplified = lie_sim ** _LIE_SIM_AMPLIFICATION
-        posterior = prior_a * prior_b * lie_sim_amplified
+        # Bayesian weight: prior_A × prior_B × cos(v_A+v_B, v_C).
+        # lie_sim is the additive vector similarity used as the Bayesian weight only.
+        # It is NOT raised to a power — the Lie algebra path is a separate, parallel
+        # inference and must not be collapsed into the Bayesian scalar.
+        posterior = prior_a * prior_b * max(0.0, lie_sim)
 
         # Typical outcomes for target pattern
         outcomes: List[str] = []
@@ -1316,10 +1312,9 @@ def _run_stage2b(
             # Inverse paths keep a small minimum floor so they remain non-zero
             # (low-probability high-impact paths should still appear in the tree)
             lie_sim  = max(0.05, lie_sim)
-            # Apply same amplification as compose paths for consistency
-            lie_sim_amplified = lie_sim ** _LIE_SIM_AMPLIFICATION
-            # Inverse-mode confidence discount (low-probability high-impact)
-            posterior = prior_a * 0.35 * lie_sim_amplified
+            # Inverse-mode confidence discount (low-probability high-impact).
+            # Use the raw lie_sim (already floored at 0.05) as the Bayesian weight.
+            posterior = prior_a * 0.35 * lie_sim
 
             outcomes = []
             for pat in CARTESIAN_PATTERN_REGISTRY.values():
@@ -1520,6 +1515,7 @@ def _run_stage3(
     state_vector:    Dict[str, Any],
     driving_factors: List[DrivingFactor],
     llm_service:     Any,
+    dual_results:    Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     贝叶斯后验推演 + LLM 解释文本生成。
@@ -1533,6 +1529,15 @@ def _run_stage3(
     LLM 部分（仅限填写解释文本）：
       只被允许写 conclusion.text，解释已计算好的 alpha/beta 路径。
       所有数值字段在 LLM 调用前已确定，LLM 无法修改。
+
+    Args:
+        dual_results: Optional list of dual inference results from run_dual_inference().
+            Each element is a dict with keys: "pattern_a", "pattern_b", "pattern_c",
+            "bayesian" (BayesianInference fields), "lie_algebra" (LieAlgebraInference fields),
+            "integration" (IntegrationResult fields including consistency_score, verdict,
+            confidence_final, confidence_formula). Used to inject lie_emergence and
+            integration data into alpha_path and beta_path, and to use confidence_final
+            as the authoritative final confidence instead of the Bayesian posterior alone.
     """
     # ── A. 贝叶斯归一化概率计算 ─────────────────────────────────────────
     weights   = [t.posterior_weight for t in transitions if t.posterior_weight > 0]
@@ -1553,7 +1558,7 @@ def _run_stage3(
                 "Stage3: distribution collapse detected — top_prob=%.3f (floor=%.2f), "
                 "top1-top2 gap=%.3f (floor=%.2f). "
                 "Top weights: %s. Z=%.4f. "
-                "Consider increasing _LIE_SIM_AMPLIFICATION or reviewing priors.",
+                "Consider reviewing priors or the composition table.",
                 _top_prob, _COLLAPSE_TOP_PROB_FLOOR,
                 _gap, _COLLAPSE_GAP_FLOOR,
                 [round(w, 4) for w in _sorted_w[:5]],
@@ -1663,6 +1668,68 @@ def _run_stage3(
             "evidence_basis": "Low-probability high-impact path based on inverse_table",
         }
 
+    # ── D½. Inject Lie algebra emergence data from dual_results ─────────
+    # This is independent of the Bayesian path — it answers a different question:
+    # which semantic dimensions show non-linear structural effects from A⊕B?
+    _alpha_dr = None
+    _beta_dr  = None
+    if dual_results:
+        # Match dual_results to alpha/beta transitions by raw pattern names
+        _alpha_raw_c = alpha_transition.to_pattern if alpha_transition else None
+        _alpha_raw_a = alpha_transition.from_pattern_a if alpha_transition else None
+        _alpha_raw_b = alpha_transition.from_pattern_b if alpha_transition else None
+        _beta_raw_c  = beta_transition.to_pattern if beta_transition else None
+        for _dr in dual_results:
+            if (
+                _dr.get("pattern_c") == _alpha_raw_c
+                and _dr.get("pattern_a") == _alpha_raw_a
+                and _dr.get("pattern_b") == _alpha_raw_b
+            ):
+                _alpha_dr = _dr
+            if _dr.get("pattern_c") == _beta_raw_c and _beta_dr is None:
+                _beta_dr = _dr
+        if _alpha_dr is None and dual_results:
+            _alpha_dr = dual_results[0]
+
+    def _build_lie_emergence(dr: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not dr:
+            return {}
+        _lie = dr.get("lie_algebra", {})
+        _integ = dr.get("integration", {})
+        _top_dims  = _lie.get("top_emergent_dims", [])
+        _top_vals  = _lie.get("top_emergent_values", [])
+        _sigma1    = _lie.get("sigma1", 0.0)
+        _top_dim   = _top_dims[0] if _top_dims else "unknown"
+        _top_val   = _top_vals[0] if _top_vals else 0.0
+        _label = f"Strongest structural effect in '{_top_dim}' dimension (intensity={_top_val:.2f}, σ₁={_sigma1:.3f})"
+        return {
+            "top_dims":       _top_dims,
+            "top_values":     _top_vals,
+            "sigma1":         _sigma1,
+            "nonlinear_label": _label,
+        }
+
+    def _build_integration(dr: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not dr:
+            return {}
+        _integ = dr.get("integration", {})
+        return {
+            "consistency_score":  _integ.get("consistency_score", 0.0),
+            "verdict":            _integ.get("verdict", "neutral"),
+            "confidence_final":   _integ.get("confidence_final", 0.0),
+            "confidence_formula": _integ.get("confidence_formula", ""),
+        }
+
+    alpha_path["lie_emergence"] = _build_lie_emergence(_alpha_dr)
+    alpha_path["integration"]   = _build_integration(_alpha_dr)
+    # Use integration confidence_final as the final confidence if available
+    _alpha_conf_final = (_alpha_dr or {}).get("integration", {}).get("confidence_final")
+    if _alpha_conf_final is not None:
+        alpha_path["probability"] = round(_alpha_conf_final, 3)
+
+    beta_path["lie_emergence"] = _build_lie_emergence(_beta_dr)
+    beta_path["integration"]   = _build_integration(_beta_dr)
+
     # ── E. LLM 调用：仅写解释文本，数值已锁定 ──────────────────────────
     conclusion_text = _generate_conclusion_text(
         text=text,
@@ -1730,11 +1797,11 @@ def _run_stage3(
     # ── Raw (deterministic) summary strings ─────────────────────────────────
 
     _evidence_summary_raw = (
-        f"Outcome trajectory (p={alpha_path['probability']:.1%}): {_alpha_primary_phrase}."
+        f"{_alpha_primary_phrase} (p={alpha_path['probability']:.1%})."
     )
     _hypothesis_summary_raw = (
-        f"Alternative scenario (p={beta_path.get('probability', 0.0):.0%}): "
-        f"{_beta_primary_phrase}, contingent on {_trigger_clean}."
+        f"{_beta_primary_phrase} (p={beta_path.get('probability', 0.0):.0%}), "
+        f"contingent on {_trigger_clean}."
     )
     # executive_judgement_raw: pure deterministic fallback (no LLM)
     _executive_judgement_raw = _fallback_conclusion_text(
@@ -1788,9 +1855,10 @@ def _run_stage3(
         "rendering_meta": _rendered["rendering_meta"],
         "final": {
             "overall_confidence": composite,
-            "compute_trace_ref": f"bayesian_posterior|Z={sum(t.posterior_weight for t in transitions):.4f}",
+            "compute_trace_ref": f"dual_inference|Z={sum(t.posterior_weight for t in transitions):.4f}",
+            "dual_integration": alpha_path.get("integration", {}),
         },
-        "beta_path_algebra": {"algebra_used": False},
+        "beta_path_algebra": {"algebra_used": bool(alpha_path.get("lie_emergence"))},
         # ── canonical frontend keys (backward compat) ────────────────────
         "conclusion": _rendered["executive_judgement"],
         "text":       _rendered["executive_judgement"],
@@ -1868,8 +1936,25 @@ def _generate_conclusion_text(
     dominant = state_vector.get("mean_vector", {}).get("dominant_dim", "unknown")
     coercion = state_vector.get("mean_vector", {}).get("coercion", 0.0)
 
+    # Build Lie algebra emergence narrative for the prompt
+    _lie_em = alpha_path.get("lie_emergence", {})
+    _lie_label = _lie_em.get("nonlinear_label", "")
+    _lie_top_dim  = (_lie_em.get("top_dims") or [""])[0]
+    _lie_top_val  = (_lie_em.get("top_values") or [0.0])[0]
+    _lie_sigma1   = _lie_em.get("sigma1", 0.0)
+    _lie_block = ""
+    if _lie_label:
+        _lie_block = f"""
+[STRUCTURAL EMERGENCE SIGNAL — describe this as a separate observation, without technical jargon]
+The interaction between the two active forces produces strongest structural dynamics in the
+'{_lie_top_dim}' dimension (intensity={_lie_top_val:.2f}, leading singular value σ₁={_lie_sigma1:.3f}).
+Translate this into natural geopolitical/economic language: e.g. "The mutual pressure is
+amplifying coercive leverage at a rate that neither party's trajectory individually predicts."
+Include one sentence about this structural signal in your output.
+"""
+
     prompt = f"""You are the EL-DRUIN intelligence analyst. Deterministic algorithms have computed
-the outcomes below. Write 1–2 sentences of outcome-first intelligence commentary anchored to
+the outcomes below. Write 2–3 sentences of outcome-first intelligence commentary anchored to
 the actual news events described in the fragment.
 
 [ORIGINAL NEWS FRAGMENT]
@@ -1879,14 +1964,21 @@ the actual news events described in the fragment.
 - Most likely trajectory (p={composite_confidence:.0%}): {alpha_outcome_phrase}
 - Contingent alternative: {beta_outcome_phrase}
 - Dominant state dimension: {dominant} (coercion index {coercion:+.2f})
-
+{_lie_block}
 [REQUIREMENTS]
 1. Start with the outcome stated as a concrete action, naming the actors from the news fragment.
    BAD:  "The primary actor will face structural pressure."
    GOOD: "With US export controls tightening, Chinese suppliers are accelerating domestic substitution."
 2. One sentence covers the contingent alternative — what would have to change for it to materialise.
-3. Do NOT explain how confidence was calculated. Do NOT mention patterns, mechanisms, algebra, or Bayesian.
-4. Plain English only. No JSON, no markdown.
+3. If structural emergence data is provided above, add one sentence describing the structural dynamics
+   using real-world geopolitical/economic language — NOT technical terms.
+4. CRITICAL ESCAPING RULES:
+   - Replace ALL generic actor labels with SPECIFIC named actors from the news fragment.
+     Never write "the affected state", "the subject state", "the primary actor", "the targeted actor".
+   - NEVER use: "pattern", "mechanism", "Bayesian", "posterior", "algebra", "commutator",
+     "ontolog", "semantic dimension", "emergence intensity", "sigma", "cosine similarity",
+     "nonlinear", "active pattern", "composition table", "lie", "prior".
+5. Plain English only. No JSON, no markdown.
 """
     try:
         response = llm_service.call(
@@ -1958,10 +2050,8 @@ def _fallback_conclusion_text(
             driver_hint = f" driven by {_outcome_phrase(top_outcome).lower()}"
 
     return (
-        f"Predicted outcome (p={alpha_prob:.0%}): "
-        f"{primary}{driver_hint}. "
-        f"Alternative scenario (p={beta_prob:.0%}): "
-        f"{beta_desc}."
+        f"{primary}{driver_hint} (p={alpha_prob:.0%}). "
+        f"If current dynamics reverse, {beta_desc.lower()} (p={beta_prob:.0%})."
     )
 
 # ---------------------------------------------------------------------------
@@ -1971,17 +2061,29 @@ def _fallback_conclusion_text(
 # Substrings that must never appear in rendered output (internal ontology jargon
 # or meta-commentary that does not belong in a real-world intelligence judgement)
 _RENDER_DISALLOWED = [
-    "⊕", "pattern", "mechanism", "composition_derived", "tech_decoupling",
+    # Ontology / math symbols that must not appear in natural language output
+    "⊕",
+    # Internal pattern / mechanism terminology
+    "pattern", "mechanism", "composition_derived", "tech_decoupling",
     "coercive_leverage", "kinetic_escalation", "oligopoly_supply",
-    "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
+    "inverse_pattern", "semigroup", "attractor",
+    # Math / statistics jargon to be translated into natural language
+    "algebra", "ontolog", "bayesian", "posterior",
     "calibrated", "calibration", "normalisation", "normalization",
-    "deterministic", "prior", "semigroup", "attractor",
-    # Real-world phrasing guardrails: block meta-commentary
+    "deterministic", "prior",
+    "commutator", "bracket", "semantic dimension", "emergence intensity",
+    "sigma", "cosine similarity", "nonlinear", "active pattern",
+    "composition table", "lie algebra",
+    # Meta-commentary guardrails: block self-explanation of methodology
     "assessed based on", "corroborating evidence", "evidence signals",
     "based on corroborating", "corroborating", "evidence signal",
     "computed from", "derived from ontology",
-    # Template phrasing guardrail: block generic actor label that lacks specificity
-    "targeted actor",
+    # Generic actor label guardrails: must be replaced with named actors
+    "targeted actor", "the affected state", "the subject state",
+    "the primary actor", "the coercing actor", "the dominant pattern",
+    # Internal variable name leakage guardrails
+    "pattern node", "lie_sim", "prior_", "composition_derived",
+    "transition_type",
 ]
 
 # Precision for rounding numeric values in guardrail comparison
@@ -2255,7 +2357,15 @@ Verification gaps: {gaps_str}
    Example of RIGHT: "Facing tightened US export controls, Chinese chipmakers accelerate domestic substitution."
 3. You MAY quote short phrases (≤ 8 words) verbatim from the news fragment to anchor the sentence.
 4. Preserve probability values exactly (e.g. {alpha_prob:.0%} stays {alpha_prob:.0%}).
-5. Do NOT mention "ontology", "Bayesian", "confidence calibration", "pattern", "mechanism", or any internal jargon.
+5. CRITICAL ESCAPING RULES:
+   - You MUST replace all generic actor labels with SPECIFIC named actors from the news fragment.
+     FORBIDDEN: "the affected state", "the subject state", "the primary actor", "the targeted actor",
+     "the coercing actor", "the dominant pattern", "pattern node".
+     REQUIRED: Name the actual countries, organisations, or officials from the news.
+   - You MUST NOT use ANY of these terms: "pattern", "mechanism", "Bayesian", "posterior", "algebra",
+     "commutator", "ontolog", "semantic", "lie", "prior", "nonlinear", "emergent",
+     "composition table", "active pattern", "lie_sim", "transition_type".
+   - Entity names MUST come from the news fragment and the allowed_entities list above.
 6. Do NOT add a sentence explaining how confidence was calculated — that belongs in the Probability Tree tab.
 7. CRITICAL: Do NOT introduce any proper noun (person, place, organisation, facility) that does not
    appear in the news fragment or the allowed entities list above. Any invented proper noun will
@@ -2473,6 +2583,7 @@ def run_evented_pipeline(
         state_vector=state_vector,
         driving_factors=driving_factors,
         llm_service=llm_service,
+        dual_results=dual_results,
     )
 
     # Update confidence from dual inference; best_confidence is already clipped to [0,1]
@@ -2623,11 +2734,10 @@ def run_evented_pipeline(
             en_b = display_pattern(t.from_pattern_b)
             en_c = display_pattern(t.to_pattern)
             # Per-node Bayesian calculation string (used by hover tooltip).
-            # posterior = prior_A × prior_B × lie_sim^k / Z  where k=_LIE_SIM_AMPLIFICATION
-            _lie_sim_amp_val = round(t.lie_similarity ** _LIE_SIM_AMPLIFICATION, 6)
+            # w(A,B→C) = prior_A × prior_B × cos(v_A+v_B, v_C); P = w / Z
             _bayes_calc = (
-                f"{t.prior_a:.3f} × {t.prior_b:.3f} × ({t.lie_similarity:.3f})^{_LIE_SIM_AMPLIFICATION}"
-                f" [{_lie_sim_amp_val:.6f}]"
+                f"{t.prior_a:.3f} × {t.prior_b:.3f} × {t.lie_similarity:.3f}"
+                f" [{t.posterior_weight:.6f}]"
                 f" = {t.posterior_weight:.4f} / Z={Z:.4f} = {prob:.1%}"
             )
             # Dual integration info: look up by (raw) pattern names instead of
@@ -2662,19 +2772,17 @@ def run_evented_pipeline(
                 # ── Tooltip computation data (shown on hover in the UI) ───────
                 "tooltip_data": {
                     "bayesian": {
-                        "formula":      f"posterior = prior_A × prior_B × lie_sim^{_LIE_SIM_AMPLIFICATION} / Z",
+                        "formula":      "w(A,B→C) = prior_A × prior_B × cos(v_A + v_B, v_C); P_Bayes = w / Z",
                         "prior_a":      t.prior_a,
                         "prior_b":      t.prior_b,
                         "lie_sim":      t.lie_similarity,
-                        "lie_sim_amplified": round(t.lie_similarity ** _LIE_SIM_AMPLIFICATION, 6),
-                        "amplification": _LIE_SIM_AMPLIFICATION,
                         "posterior":    t.posterior_weight,
                         "Z":            round(Z, 6),
                         "probability":  prob,
                         "calculation":  _bayes_calc,
                     },
                     "lie_algebra": {
-                        "formula":           f"cos(v_A + v_B, v_C) = lie_sim; posterior uses lie_sim^{_LIE_SIM_AMPLIFICATION}",
+                        "formula":           "C = [X_A, X_B] = X_A @ X_B - X_B @ X_A (8×8 commutator); nonlinear_activation[i] = ‖C[i,:]‖₂",
                         "cosine_similarity": t.lie_similarity,
                         "source_a":          en_a,
                         "source_b":          en_b,
@@ -2684,10 +2792,10 @@ def run_evented_pipeline(
                         "top_emergent_dims": _dr_match.get("lie_algebra", {}).get("top_emergent_dims", []) if _dr_match else [],
                         "top_emergent_values": _dr_match.get("lie_algebra", {}).get("top_emergent_values", []) if _dr_match else [],
                         "note": (
-                            f"v_A, v_B are 8-dim semantic vectors in so(8) space. "
-                            f"lie_sim = cos(v_A + v_B, v_C) ∈ [0,1] measures geometric alignment. "
-                            f"Raised to power {_LIE_SIM_AMPLIFICATION} before Bayesian weighting "
-                            f"to spread the probability distribution beyond the raw [0.79, 1.0] cluster."
+                            "The Lie algebra path is independent of the Bayesian path. "
+                            "It answers: which semantic dimensions show non-linear structural effects "
+                            "when A and B are simultaneously activated? "
+                            "cos(v_A + v_B, v_C) here is the Bayesian cosine weight, not the Lie result."
                         ),
                     },
                     "dual_integration": _dual_info if _dual_info else {

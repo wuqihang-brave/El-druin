@@ -936,38 +936,31 @@ if page == "🏠 Home":
                         # Evidence Path (T2 grounded)
                         st.markdown("#### 🟢 Evidence Path — T2 Grounded")
                         _ev_summary = _ev_path.get("summary") or "(No grounded evidence path available)"
-                        st.markdown(
+
+                        # Change E: Show both Bayesian and Lie algebra results in the summary box
+                        _alpha_path_data = _ev_concl.get("alpha_path") or {}
+                        _alpha_prob_val  = _alpha_path_data.get("probability", 0)
+                        _alpha_lie_em    = _alpha_path_data.get("lie_emergence", {})
+                        _alpha_lie_label = _alpha_lie_em.get("nonlinear_label", "")
+                        _alpha_integ     = _alpha_path_data.get("integration", {})
+                        _alpha_conf_final = _alpha_integ.get("confidence_final")
+                        _alpha_verdict   = _alpha_integ.get("verdict", "")
+                        _ev_summary_html = (
                             f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
-                            f'padding:10px 14px;border-radius:4px;font-size:14px">{_ev_summary}</div>',
-                            unsafe_allow_html=True,
+                            f'padding:10px 14px;border-radius:4px;font-size:14px">'
+                            f'<b>Bayesian (p={_alpha_prob_val:.0%}):</b> {_ev_summary}'
+                            + (f'<br><br><b>Structural emergence:</b> {_alpha_lie_label}' if _alpha_lie_label else '')
+                            + (f'<br><span style="font-size:12px;color:#555">Integration verdict: {_alpha_verdict}'
+                               f' | final confidence: {_alpha_conf_final:.0%}</span>' if _alpha_conf_final is not None else '')
+                            + f'</div>'
                         )
+                        st.markdown(_ev_summary_html, unsafe_allow_html=True)
+
+                        # Change A: Move outcome bars into a collapsed expander
                         _ep_outcomes = _ev_path.get("outcomes", [])
                         if _ep_outcomes:
-                            for _oc in _ep_outcomes:
-                                _oc_text = _oc.get("text") or _oc.get("id", "")
-                                _oc_prob = _oc.get("probability", 0)
-                                _oc_bar  = max(4, int(_oc_prob * 100))
-                                st.markdown(
-                                    f'<div style="margin:4px 0;">'
-                                    f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
-                                    f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
-                                    f'<div style="background:#2E7D32;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
-                                    f'</div></div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                        # Hypothesis Path (T1 inferred)
-                        if _show_hidden:
-                            st.markdown("#### 🟡 Hypothesis Path — T1 Inferred")
-                            _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
-                            st.markdown(
-                                f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
-                                f'padding:10px 14px;border-radius:4px;font-size:14px">{_hyp_summary}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _hyp_outcomes = _hyp_path.get("outcomes", [])
-                            if _hyp_outcomes:
-                                for _oc in _hyp_outcomes:
+                            with st.expander("📊 Supporting evidence chains", expanded=False):
+                                for _oc in _ep_outcomes:
                                     _oc_text = _oc.get("text") or _oc.get("id", "")
                                     _oc_prob = _oc.get("probability", 0)
                                     _oc_bar  = max(4, int(_oc_prob * 100))
@@ -975,10 +968,44 @@ if page == "🏠 Home":
                                         f'<div style="margin:4px 0;">'
                                         f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
                                         f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
-                                        f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
+                                        f'<div style="background:#2E7D32;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
                                         f'</div></div>',
                                         unsafe_allow_html=True,
                                     )
+
+                        # Hypothesis Path (T1 inferred)
+                        if _show_hidden:
+                            st.markdown("#### 🟡 Hypothesis Path — T1 Inferred")
+                            _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
+                            _beta_path_data = _ev_concl.get("beta_path") or {}
+                            _beta_prob_val  = _beta_path_data.get("probability", 0)
+                            _beta_lie_em    = _beta_path_data.get("lie_emergence", {})
+                            _beta_lie_label = _beta_lie_em.get("nonlinear_label", "")
+                            _hyp_summary_html = (
+                                f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
+                                f'padding:10px 14px;border-radius:4px;font-size:14px">'
+                                f'<b>Bayesian (p={_beta_prob_val:.0%}):</b> {_hyp_summary}'
+                                + (f'<br><br><b>Structural emergence:</b> {_beta_lie_label}' if _beta_lie_label else '')
+                                + f'</div>'
+                            )
+                            st.markdown(_hyp_summary_html, unsafe_allow_html=True)
+
+                            # Change A: Move hypothesis outcome bars into a collapsed expander
+                            _hyp_outcomes = _hyp_path.get("outcomes", [])
+                            if _hyp_outcomes:
+                                with st.expander("📊 Alternative scenario evidence", expanded=False):
+                                    for _oc in _hyp_outcomes:
+                                        _oc_text = _oc.get("text") or _oc.get("id", "")
+                                        _oc_prob = _oc.get("probability", 0)
+                                        _oc_bar  = max(4, int(_oc_prob * 100))
+                                        st.markdown(
+                                            f'<div style="margin:4px 0;">'
+                                            f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
+                                            f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
+                                            f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
+                                            f'</div></div>',
+                                            unsafe_allow_html=True,
+                                        )
                             _hyp_gaps = _hyp_path.get("verification_gaps", [])
                             if _hyp_gaps:
                                 st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
@@ -1041,27 +1068,25 @@ if page == "🏠 Home":
                             st.markdown("#### 📐 Key Computation Process")
                             _kca_col, _kcb_col = st.columns(2)
 
-                            # ── A: Bayesian probability line ───────────────────────
+                            # ── A: Bayesian path (Change B: correct formula, no lie_sim^k) ────
                             with _kca_col:
-                                _kc_k         = _kc_bayes.get("amplification", 4)
                                 _kc_prior_a   = _kc_bayes.get("prior_a", 0)
                                 _kc_prior_b   = _kc_bayes.get("prior_b", 0)
                                 _kc_lie_sim   = _kc_bayes.get("lie_sim", 0)
-                                _kc_lie_amp   = _kc_bayes.get("lie_sim_amplified", 0)
                                 _kc_posterior = _kc_bayes.get("posterior", 0)
                                 _kc_Z         = _kc_bayes.get("Z", 1)
                                 _kc_p         = _kc_bayes.get("probability", 0)
                                 # Minimum 4% width so even tiny probabilities render a visible bar sliver
                                 _kc_bar_pct   = max(4, int(_kc_p * 100))
 
-                                st.markdown("**A · Bayesian Probability**")
+                                st.markdown("**A · Bayesian Path — Transition Probability**")
                                 st.markdown(
                                     f'<div style="font-size:11px;font-family:monospace;background:#F0F4FF;'
                                     f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #0047AB">'
-                                    f'posterior = prior_A &times; prior_B &times; lie_sim^{_kc_k} / Z<br>'
-                                    f'= {_kc_prior_a:.3f} &times; {_kc_prior_b:.3f}'
-                                    f' &times; ({_kc_lie_sim:.3f})^{_kc_k} / {_kc_Z:.4f}<br>'
-                                    f'= <b>{_kc_lie_amp:.6f}</b> / {_kc_Z:.4f}'
+                                    f'<b>Question: Which pattern C is most likely activated next?</b><br>'
+                                    f'w(A,B→C) = &pi;(A) &times; &pi;(B) &times; cos(v_A + v_B, v_C)<br>'
+                                    f'= {_kc_prior_a:.3f} &times; {_kc_prior_b:.3f} &times; {_kc_lie_sim:.3f}<br>'
+                                    f'P_Bayes(C) = w / Z = {_kc_posterior:.4f} / {_kc_Z:.4f}'
                                     f' &nbsp;→&nbsp; <b>p = {_kc_p:.1%}</b>'
                                     f'</div>'
                                     # horizontal bar: fill from left, length proportional to p
@@ -1076,22 +1101,23 @@ if page == "🏠 Home":
                                     unsafe_allow_html=True,
                                 )
 
-                            # ── B: Lie algebra line ────────────────────────────────
+                            # ── B: Lie algebra path (Change C: parallel independent path with emergence) ──
                             with _kcb_col:
                                 _kc_mat_norm  = _kc_lie.get("matrix_norm") or _top_dual.get("lie_algebra", {}).get("matrix_norm", 0.0)
                                 _kc_sigma1    = _kc_lie.get("sigma1") or _top_dual.get("lie_algebra", {}).get("sigma1", 0.0)
-                                _kc_cos       = _kc_lie.get("cosine_similarity", _kc_bayes.get("lie_sim", 0.0))
-                                _kc_top_dims  = _kc_lie.get("top_emergent_dims") or _kc_dual.get("lie_nonlinear_top") or _top_dual.get("lie_algebra", {}).get("top_emergent_dims", [])
-                                _kc_top_vals  = _kc_lie.get("top_emergent_values") or _kc_dual.get("lie_nonlinear_vals") or _top_dual.get("lie_algebra", {}).get("top_emergent_values", [])
+                                _kc_top_dims  = _kc_lie.get("top_emergent_dims") or _top_dual.get("lie_algebra", {}).get("top_emergent_dims", [])
+                                _kc_top_vals  = _kc_lie.get("top_emergent_values") or _top_dual.get("lie_algebra", {}).get("top_emergent_values", [])
 
-                                st.markdown("**B · Lie Algebra ‖[X_A, X_B]‖**")
+                                st.markdown("**B · Lie Algebra Path — Emergence Detection (parallel, independent)**")
                                 _kc_mat_str   = f"‖[A,B]‖_F = {_kc_mat_norm:.4f}" if _kc_mat_norm else "‖[A,B]‖_F = —"
-                                _kc_sigma_str = f"  σ₁ = {_kc_sigma1:.4f}" if _kc_sigma1 else ""
+                                _kc_sigma_str = f" &nbsp;|&nbsp; σ₁ = {_kc_sigma1:.4f}" if _kc_sigma1 else ""
                                 st.markdown(
                                     f'<div style="font-size:11px;font-family:monospace;background:#F5F0FF;'
                                     f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #7B1FA2">'
-                                    f'<b>{_kc_mat_str}</b>{_kc_sigma_str}<br>'
-                                    f'cos(v_A + v_B, v_C) = <b>{_kc_cos:.4f}</b>'
+                                    f'<b>Question: Which dimensions show non-linear structural effects?</b><br>'
+                                    f'C = [X_A, X_B] = X_A @ X_B &minus; X_B @ X_A &nbsp;(8&times;8 commutator)<br>'
+                                    f'nonlinear_activation[i] = ‖C[i,:]‖₂ per dimension<br>'
+                                    f'<b>{_kc_mat_str}</b>{_kc_sigma_str}'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
@@ -1142,6 +1168,27 @@ if page == "🏠 Home":
                                             file_name="bracket_matrix.json",
                                             mime="application/json",
                                         )
+
+                            # ── C: Integration Layer (Change D) ───────────────────────────
+                            st.markdown("**C · Integration Layer**")
+                            _kc_dual_integ = _kc_dual if _kc_dual else (_ev_concl.get("final", {}).get("dual_integration", {}))
+                            _consist       = _kc_dual_integ.get("consistency_score")
+                            _verdict       = _kc_dual_integ.get("verdict", "")
+                            _conf_final    = _kc_dual_integ.get("confidence_final")
+                            _conf_formula  = _kc_dual_integ.get("confidence_formula", "")
+                            if _consist is not None:
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-family:monospace;background:#F0FFF0;'
+                                    f'padding:8px 10px;border-radius:4px;border-left:3px solid #2E7D32">'
+                                    f'consistency = cos(nonlinear_activation, v_C) = <b>{_consist:.3f}</b>'
+                                    f' &nbsp; verdict: <b>{_verdict}</b><br>'
+                                    f'confidence_final = P_Bayes &times; (1 + 0.3 &times; max(0, consistency)) / 1.3<br>'
+                                    + (f'= <b>{_conf_formula}</b>' if _conf_formula else (f'= <b>{_conf_final:.3f}</b>' if _conf_final is not None else ''))
+                                    + f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                st.caption("Integration layer data not available for this result.")
                         else:
                             st.caption(
                                 "📐 Run an analysis to see the Key Computation Process "

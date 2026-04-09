@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 import os
+import re
 from types import ModuleType
 from typing import Any
 from unittest.mock import patch
@@ -705,17 +706,19 @@ class TestConclusionProfessionalStruct:
         assert not summary.startswith("Evidence path (T2"), (
             f"evidence_path.summary still uses old meta-commentary prefix: {summary[:100]}"
         )
-        # Must not use forbidden template labels
+        # Must not use internal jargon
         assert "Likely outcome" not in summary[:30], (
             f"Forbidden phrase 'Likely outcome' found in evidence_path.summary: {summary[:120]}"
         )
-        # Must start with an outcome-first phrasing that includes a probability
-        _valid_starts = (
-            "Outcome trajectory",   # current format
-            "Primary projected outcome",   # legacy (kept for backward compatibility)
+        assert "Outcome trajectory" not in summary, (
+            f"Old jargon 'Outcome trajectory' found in evidence_path.summary: {summary[:120]}"
         )
-        assert any(summary.startswith(s) for s in _valid_starts), (
-            f"evidence_path.summary should start with outcome-first language. Got: {summary[:120]}"
+        assert "Alternative scenario" not in summary, (
+            f"Old jargon 'Alternative scenario' found in evidence_path.summary: {summary[:120]}"
+        )
+        # Must contain a probability value (p=XX%)
+        assert re.search(r"p=\d+%", summary) or re.search(r"\d+%", summary), (
+            f"evidence_path.summary should include a probability. Got: {summary[:120]}"
         )
 
     def test_hypothesis_path_summary_no_chinese(self):
