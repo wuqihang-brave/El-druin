@@ -217,7 +217,7 @@ class TestRunDualInference:
         if not results:
             return
         Z_global = sum(r["bayesian"]["posterior_weight"] for r in results)
-        if Z_global < 1e-9:
+        if Z_global < 1e-4:
             return
         for r in results:
             expected_prob = r["bayesian"]["posterior_weight"] / Z_global

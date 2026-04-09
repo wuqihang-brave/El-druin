@@ -60,7 +60,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -128,7 +128,7 @@ def _compute_bayesian_posteriors(
     pattern_b: str,
     prior_a: float,
     prior_b: float,
-) -> tuple:
+) -> Tuple[Dict[str, float], float]:
     """
     Compute unnormalized weights w(C) = π(A) × π(B) × cos(v_A + v_B, v_C)
     for all patterns C such that compose(A, B) = C is in composition_table.
@@ -401,7 +401,7 @@ def run_dual_inference(
 
     # ── Collect raw Bayesian + Lie results (no final integration yet) ─────────
     # We need all posterior_weights first to compute Z_global for proper normalization.
-    raw_items: List[tuple] = []  # (pa, pb, pc, bayes, lie)
+    raw_items: List[Tuple[str, str, str, BayesianInference, LieAlgebraInference]] = []  # (pa, pb, pc, bayes, lie)
 
     def _collect(pa: str, pb: str, pc: str, prior_a: float, prior_b: float) -> None:
         """Compute raw Bayesian and Lie results; defer integration until Z_global is known."""
