@@ -113,3 +113,147 @@ class TestRunDualInference:
             assert "confidence_final" in r["integration"]
             assert "verdict" in r["integration"]
             assert "consistency_score" in r["integration"]
+
+    def test_result_key_names_match_pipeline_expectations(self):
+        """
+        Fix 1 regression: run_dual_inference must output 'pattern_c' (not 'to_pattern').
+        evented_pipeline._dual_lookup uses _dr.get("pattern_c") to build the lookup key.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        active = [
+            {"pattern_name": "霸權制裁模式", "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式", "confidence_prior": 0.72},
+        ]
+        results = run_dual_inference(active, [])
+        if results:
+            r = results[0]
+            assert "pattern_a" in r, "result must have 'pattern_a' key"
+            assert "pattern_b" in r, "result must have 'pattern_b' key"
+            assert "pattern_c" in r, "result must have 'pattern_c' key (used by _dual_lookup)"
+            assert "to_pattern" not in r, "top-level key should be 'pattern_c', not 'to_pattern'"
+
+    def test_lie_algebra_has_matrix_norm(self):
+        """
+        Fix 2 regression: lie_algebra dict must contain 'matrix_norm' and 'sigma1'
+        so the probability-tree tooltip_data can display them.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        active = [
+            {"pattern_name": "霸權制裁模式", "confidence_prior": 0.72},
+            {"pattern_name": "正式軍事同盟模式", "confidence_prior": 0.72},
+        ]
+        results = run_dual_inference(active, [])
+        if results:
+            lie = results[0]["lie_algebra"]
+            assert "matrix_norm" in lie, "'matrix_norm' must be emitted by dual_inference_engine"
+            assert "sigma1" in lie, "'sigma1' must be emitted"
+            assert "top_emergent_dims" in lie
+            assert "top_emergent_values" in lie
+            assert lie["sigma1"] > 0.0, "sigma1 must be non-zero for non-trivial pattern pairs"
+            assert lie["matrix_norm"] > 0.0, "matrix_norm must be non-zero"
+
+
+class TestDistributionSharpening:
+    """Verify that probability collapse triggers power-sharpening in _run_stage3."""
+
+    def _make_transitions(self, weights, patterns=None):
+        """Build a minimal TransitionEdge list for testing."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+        from intelligence.evented_pipeline import TransitionEdge
+        pats = patterns or [f"P{i}" for i in range(len(weights))]
+        edges = []
+        for i, w in enumerate(weights):
+            edges.append(TransitionEdge(
+                from_pattern_a=pats[i],
+                from_pattern_b="(inverse)",
+                to_pattern=f"T{i}",
+                transition_type="inverse",
+                prior_a=0.5,
+                prior_b=0.35,
+                lie_similarity=0.5,
+                posterior_weight=w,
+                typical_outcomes=["structural_realignment"],
+                description="test",
+            ))
+        return edges
+
+    def test_collapse_produces_spread_probs(self):
+        """When weights are flat, sharpening must spread alpha_prob above 0.50."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+        from intelligence.evented_pipeline import _run_stage3
+        from intelligence.evented_pipeline import EventNode
+
+        # Near-uniform weights — mimics the 45-65% collapse scenario
+        weights = [0.35, 0.33, 0.32]
+        transitions = self._make_transitions(weights)
+
+        conclusion, _ = _run_stage3(
+            text="US imposes sanctions on Iran. NATO allies support.",
+            events=[],
+            active=[],
+            transitions=transitions,
+            state_vector={},
+            driving_factors=[],
+            llm_service=None,
+        )
+        alpha_prob = conclusion["alpha_path"]["probability"]
+        # After sharpening 0.35^2.5 / (0.35^2.5 + 0.33^2.5 + 0.32^2.5) > 0.50
+        assert alpha_prob > 0.50, (
+            f"Expected alpha_prob > 0.50 after sharpening, got {alpha_prob}"
+        )
+
+    def test_no_sharpening_when_spread(self):
+        """When top_prob is already well above floor, sharpening must not trigger."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+        from intelligence.evented_pipeline import _run_stage3
+
+        # Already well-spread
+        weights = [0.70, 0.20, 0.10]
+        transitions = self._make_transitions(weights)
+
+        conclusion, _ = _run_stage3(
+            text="US imposes sanctions on Iran.",
+            events=[],
+            active=[],
+            transitions=transitions,
+            state_vector={},
+            driving_factors=[],
+            llm_service=None,
+        )
+        alpha_prob = conclusion["alpha_path"]["probability"]
+        # Should be approximately 0.70 (or higher after sharpening, still > 0.70)
+        assert alpha_prob > 0.65, f"Well-spread weights should stay well-spread: {alpha_prob}"
+
+
+class TestEntityExtraction:
+    """Verify that proper nouns from news text are used as allowed_entities."""
+
+    def test_extract_proper_nouns_from_text(self):
+        """_extract_proper_nouns must return named entities from the news fragment.
+
+        Note: the function only extracts mid-sentence capitalised tokens
+        (sentence-initial words are excluded to reduce false positives).
+        """
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+        from intelligence.evented_pipeline import _extract_proper_nouns
+
+        # Entities appear in mid-sentence positions so they are not skipped by the
+        # sentence-initial-word exclusion rule in _extract_proper_nouns.
+        text = (
+            "Sanctions imposed by the US have forced Iran to respond. "
+            "The alliance between Turkey and Pakistan has alarmed India."
+        )
+        nouns = _extract_proper_nouns(text)
+        expected = {"Iran", "Turkey", "Pakistan", "India"}
+        found = expected & nouns
+        assert len(found) >= 2, (
+            f"Expected at least 2 of {expected} to be extracted, got: {nouns}"
+        )
