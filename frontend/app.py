@@ -488,6 +488,8 @@ _STATE_DEFAULTS = {
     "kg_cache": {},
     "kg_chat_history": [],
     "_dashboard_feed": [],
+    "prev_assessment_snapshot": {},
+    "_delta_base_snapshot": {},
 }
 for _k, _v in _STATE_DEFAULTS.items():
     if _k not in st.session_state:
@@ -1268,6 +1270,30 @@ if page == "Dashboard":
                         )
                         if _ev_resp.get("status") == "success" or "events" in _ev_resp:
                             _er = _ev_resp
+                            # Capture prior snapshot for delta display, then update
+                            st.session_state["_delta_base_snapshot"] = dict(
+                                st.session_state.get("prev_assessment_snapshot", {})
+                            )
+                            _snap_concl = _er.get("conclusion", {})
+                            _snap_final = _snap_concl.get("final", {})
+                            _snap_sv    = _er.get("state_vector", {})
+                            _snap_sv_mean = (_snap_sv.get("mean_vector") or {})
+                            _snap_regime_data = _classify_regime(
+                                _er.get("lie_algebra", {}), _snap_sv
+                            )
+                            st.session_state["prev_assessment_snapshot"] = {
+                                "confidence":   (
+                                    _snap_final.get("overall_confidence")
+                                    or _snap_concl.get("confidence", 0)
+                                ),
+                                "dominant_dim": (
+                                    _snap_sv_mean.get("dominant_dim")
+                                    if isinstance(_snap_sv_mean, dict)
+                                    else _snap_sv.get("dominant_dim", "")
+                                ),
+                                "regime":       _snap_regime_data["regime"],
+                                "sigma1":       _snap_regime_data["sigma1"],
+                            }
                             st.session_state.evented_result = _er
                             st.write("✅ Three-stage reasoning complete. Rendering…")
                             _ev_status.update(label="✅ Analysis complete", state="complete")
@@ -1316,6 +1342,92 @@ if page == "Dashboard":
                         st.rerun()
                     # Skip rest of analysis rendering for out-of-scope
                 else:
+
+                    # ── Delta Since Prior Update ──────────────────────────────
+                    _dt_base = st.session_state.get("_delta_base_snapshot", {})
+                    _dt_concl = _er.get("conclusion", {})
+                    _dt_final = _dt_concl.get("final", {})
+                    _dt_sv    = _er.get("state_vector", {})
+                    _dt_sv_mean = (_dt_sv.get("mean_vector") or {})
+                    _dt_regime_data = _classify_regime(_er.get("lie_algebra", {}), _dt_sv)
+                    _dt_confidence  = (
+                        _dt_final.get("overall_confidence")
+                        or _dt_concl.get("confidence", 0)
+                    )
+                    _dt_dom_dim  = (
+                        _dt_sv_mean.get("dominant_dim")
+                        if isinstance(_dt_sv_mean, dict)
+                        else _dt_sv.get("dominant_dim", "")
+                    )
+                    _dt_regime   = _dt_regime_data["regime"]
+                    _dt_sigma1   = _dt_regime_data["sigma1"]
+
+                    if not _dt_base:
+                        st.markdown(
+                            '<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                            'border-left:3px solid var(--muted,#7A8FA6);border-radius:3px;padding:10px 14px;'
+                            'margin-bottom:12px;font-size:12px;color:var(--muted,#7A8FA6);">'
+                            '📊 Baseline assessment — no prior to compare'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        _dt_prev_conf   = _dt_base.get("confidence", 0)
+                        _dt_prev_dom    = _dt_base.get("dominant_dim", "")
+                        _dt_prev_regime = _dt_base.get("regime", "")
+                        _dt_prev_sigma1 = _dt_base.get("sigma1", 0)
+
+                        _dt_conf_delta = _dt_confidence - _dt_prev_conf
+                        _dt_conf_arrow = (
+                            "↑" if _dt_conf_delta > 0.01
+                            else ("↓" if _dt_conf_delta < -0.01 else "→")
+                        )
+                        _dt_conf_color = (
+                            "#4CAF72" if _dt_conf_delta > 0.01
+                            else ("#E05050" if _dt_conf_delta < -0.01 else "var(--muted,#7A8FA6)")
+                        )
+
+                        _dt_dom_changed    = _dt_dom_dim != _dt_prev_dom
+                        _dt_regime_shifted = _dt_regime != _dt_prev_regime
+                        _dt_sigma1_delta   = _dt_sigma1 - _dt_prev_sigma1
+                        _dt_trig_label     = (
+                            "increased" if _dt_sigma1_delta > 0.05
+                            else ("decreased" if _dt_sigma1_delta < -0.05 else "unchanged")
+                        )
+
+                        _dt_dom_html = (
+                            f' <span style="color:var(--muted,#7A8FA6)">{_dt_prev_dom} → {_dt_dom_dim}</span>'
+                            if _dt_dom_changed else ""
+                        )
+                        _dt_regime_html = (
+                            f' <span style="color:var(--muted,#7A8FA6)">{_dt_prev_regime} → {_dt_regime}</span>'
+                            if _dt_regime_shifted else ""
+                        )
+
+                        st.markdown(
+                            f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                            f'border-left:3px solid var(--blue-accent,#4A8FD4);border-radius:3px;'
+                            f'padding:10px 14px;margin-bottom:12px;font-size:12px;'
+                            f'color:var(--text,#D4DDE6);">'
+                            f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                            f'letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:8px">'
+                            f'DELTA SINCE PRIOR ASSESSMENT</div>'
+                            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                            f'<div><span style="color:var(--muted,#7A8FA6)">Confidence</span> '
+                            f'<span style="color:{_dt_conf_color};font-weight:700">'
+                            f'{_dt_conf_arrow} {abs(_dt_conf_delta):.0%}</span></div>'
+                            f'<div><span style="color:var(--muted,#7A8FA6)">Dominant driver</span> '
+                            f'<span style="font-weight:700">{"changed" if _dt_dom_changed else "unchanged"}</span>'
+                            f'{_dt_dom_html}</div>'
+                            f'<div><span style="color:var(--muted,#7A8FA6)">Regime shift</span> '
+                            f'<span style="font-weight:700">{"yes" if _dt_regime_shifted else "no"}</span>'
+                            f'{_dt_regime_html}</div>'
+                            f'<div><span style="color:var(--muted,#7A8FA6)">Trigger sensitivity</span> '
+                            f'<span style="font-weight:700">{_dt_trig_label}</span></div>'
+                            f'</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
                     # ── Tab layout: Conclusion first ─────────────────────────
                     _tab_labels = [
@@ -2177,38 +2289,48 @@ if page == "Dashboard":
 # Page: Streams
 # ===========================================================================
 elif page == "Streams":
-    st.title("📰 Real-Time Intelligence Feed")
+    st.title("📡 Intelligence Streams")
     st.caption(
-        "Aggregated news from monitored sources. Click **Run Ontological Analysis** "
-        "on any article to send it to the Home page analysis panel."
+        "Aggregated evidence intake from monitored sources. "
+        "Attach any article to an active assessment or run a new assessment directly."
     )
 
-    col_title, col_refresh = st.columns([3, 1])
-    with col_refresh:
-        if st.button("🔄 Refresh Now", key="refresh_news"):
+    # ── Compact filter bar ────────────────────────────────────────────────────
+    _sf_col1, _sf_col2, _sf_col3, _sf_col4 = st.columns([4, 1, 1, 1])
+    with _sf_col1:
+        search_query = st.text_input(
+            "Search", placeholder="🔍 Filter by keyword…", label_visibility="collapsed",
+            key="streams_search",
+        )
+    with _sf_col2:
+        hours = st.number_input(
+            "Hours", min_value=1, max_value=168, value=24, step=1,
+            label_visibility="collapsed", key="streams_hours",
+            help="Time range in hours",
+        )
+    with _sf_col3:
+        limit = st.number_input(
+            "Limit", min_value=5, max_value=100, value=20, step=5,
+            label_visibility="collapsed", key="streams_limit",
+            help="Max articles to display",
+        )
+    with _sf_col4:
+        if st.button("🔄 Refresh", key="refresh_news", use_container_width=True):
             with st.spinner("📡 Aggregating news…"):
                 result = _api.ingest_news()
                 if "error" not in result:
-                    st.success("✅ News aggregation complete!")
+                    st.success("✅ Aggregation complete!")
                 else:
                     st.error(f"❌ Error: {result['error']}")
 
-    col_hours, col_limit = st.columns(2)
-    with col_hours:
-        hours = st.slider("Time range (hours)", min_value=1, max_value=168, value=24)
-    with col_limit:
-        limit = st.slider("Articles to display", min_value=5, max_value=100, value=20)
-
-    search_query = st.text_input("🔍 Keyword search", placeholder="Enter keywords…")
-
     if search_query:
-        data = _api.search_news(search_query, limit=limit)
+        data = _api.search_news(search_query, limit=int(limit))
     else:
-        data = _api.get_latest_news(limit=limit, hours=hours)
+        data = _api.get_latest_news(limit=int(limit), hours=int(hours))
 
     if "error" in data:
         st.warning(
-            "⚠️ Backend is currently unavailable. Intelligence Feed requires a running backend.\n\n"
+            "⚠️ Backend is currently unavailable. Intelligence Streams requires a running backend.\n\n"
             "To run locally: `cd backend && uvicorn app.main:app --port 8000`"
         )
         if st.button("🔄 Retry", key="feed_retry"):
@@ -2222,315 +2344,700 @@ elif page == "Streams":
         m1.metric("📰 Articles", len(articles))
         m2.metric("📂 Categories", len({a.get("category", "?") for a in articles}))
         m3.metric("🏢 Sources", len({a.get("source", "?") for a in articles}))
-        m4.metric("⏰ Time range", f"{hours} h")
+        m4.metric("⏰ Time range", f"{int(hours)} h")
         st.divider()
 
         import hashlib as _hashlib
 
-        with st.expander("🌊 Raw News Stream", expanded=False):
-            st.caption("⚠️ Unfiltered raw data stream.")
-            if articles:
-                for i, article in enumerate(articles, 1):
-                    title_preview = (article.get("title") or "(no title)")[:80]
-                    _key_src  = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
-                    _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
+        # Domain auto-tag mapping based on category field
+        _DOMAIN_TAG_MAP: Dict[str, str] = {
+            "geopolitics": "🌍 Geopolitics",
+            "geopolitical": "🌍 Geopolitics",
+            "military": "⚔️ Military",
+            "defense": "⚔️ Military",
+            "defence": "⚔️ Military",
+            "economic": "📈 Economic",
+            "economics": "📈 Economic",
+            "finance": "📈 Economic",
+            "financial": "📈 Economic",
+            "technology": "💻 Technology",
+            "tech": "💻 Technology",
+            "science": "💻 Technology",
+        }
 
-                    with st.expander(f"🔹 [{i}] {title_preview}…", expanded=False):
-                        c1, c2, c3 = st.columns(3)
-                        c1.caption(f"📌 Source: {article.get('source', 'N/A')}")
-                        c2.caption(f"📍 Category: {article.get('category', 'N/A')}")
-                        c3.caption(f"⏰ Date: {str(article.get('published', 'N/A'))[:10]}")
-                        st.write(article.get("description") or "(no summary)")
-                        if article.get("link"):
-                            st.markdown(f"[📖 Read original]({article['link']})")
+        def _domain_tag(article: Dict[str, Any]) -> str:
+            _cat = (article.get("category") or "").lower()
+            for _key, _label in _DOMAIN_TAG_MAP.items():
+                if _key in _cat:
+                    return _label
+            return "📋 General"
 
-                        # Navigate to analysis
-                        if st.button("⚔️ Run Ontological Analysis", key=f"news_deduce_{i}"):
-                            st.session_state.selected_news    = article
-                            st.session_state.deduction_result = None
-                            st.session_state.evented_result   = None
-                            st.session_state.current_page     = "Dashboard"
-                            st.rerun()
+        # ── Evidence Intake view ──────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+            'letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:8px">'
+            'EVIDENCE INTAKE</div>',
+            unsafe_allow_html=True,
+        )
 
-                        # Knowledge graph extraction
-                        already = _cache_key in st.session_state.kg_cache
-                        btn_lbl = "✅ KG extracted" if already else "🧠 Extract KG"
-                        if st.button(btn_lbl, key=f"kg_btn_{i}"):
-                            _text = " ".join(filter(None, [
-                                article.get("title", ""), article.get("description", ""),
-                            ])).strip()
-                            if _text:
-                                with st.spinner("Extracting…"):
-                                    _kg_resp = _api.extract_knowledge(_text)
-                                if _kg_resp.get("status") == "error" or (
-                                    "error" in _kg_resp and "entities" not in _kg_resp
-                                ):
-                                    st.error(f"❌ KG extraction failed: {_kg_resp.get('error')}")
-                                else:
-                                    st.session_state.kg_cache[_cache_key] = _kg_resp
-                                    st.rerun()
-                            else:
-                                st.warning("⚠️ No text content available for this article.")
+        if not articles:
+            st.info("No articles found. Adjust filters or refresh.")
 
-                        if _cache_key in st.session_state.kg_cache:
-                            _kg_data = st.session_state.kg_cache[_cache_key]
-                            _entities_kg  = _kg_data.get("entities", [])
-                            _relations_kg = _kg_data.get("relations", [])
-                            with st.expander(
-                                f"🕸️ KG Result (entities: {len(_entities_kg)}, relations: {len(_relations_kg)})",
-                                expanded=True,
+        for i, article in enumerate(articles, 1):
+            title_preview = (article.get("title") or "(no title)")[:100]
+            _key_src   = (article.get("link") or article.get("title") or str(i)).encode("utf-8", errors="replace")
+            _cache_key = f"kg_{_hashlib.md5(_key_src).hexdigest()}"
+            _src_name  = article.get("source") or "Unknown"
+            _pub_date  = str(article.get("published", ""))[:10]
+            _dom_tag   = _domain_tag(article)
+            _kg_done   = _cache_key in st.session_state.kg_cache
+
+            with st.expander(f"[{i}] {title_preview}", expanded=False):
+                _ic1, _ic2, _ic3, _ic4 = st.columns([2, 2, 2, 1])
+                with _ic1:
+                    st.markdown(
+                        f'<span style="background:var(--tag-bg,#1A2D42);color:var(--text,#D4DDE6);'
+                        f'font-size:10px;font-weight:700;padding:2px 7px;border-radius:2px;'
+                        f'border:1px solid var(--border,#2D3F52)">{_src_name}</span>',
+                        unsafe_allow_html=True,
+                    )
+                with _ic2:
+                    st.markdown(
+                        f'<span style="background:var(--tag-bg,#1A2D42);color:var(--blue-accent,#4A8FD4);'
+                        f'font-size:10px;font-weight:700;padding:2px 7px;border-radius:2px;'
+                        f'border:1px solid var(--border,#2D3F52)">{_dom_tag}</span>',
+                        unsafe_allow_html=True,
+                    )
+                with _ic3:
+                    st.caption(f"⏰ {_pub_date}" if _pub_date else "⏰ N/A")
+                with _ic4:
+                    if _kg_done:
+                        st.markdown(
+                            '<span style="color:var(--gold,#C8A84B);font-size:10px">● attached</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                st.write(article.get("description") or "(no summary)")
+                if article.get("link"):
+                    st.markdown(f"[📖 Read original]({article['link']})")
+
+                _btn_c1, _btn_c2 = st.columns(2)
+                # Run Assessment button
+                with _btn_c1:
+                    if st.button("▶ Run Assessment", key=f"news_deduce_{i}", type="primary"):
+                        st.session_state.selected_news    = article
+                        st.session_state.deduction_result = None
+                        st.session_state.evented_result   = None
+                        st.session_state.current_page     = "Dashboard"
+                        st.rerun()
+
+                # Attach to Assessment (KG extraction)
+                with _btn_c2:
+                    _attach_lbl = "✅ Attached" if _kg_done else "🔬 Attach to Assessment"
+                    if st.button(_attach_lbl, key=f"kg_btn_{i}"):
+                        _text = " ".join(filter(None, [
+                            article.get("title", ""), article.get("description", ""),
+                        ])).strip()
+                        if _text:
+                            with st.spinner("Extracting…"):
+                                _kg_resp = _api.extract_knowledge(_text)
+                            if _kg_resp.get("status") == "error" or (
+                                "error" in _kg_resp and "entities" not in _kg_resp
                             ):
-                                if _entities_kg:
-                                    st.write("**📋 Entities**")
-                                    try:
-                                        import pandas as pd
-                                        st.dataframe(pd.DataFrame([
-                                            {"name": e.get("name",""), "type": e.get("type",""),
-                                             "description": e.get("description",""), "confidence": e.get("confidence","")}
-                                            for e in _entities_kg
-                                        ]), use_container_width=True)
-                                    except ImportError:
-                                        for _e in _entities_kg:
-                                            st.write(f"- **{_e.get('name')}** ({_e.get('type','?')})")
-                                if _relations_kg:
-                                    st.write("**🔗 Relations**")
-                                    try:
-                                        import pandas as pd
-                                        st.dataframe(pd.DataFrame([
-                                            {"subject": r.get("subject",""), "predicate": r.get("predicate",""),
-                                             "object": r.get("object","")}
-                                            for r in _relations_kg
-                                        ]), use_container_width=True)
-                                    except ImportError:
-                                        for _r in _relations_kg:
-                                            st.write(f"- {_r.get('subject')} –[{_r.get('predicate')}]→ {_r.get('object')}")
+                                st.error(f"❌ KG extraction failed: {_kg_resp.get('error')}")
+                            else:
+                                st.session_state.kg_cache[_cache_key] = _kg_resp
+                                st.rerun()
+                        else:
+                            st.warning("⚠️ No text content available for this article.")
+
+                if _cache_key in st.session_state.kg_cache:
+                    _kg_data = st.session_state.kg_cache[_cache_key]
+                    _entities_kg  = _kg_data.get("entities", [])
+                    _relations_kg = _kg_data.get("relations", [])
+                    with st.expander(
+                        f"🕸️ KG Result (entities: {len(_entities_kg)}, relations: {len(_relations_kg)})",
+                        expanded=True,
+                    ):
+                        if _entities_kg:
+                            st.write("**📋 Entities**")
+                            try:
+                                import pandas as pd
+                                st.dataframe(pd.DataFrame([
+                                    {"name": e.get("name",""), "type": e.get("type",""),
+                                     "description": e.get("description",""), "confidence": e.get("confidence","")}
+                                    for e in _entities_kg
+                                ]), use_container_width=True)
+                            except ImportError:
+                                for _e in _entities_kg:
+                                    st.write(f"- **{_e.get('name')}** ({_e.get('type','?')})")
+                        if _relations_kg:
+                            st.write("**🔗 Relations**")
+                            try:
+                                import pandas as pd
+                                st.dataframe(pd.DataFrame([
+                                    {"subject": r.get("subject",""), "predicate": r.get("predicate",""),
+                                     "object": r.get("object","")}
+                                    for r in _relations_kg
+                                ]), use_container_width=True)
+                            except ImportError:
+                                for _r in _relations_kg:
+                                    st.write(f"- {_r.get('subject')} –[{_r.get('predicate')}]→ {_r.get('object')}")
 
 
 # ===========================================================================
-# Page: Assessments
+# Page: Assessments  (Compose | Forecast | Scenario Stack)
 # ===========================================================================
 elif page == "Assessments":
-    st.title("📝 Custom Content Analysis")
-    st.caption(
-        "Analyse your own text content (and optionally a source URL) using the "
-        "Evented or Grounded reasoning engine. Results are displayed below."
-    )
-    st.info(
-        "**How to use:** Paste or type any text (news, report, article excerpt) in the box below. "
-        "Optionally add a source URL for Deep Ontology enrichment (level ≥ 2). "
-        "Select your engine and click **Run Analysis**."
-    )
+    st.title("📝 Assessments")
 
-    _ca_col1, _ca_col2 = st.columns([3, 2], gap="large")
+    _assess_tab_compose, _assess_tab_forecast, _assess_tab_stack = st.tabs([
+        "Compose", "Forecast", "Scenario Stack"
+    ])
 
-    with _ca_col1:
-        _ca_text = st.text_area(
-            "Content to analyse",
-            height=200,
-            placeholder="Paste article text, news summary, or any relevant content here…",
-            key="ca_text",
+    # ── Compose ──────────────────────────────────────────────────────────────
+    with _assess_tab_compose:
+        st.caption(
+            "Assess your own text content (and optionally a source URL) using the "
+            "Evented or Grounded reasoning engine. Results are displayed below."
         )
-        _ca_url = st.text_input(
-            "Source URL (optional)",
-            placeholder="https://example.com/article",
-            key="ca_url",
-            help="Providing a URL enables Deep Ontology level 2+ enrichment (fetch original source).",
+        st.info(
+            "**How to use:** Paste or type any text (news, report, article excerpt) in the box below. "
+            "Optionally add a source URL for Deep Ontology enrichment (level ≥ 2). "
+            "Select your engine and click **Run Assessment**."
         )
 
-        _ca_engine = st.session_state.get("cfg_engine", "Evented")
-        _ca_deep   = int(st.session_state.get("cfg_deep_level", 0))
-        _ca_btn_c1, _ca_btn_c2 = st.columns(2)
-        with _ca_btn_c1:
-            _ca_run_ev = st.button(
-                "▶ Run Evented",
-                type="primary",
-                use_container_width=True,
-                key="ca_run_evented",
+        _ca_col1, _ca_col2 = st.columns([3, 2], gap="large")
+
+        with _ca_col1:
+            _ca_text = st.text_area(
+                "Content to assess",
+                height=200,
+                placeholder="Paste article text, news summary, or any relevant content here…",
+                key="ca_text",
             )
-        with _ca_btn_c2:
-            _ca_run_gr = st.button(
-                "▶ Run Grounded",
-                use_container_width=True,
-                key="ca_run_grounded",
-            )
-        if _ca_run_gr:
-            st.caption("⚠️ Grounded mode requires a non-empty Knowledge Graph in KuzuDB.")
-
-    with _ca_col2:
-        st.markdown("**Engine settings (from sidebar)**")
-        st.markdown(
-            f"Engine: **{_ca_engine}** · Deep level: **{_ca_deep}** · "
-            f"Hypothesis: **{'on' if st.session_state.get('cfg_show_hidden', True) else 'off'}**"
-        )
-        st.caption("Change engine and Deep Ontology level in the sidebar's Reasoning Engine section.")
-
-    if _ca_run_ev or _ca_run_gr:
-        _ca_text_val = (_ca_text or "").strip()
-        _ca_url_val  = (_ca_url or "").strip()
-
-        if not _ca_text_val:
-            st.warning("⚠️ Please enter some content to analyse.")
-        else:
-            _ca_news = {
-                "title":       _ca_text_val[:120],
-                "summary":     _ca_text_val,
-                "description": _ca_text_val,
-                "url":         _ca_url_val,
-                "entities":    [],
-            }
-            _ca_is_deep = _ca_deep > 0
-            _ca_deep_cfg = (
-                {"level": _ca_deep, "timeout_seconds": 20, "max_sources": 3}
-                if _ca_is_deep else None
+            _ca_url = st.text_input(
+                "Source URL (optional)",
+                placeholder="https://example.com/article",
+                key="ca_url",
+                help="Providing a URL enables Deep Ontology level 2+ enrichment (fetch original source).",
             )
 
-            if _ca_run_ev:
-                with st.status("⚙️ Running Evented analysis…", expanded=True) as _ca_st:
-                    try:
-                        st.write("📡 Calling evented_deduce…")
-                        _ca_ev_resp = _api.evented_deduce(
-                            _ca_news,
-                            deep_mode=_ca_is_deep,
-                            deep_config=_ca_deep_cfg,
-                        )
-                        if _ca_ev_resp.get("status") == "success" or "events" in _ca_ev_resp:
-                            _ca_st.update(label="✅ Evented analysis complete", state="complete")
-                        else:
-                            _ca_st.update(label="⚠ Analysis failed", state="error")
-                            st.error(str(_ca_ev_resp.get("error") or _ca_ev_resp.get("detail", "Unknown error")))
+            _ca_engine = st.session_state.get("cfg_engine", "Evented")
+            _ca_deep   = int(st.session_state.get("cfg_deep_level", 0))
+            _ca_btn_c1, _ca_btn_c2 = st.columns(2)
+            with _ca_btn_c1:
+                _ca_run_ev = st.button(
+                    "▶ Run Assessment",
+                    type="primary",
+                    use_container_width=True,
+                    key="ca_run_evented",
+                )
+            with _ca_btn_c2:
+                _ca_run_gr = st.button(
+                    "▶ Run Grounded",
+                    use_container_width=True,
+                    key="ca_run_grounded",
+                )
+            if _ca_run_gr:
+                st.caption("⚠️ Grounded mode requires a non-empty Knowledge Graph in KuzuDB.")
+
+        with _ca_col2:
+            st.markdown("**Engine settings (from sidebar)**")
+            st.markdown(
+                f"Engine: **{_ca_engine}** · Deep level: **{_ca_deep}** · "
+                f"Hypothesis: **{'on' if st.session_state.get('cfg_show_hidden', True) else 'off'}**"
+            )
+            st.caption("Change engine and Deep Ontology level in the sidebar's Reasoning Engine section.")
+
+        if _ca_run_ev or _ca_run_gr:
+            _ca_text_val = (_ca_text or "").strip()
+            _ca_url_val  = (_ca_url or "").strip()
+
+            if not _ca_text_val:
+                st.warning("⚠️ Please enter some content to assess.")
+            else:
+                _ca_news = {
+                    "title":       _ca_text_val[:120],
+                    "summary":     _ca_text_val,
+                    "description": _ca_text_val,
+                    "url":         _ca_url_val,
+                    "entities":    [],
+                }
+                _ca_is_deep = _ca_deep > 0
+                _ca_deep_cfg = (
+                    {"level": _ca_deep, "timeout_seconds": 20, "max_sources": 3}
+                    if _ca_is_deep else None
+                )
+
+                if _ca_run_ev:
+                    with st.status("⚙️ Running Evented analysis…", expanded=True) as _ca_st:
+                        try:
+                            st.write("📡 Calling evented_deduce…")
+                            _ca_ev_resp = _api.evented_deduce(
+                                _ca_news,
+                                deep_mode=_ca_is_deep,
+                                deep_config=_ca_deep_cfg,
+                            )
+                            if _ca_ev_resp.get("status") == "success" or "events" in _ca_ev_resp:
+                                _ca_st.update(label="✅ Evented analysis complete", state="complete")
+                            else:
+                                _ca_st.update(label="⚠ Analysis failed", state="error")
+                                st.error(str(_ca_ev_resp.get("error") or _ca_ev_resp.get("detail", "Unknown error")))
+                                _ca_ev_resp = None
+                        except Exception as _ca_exc:
+                            _ca_st.update(label="⚠ Connection failed", state="error")
+                            st.error(str(_ca_exc))
                             _ca_ev_resp = None
-                    except Exception as _ca_exc:
-                        _ca_st.update(label="⚠ Connection failed", state="error")
-                        st.error(str(_ca_exc))
-                        _ca_ev_resp = None
 
-                if _ca_ev_resp:
-                    _ca_concl   = _ca_ev_resp.get("conclusion", {})
-                    _ca_cred    = _ca_ev_resp.get("credibility", {})
-                    _ca_evts    = _ca_ev_resp.get("events", [])
-                    _ca_pats    = _ca_ev_resp.get("active_patterns", [])
-                    _ca_ptree   = _ca_ev_resp.get("probability_tree", {})
+                    if _ca_ev_resp:
+                        _ca_concl   = _ca_ev_resp.get("conclusion", {})
+                        _ca_cred    = _ca_ev_resp.get("credibility", {})
+                        _ca_evts    = _ca_ev_resp.get("events", [])
+                        _ca_pats    = _ca_ev_resp.get("active_patterns", [])
+                        _ca_ptree   = _ca_ev_resp.get("probability_tree", {})
 
-                    st.subheader("Evented Result")
-                    _ca_c1, _ca_c2 = st.columns(2)
-                    with _ca_c1:
-                        st.metric("Events extracted", len(_ca_evts))
-                        st.metric("Active patterns", len(_ca_pats))
-                    with _ca_c2:
-                        _ov = _ca_cred.get("overall_score", 0)
-                        st.metric("Credibility", f"{_ov:.0%}")
-                        _ca_final = _ca_concl.get("final", {})
-                        _ca_conf  = _ca_final.get("overall_confidence") or _ca_concl.get("confidence", 0)
-                        st.metric("Overall Confidence", f"{_ca_conf:.0%}")
+                        st.subheader("Evented Result")
+                        _ca_c1, _ca_c2 = st.columns(2)
+                        with _ca_c1:
+                            st.metric("Events extracted", len(_ca_evts))
+                            st.metric("Active patterns", len(_ca_pats))
+                        with _ca_c2:
+                            _ov = _ca_cred.get("overall_score", 0)
+                            st.metric("Credibility", f"{_ov:.0%}")
+                            _ca_final = _ca_concl.get("final", {})
+                            _ca_conf  = _ca_final.get("overall_confidence") or _ca_concl.get("confidence", 0)
+                            st.metric("Overall Confidence", f"{_ca_conf:.0%}")
 
-                    st.markdown("**Executive Judgement**")
-                    _ca_exec_j = (
-                        _ca_concl.get("executive_judgement")
-                        or _ca_concl.get("conclusion")
-                        or "(No judgement available)"
-                    )
-                    if not isinstance(_ca_exec_j, str):
-                        _ca_exec_j = str(_ca_exec_j)
-                    st.info(_ca_exec_j)
+                        st.markdown("**Executive Judgement**")
+                        _ca_exec_j = (
+                            _ca_concl.get("executive_judgement")
+                            or _ca_concl.get("conclusion")
+                            or "(No judgement available)"
+                        )
+                        if not isinstance(_ca_exec_j, str):
+                            _ca_exec_j = str(_ca_exec_j)
+                        st.info(_ca_exec_j)
 
-                    # Show raw (deterministic) fields in an expander
-                    _ca_render_meta = _ca_concl.get("rendering_meta", {})
-                    _ca_raw_ej = _ca_concl.get("executive_judgement_raw", "")
-                    _ca_raw_ep = (_ca_concl.get("evidence_path") or {}).get("summary_raw", "")
-                    _ca_raw_hp = (_ca_concl.get("hypothesis_path") or {}).get("summary_raw", "")
-                    if _ca_raw_ej or _ca_raw_ep or _ca_raw_hp:
-                        with st.expander("🔍 Show raw (deterministic)", expanded=False):
-                            if _ca_render_meta.get("enabled"):
-                                _ca_guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _ca_render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
-                                st.caption(_ca_guard_note)
-                            if _ca_raw_ej:
-                                st.markdown("**Executive Judgement (raw)**")
-                                st.text(_ca_raw_ej)
-                            if _ca_raw_ep:
-                                st.markdown("**Evidence Path Summary (raw)**")
-                                st.text(_ca_raw_ep)
-                            if _ca_raw_hp:
-                                st.markdown("**Hypothesis Path Summary (raw)**")
-                                st.text(_ca_raw_hp)
+                        # Show raw (deterministic) fields in an expander
+                        _ca_render_meta = _ca_concl.get("rendering_meta", {})
+                        _ca_raw_ej = _ca_concl.get("executive_judgement_raw", "")
+                        _ca_raw_ep = (_ca_concl.get("evidence_path") or {}).get("summary_raw", "")
+                        _ca_raw_hp = (_ca_concl.get("hypothesis_path") or {}).get("summary_raw", "")
+                        if _ca_raw_ej or _ca_raw_ep or _ca_raw_hp:
+                            with st.expander("🔍 Show raw (deterministic)", expanded=False):
+                                if _ca_render_meta.get("enabled"):
+                                    _ca_guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _ca_render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
+                                    st.caption(_ca_guard_note)
+                                if _ca_raw_ej:
+                                    st.markdown("**Executive Judgement (raw)**")
+                                    st.text(_ca_raw_ej)
+                                if _ca_raw_ep:
+                                    st.markdown("**Evidence Path Summary (raw)**")
+                                    st.text(_ca_raw_ep)
+                                if _ca_raw_hp:
+                                    st.markdown("**Hypothesis Path Summary (raw)**")
+                                    st.text(_ca_raw_hp)
 
-                    _ca_ev_path = _ca_concl.get("evidence_path", {})
-                    if _ca_ev_path.get("summary"):
-                        st.markdown("**Evidence Path (T2 grounded)**")
-                        st.success(_ca_ev_path["summary"])
+                        _ca_ev_path = _ca_concl.get("evidence_path", {})
+                        if _ca_ev_path.get("summary"):
+                            st.markdown("**Evidence Path (T2 grounded)**")
+                            st.success(_ca_ev_path["summary"])
 
-                    if st.session_state.get("cfg_show_hidden", True):
-                        _ca_hyp = _ca_concl.get("hypothesis_path", {})
-                        if _ca_hyp.get("summary"):
-                            st.markdown("**Hypothesis Path (T1 inferred)**")
-                            st.warning(_ca_hyp["summary"])
+                        if st.session_state.get("cfg_show_hidden", True):
+                            _ca_hyp = _ca_concl.get("hypothesis_path", {})
+                            if _ca_hyp.get("summary"):
+                                st.markdown("**Hypothesis Path (T1 inferred)**")
+                                st.warning(_ca_hyp["summary"])
 
-                    # Probability tree summary
-                    if _ca_ptree:
-                        _ca_pt_summary = _ca_ptree.get("summary", "")
-                        _ca_pt_cred    = _ca_ptree.get("overall_credibility", 0)
-                        with st.expander(
-                            f"🌳 Probability Tree (credibility {_ca_pt_cred:.0%})",
-                            expanded=False,
-                        ):
-                            if _ca_pt_summary:
-                                st.info(_ca_pt_summary)
-                            for _cn in sorted(
-                                [n for n in _ca_ptree.get("nodes", []) if n.get("id") != "root"],
-                                key=lambda x: -x.get("probability", 0),
+                        # Probability tree summary
+                        if _ca_ptree:
+                            _ca_pt_summary = _ca_ptree.get("summary", "")
+                            _ca_pt_cred    = _ca_ptree.get("overall_credibility", 0)
+                            with st.expander(
+                                f"🌳 Probability Tree (credibility {_ca_pt_cred:.0%})",
+                                expanded=False,
                             ):
-                                _bar = max(4, int(_cn.get("probability", 0) * 100))
-                                st.markdown(
-                                    f'<div style="border-left:3px solid #0047AB;'
-                                    f'padding:4px 8px;margin-bottom:4px;background:#F5F5F5;">'
-                                    f'<b>{_cn.get("label","")}</b> &nbsp;'
-                                    f'<span style="color:#555;font-size:11px">p={_cn.get("probability",0):.2%}</span>'
-                                    f'<div style="background:#E0E0E0;height:4px;border-radius:2px;margin-top:3px;">'
-                                    f'<div style="background:#0047AB;width:{_bar}%;height:4px;border-radius:2px;"></div>'
-                                    f'</div></div>',
-                                    unsafe_allow_html=True,
-                                )
+                                if _ca_pt_summary:
+                                    st.info(_ca_pt_summary)
+                                for _cn in sorted(
+                                    [n for n in _ca_ptree.get("nodes", []) if n.get("id") != "root"],
+                                    key=lambda x: -x.get("probability", 0),
+                                ):
+                                    _bar = max(4, int(_cn.get("probability", 0) * 100))
+                                    st.markdown(
+                                        f'<div style="border-left:3px solid #0047AB;'
+                                        f'padding:4px 8px;margin-bottom:4px;background:#F5F5F5;">'
+                                        f'<b>{_cn.get("label","")}</b> &nbsp;'
+                                        f'<span style="color:#555;font-size:11px">p={_cn.get("probability",0):.2%}</span>'
+                                        f'<div style="background:#E0E0E0;height:4px;border-radius:2px;margin-top:3px;">'
+                                        f'<div style="background:#0047AB;width:{_bar}%;height:4px;border-radius:2px;"></div>'
+                                        f'</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
 
-                    with st.expander("📋 Full JSON response", expanded=False):
-                        st.json(_ca_ev_resp)
+                        with st.expander("📋 Full JSON response", expanded=False):
+                            st.json(_ca_ev_resp)
 
-            elif _ca_run_gr:
-                with st.status("⚙️ Running Grounded analysis…", expanded=True) as _ca_st:
-                    try:
-                        st.write("📡 Calling grounded_deduce…")
-                        _ca_gr_resp = _api.grounded_deduce(_ca_news)
-                        if "error" in _ca_gr_resp and "deduction_result" not in _ca_gr_resp:
-                            _ca_st.update(label="⚠ Analysis failed", state="error")
-                            st.error(str(_ca_gr_resp["error"]))
+                elif _ca_run_gr:
+                    with st.status("⚙️ Running Grounded analysis…", expanded=True) as _ca_st:
+                        try:
+                            st.write("📡 Calling grounded_deduce…")
+                            _ca_gr_resp = _api.grounded_deduce(_ca_news)
+                            if "error" in _ca_gr_resp and "deduction_result" not in _ca_gr_resp:
+                                _ca_st.update(label="⚠ Analysis failed", state="error")
+                                st.error(str(_ca_gr_resp["error"]))
+                                _ca_gr_resp = None
+                            else:
+                                _ca_st.update(label="✅ Grounded analysis complete", state="complete")
+                        except Exception as _ca_exc:
+                            _ca_st.update(label="⚠ Connection failed", state="error")
+                            st.error(str(_ca_exc))
                             _ca_gr_resp = None
-                        else:
-                            _ca_st.update(label="✅ Grounded analysis complete", state="complete")
-                    except Exception as _ca_exc:
-                        _ca_st.update(label="⚠ Connection failed", state="error")
-                        st.error(str(_ca_exc))
-                        _ca_gr_resp = None
 
-                if _ca_gr_resp:
-                    _ca_dr = _ca_gr_resp.get("deduction_result", _ca_gr_resp)
-                    _ca_driv = _ca_dr.get("driving_factor") or _ca_dr.get("mechanism_summary") or "(No driving factor)"
-                    _ca_conf = float(_ca_dr.get("confidence") or 0.5)
+                    if _ca_gr_resp:
+                        _ca_dr = _ca_gr_resp.get("deduction_result", _ca_gr_resp)
+                        _ca_driv = _ca_dr.get("driving_factor") or _ca_dr.get("mechanism_summary") or "(No driving factor)"
+                        _ca_conf = float(_ca_dr.get("confidence") or 0.5)
 
-                    st.subheader("Grounded Result")
-                    _cg1, _cg2 = st.columns(2)
-                    with _cg1:
-                        st.metric("Confidence", f"{int(_ca_conf * 100)}%")
-                    with _cg2:
-                        _ca_logstate = "Converging" if _ca_conf >= 0.65 else "Diverging" if _ca_conf >= 0.45 else "Uncertain"
-                        st.metric("Logic state", _ca_logstate)
+                        st.subheader("Grounded Result")
+                        _cg1, _cg2 = st.columns(2)
+                        with _cg1:
+                            st.metric("Confidence", f"{int(_ca_conf * 100)}%")
+                        with _cg2:
+                            _ca_logstate = "Converging" if _ca_conf >= 0.65 else "Diverging" if _ca_conf >= 0.45 else "Uncertain"
+                            st.metric("Logic state", _ca_logstate)
 
-                    st.markdown("**Core driving factor**")
-                    st.info(_ca_driv)
+                        st.markdown("**Core driving factor**")
+                        st.info(_ca_driv)
 
-                    _ca_vgap = _ca_dr.get("verification_gap", "")
-                    if _ca_vgap:
-                        st.warning(f"Verification gap: {_ca_vgap}")
+                        _ca_vgap = _ca_dr.get("verification_gap", "")
+                        if _ca_vgap:
+                            st.warning(f"Verification gap: {_ca_vgap}")
 
-                    with st.expander("📋 Full JSON response", expanded=False):
-                        st.json(_ca_gr_resp)
+                        with st.expander("📋 Full JSON response", expanded=False):
+                            st.json(_ca_gr_resp)
+
+    # ── Forecast ─────────────────────────────────────────────────────────────
+    with _assess_tab_forecast:
+        st.markdown("""
+<div style="margin-bottom:6px">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+    color:var(--muted,#7A8FA6)">Structural Forecast & Attractor Audit</span>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("## Forecast Engine")
+        st.caption(
+            "Forward simulation of structural trajectories using algebraic iteration over the pattern composition semi-group. "
+            "Scenarios converge to attractors (idempotent fixed points). Confidence decays as 0.85ᵗ per step. "
+            "Use the Relationship and Custom tabs to run bespoke simulations."
+        )
+
+        _aud_c1, _aud_c2, _aud_c3 = st.columns(3)
+        with _aud_c1:
+            st.markdown("""
+        <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+        border-radius:3px;padding:10px 14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+            color:var(--muted,#7A8FA6);margin-bottom:4px">Simulation Method</div>
+            <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Algebraic iteration</div>
+            <div style="font-size:11px;color:var(--muted,#7A8FA6)">Composition semi-group</div>
+        </div>
+        """, unsafe_allow_html=True)
+        with _aud_c2:
+            st.markdown("""
+        <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+        border-radius:3px;padding:10px 14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+            color:var(--muted,#7A8FA6);margin-bottom:4px">Confidence Decay</div>
+            <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">0.85ᵗ per step</div>
+            <div style="font-size:11px;color:var(--muted,#7A8FA6)">Geometric attenuation</div>
+        </div>
+        """, unsafe_allow_html=True)
+        with _aud_c3:
+            st.markdown("""
+        <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+        border-radius:3px;padding:10px 14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+            color:var(--muted,#7A8FA6);margin-bottom:4px">Convergence</div>
+            <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Attractor fixed points</div>
+            <div style="font-size:11px;color:var(--muted,#7A8FA6)">Idempotent elements</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
+        _fc_tab_scenarios, _fc_tab_relationship, _fc_tab_custom, _fc_tab_attractors = st.tabs([
+            "Preset Scenarios", "Relationship Forecast", "Custom Forecast", "Attractors"
+        ])
+
+        with _fc_tab_scenarios:
+            st.markdown("#### Preset Scenarios")
+            st.caption("Select a pre-defined scenario to run a forward simulation.")
+            _fc_scenarios_resp = _api._get("/analysis/forecast/scenarios")
+            if "error" in _fc_scenarios_resp:
+                st.warning(f"Forecast backend unavailable: {_fc_scenarios_resp.get('error')}")
+                st.info("Start the backend with forecast routes enabled.")
+            else:
+                _fc_scenarios = _fc_scenarios_resp.get("scenarios", [])
+                if not _fc_scenarios:
+                    st.info("No preset scenarios available.")
+                for _sc in _fc_scenarios:
+                    _sc_id   = _sc.get("id", "")
+                    _sc_name = _sc.get("name", _sc_id)
+                    _sc_desc = _sc.get("description", "")
+                    _sc_pats = _sc.get("initial_patterns", [])
+                    with st.expander(f"**{_sc_name}**", expanded=False):
+                        st.caption(_sc_desc)
+                        st.caption(f"Initial patterns: {', '.join(_sc_pats)}")
+                        _fc_horizon = st.slider(
+                            "Horizon (steps)", 1, 12, 6,
+                            key=f"fc_horizon_{_sc_id}"
+                        )
+                        if st.button(f"Run Forecast", key=f"fc_run_{_sc_id}"):
+                            with st.spinner("Running forward simulation…"):
+                                _fc_result = _api._post(
+                                    "/analysis/forecast/relationship",
+                                    json={"scenario_id": _sc_id, "horizon_steps": _fc_horizon}
+                                )
+                                if "error" in _fc_result:
+                                    st.error(_fc_result["error"])
+                                else:
+                                    st.session_state[f"fc_result_{_sc_id}"] = _fc_result
+
+                        _fc_res = st.session_state.get(f"fc_result_{_sc_id}")
+                        if _fc_res:
+                            _fc_attractor = _fc_res.get("primary_attractor") or {}
+                            _fc_narrative = _fc_res.get("forecast_narrative", "")
+                            _fc_confidence = _fc_attractor.get("final_probability", 0)
+                            _fc_steps = _fc_res.get("simulation_steps", [])
+                            _fc_bifur = _fc_res.get("bifurcation_points", [])
+
+                            st.markdown(f"**Primary Attractor:** `{_fc_attractor.get('name', 'unknown')}`")
+                            st.metric("Final Confidence (0.85^t decay)", f"{_fc_confidence:.1%}")
+
+                            if _fc_narrative:
+                                st.info(_fc_narrative)
+
+                            if _fc_steps:
+                                st.markdown("**Simulation Steps:**")
+                                for _step in _fc_steps:
+                                    _sn = _step.get("step", "?")
+                                    _sp = _step.get("active_patterns", [])
+                                    _sc_conf = _step.get("confidence", 0)
+                                    st.markdown(
+                                        f'<div style="border-left:3px solid var(--blue-accent,#4A8FD4);padding:4px 10px;'
+                                        f'margin-bottom:4px;background:var(--surface,#162030);border-radius:2px;font-size:12px;">'
+                                        f'<b>Step {_sn}</b> (conf={_sc_conf:.0%}) — {", ".join(_sp[:3])}'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                            if _fc_bifur:
+                                st.warning(f"⚡ Bifurcation points at steps: {_fc_bifur}")
+
+        with _fc_tab_relationship:
+            st.markdown("#### Relationship Forecast")
+            st.caption(
+                "Enter a scenario ID and horizon to run a trajectory simulation. "
+                "The engine iterates the composition table until convergence or the horizon is reached."
+            )
+            _fc_rel_col1, _fc_rel_col2 = st.columns([3, 1])
+            with _fc_rel_col1:
+                _fc_rel_scenario = st.text_input(
+                    "Scenario ID", value="us_china_tech_decoupling",
+                    key="fc_rel_scenario",
+                    help="Use an ID from the Preset Scenarios tab, e.g. us_china_tech_decoupling"
+                )
+            with _fc_rel_col2:
+                _fc_rel_horizon = st.number_input("Steps", 1, 15, 6, key="fc_rel_horizon")
+
+            _fc_extra_pats = st.text_input(
+                "Extra patterns (comma-separated, optional)", value="",
+                key="fc_rel_extra"
+            )
+
+            if st.button("Run Relationship Forecast", type="primary", key="fc_rel_run"):
+                _extra = [p.strip() for p in _fc_extra_pats.split(",") if p.strip()]
+                with st.spinner("Running forward simulation…"):
+                    _fc_rel_result = _api._post(
+                        "/analysis/forecast/relationship",
+                        json={"scenario_id": _fc_rel_scenario, "horizon_steps": _fc_rel_horizon, "extra_patterns": _extra}
+                    )
+                    st.session_state["fc_rel_result"] = _fc_rel_result
+
+            _fc_rel_res = st.session_state.get("fc_rel_result")
+            if _fc_rel_res:
+                if "error" in _fc_rel_res:
+                    st.error(_fc_rel_res["error"])
+                else:
+                    st.json(_fc_rel_res)
+
+        with _fc_tab_custom:
+            st.markdown("#### Custom Pattern Forecast")
+            st.caption("Specify initial patterns directly to run a custom forward simulation.")
+            _fc_custom_pats = st.text_area(
+                "Initial patterns (one per line)",
+                value="",
+                key="fc_custom_pats",
+                help="Enter pattern names, one per line. These will be the starting state of the simulation."
+            )
+            _fc_custom_horizon = st.slider("Horizon (steps)", 1, 12, 6, key="fc_custom_horizon")
+
+            if st.button("Run Custom Forecast", type="primary", key="fc_custom_run"):
+                _custom_pats = [p.strip() for p in _fc_custom_pats.split("\n") if p.strip()]
+                if not _custom_pats:
+                    st.warning("Please enter at least one initial pattern.")
+                else:
+                    with st.spinner("Running custom forward simulation…"):
+                        _fc_custom_result = _api._post(
+                            "/analysis/forecast/custom",
+                            json={"initial_patterns": _custom_pats, "horizon_steps": _fc_custom_horizon}
+                        )
+                        st.session_state["fc_custom_result"] = _fc_custom_result
+
+            _fc_cust_res = st.session_state.get("fc_custom_result")
+            if _fc_cust_res:
+                if "error" in _fc_cust_res:
+                    st.error(_fc_cust_res["error"])
+                else:
+                    st.json(_fc_cust_res)
+
+        with _fc_tab_attractors:
+            st.markdown("#### Known Attractors")
+            st.caption(
+                "Attractors are the algebraic fixed points of the composition semi-group. "
+                "An element P is an attractor if compose(P, P) = P (idempotent). "
+                "These represent stable terminal states of the ontological system."
+            )
+            _fc_domain = st.selectbox(
+                "Domain filter",
+                options=["all", "geopolitics", "economics", "technology", "military"],
+                key="fc_attractor_domain"
+            )
+            if st.button("Find Attractors", key="fc_attractor_run"):
+                _domain_param = "" if _fc_domain == "all" else f"?domain={_fc_domain}"
+                _fc_attr_resp = _api._get(f"/analysis/forecast/attractors{_domain_param}")
+                st.session_state["fc_attractors"] = _fc_attr_resp
+
+            _fc_attrs = st.session_state.get("fc_attractors")
+            if _fc_attrs:
+                if "error" in _fc_attrs:
+                    st.error(_fc_attrs["error"])
+                else:
+                    _attr_list = _fc_attrs.get("attractors", [])
+                    if not _attr_list:
+                        st.info("No attractors found for the selected domain.")
+                    for _attr in _attr_list:
+                        _attr_name = _attr.get("name", "")
+                        _attr_domain = _attr.get("domain", "")
+                        _attr_prob = _attr.get("probability", 0)
+                        _attr_desc = _attr.get("description", "")
+                        st.markdown(
+                            f'<div class="scenario-alpha" style="border-left:4px solid var(--gold,#C8A84B);">'
+                            f'<div class="scenario-alpha-hdr">{_attr_name}'
+                            f'<span style="font-weight:400;font-size:10px;margin-left:8px;color:var(--muted,#7A8FA6)">'
+                            f'domain={_attr_domain} · p={_attr_prob:.0%}</span></div>'
+                            f'<div style="font-size:12px;color:var(--text,#D4DDE6);margin-top:4px">{_attr_desc}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+    # ── Scenario Stack ────────────────────────────────────────────────────────
+    with _assess_tab_stack:
+        st.caption(
+            "Alpha and Beta scenario cards from the last Evented assessment. "
+            "Run an assessment on the Dashboard to populate this view."
+        )
+
+        _stack_er   = st.session_state.get("evented_result")
+        _stack_concl = (_stack_er or {}).get("conclusion", {})
+        _stack_alpha = _stack_concl.get("alpha_path") or {}
+        _stack_beta  = _stack_concl.get("beta_path") or _stack_concl.get("hypothesis_path", {})
+
+        if not _stack_er:
+            st.markdown(
+                '<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                'border-radius:3px;padding:16px;text-align:center;">'
+                '<div style="font-size:11px;color:var(--muted,#7A8FA6)">'
+                'No assessment results yet. Run an Evented analysis from the Dashboard to populate the Scenario Stack.'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            _ss_col1, _ss_col2 = st.columns(2)
+
+            with _ss_col1:
+                st.markdown(
+                    '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:8px">'
+                    'ALPHA — EVIDENCE PATH (T2 GROUNDED)</div>',
+                    unsafe_allow_html=True,
+                )
+                _alpha_prob  = _stack_alpha.get("probability", 0)
+                _alpha_summ  = (
+                    (_stack_concl.get("evidence_path") or {}).get("summary")
+                    or _stack_alpha.get("summary", "")
+                    or "(No alpha path available)"
+                )
+                _alpha_lie   = (_stack_alpha.get("lie_emergence") or {}).get("nonlinear_label", "")
+                _alpha_integ = _stack_alpha.get("integration", {})
+                _alpha_conf  = _alpha_integ.get("confidence_final")
+                st.markdown(
+                    f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                    f'border-left:4px solid #2E7D32;border-radius:3px;padding:12px 14px;">'
+                    f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-bottom:4px">'
+                    f'Bayesian p={_alpha_prob:.0%}'
+                    + (f' · conf_final={_alpha_conf:.0%}' if _alpha_conf is not None else '')
+                    + f'</div>'
+                    f'<div style="font-size:13px;color:var(--text-strong,#EDF2F7);line-height:1.5">'
+                    f'{_alpha_summ}</div>'
+                    + (f'<div style="font-size:11px;color:#4CAF72;margin-top:6px">'
+                       f'↳ {_alpha_lie}</div>' if _alpha_lie else '')
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            with _ss_col2:
+                st.markdown(
+                    '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:8px">'
+                    'BETA — HYPOTHESIS PATH (T1 INFERRED)</div>',
+                    unsafe_allow_html=True,
+                )
+                _beta_prob = _stack_beta.get("probability", 0)
+                _beta_summ = (
+                    (_stack_concl.get("hypothesis_path") or {}).get("summary")
+                    or _stack_beta.get("summary", "")
+                    or "(No beta path available)"
+                )
+                _beta_lie  = (_stack_beta.get("lie_emergence") or {}).get("nonlinear_label", "")
+                st.markdown(
+                    f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                    f'border-left:4px solid #F9A825;border-radius:3px;padding:12px 14px;">'
+                    f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-bottom:4px">'
+                    f'Bayesian p={_beta_prob:.0%}</div>'
+                    f'<div style="font-size:13px;color:var(--text-strong,#EDF2F7);line-height:1.5">'
+                    f'{_beta_summ}</div>'
+                    + (f'<div style="font-size:11px;color:#C8A84B;margin-top:6px">'
+                       f'↳ {_beta_lie}</div>' if _beta_lie else '')
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Credibility snapshot
+            _stack_cred = _stack_er.get("credibility", {})
+            _stack_conf_final = (
+                (_stack_concl.get("final") or {}).get("overall_confidence")
+                or _stack_concl.get("confidence", 0)
+            )
+            st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+            _ss_m1, _ss_m2, _ss_m3 = st.columns(3)
+            _ss_m1.metric("Overall Confidence", f"{_stack_conf_final:.0%}")
+            _ss_m2.metric("Credibility", f"{_stack_cred.get('overall_score', 0):.0%}")
+            _ss_m3.metric("Active Patterns", len(_stack_er.get("active_patterns", [])))
+
+
 
 
 # ===========================================================================
@@ -2804,230 +3311,3 @@ elif page == "Knowledge":
                 """)
 
 
-
-# ===========================================================================
-# Page: Audit
-# ===========================================================================
-elif page == "Audit":
-    st.markdown("""
-<div style="margin-bottom:6px">
-    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-    color:var(--muted,#7A8FA6)">Structural Forecast & Attractor Audit</span>
-</div>
-""", unsafe_allow_html=True)
-    st.markdown("## Forecast Engine")
-    st.caption(
-        "Forward simulation of structural trajectories using algebraic iteration over the pattern composition semi-group. "
-        "Scenarios converge to attractors (idempotent fixed points). Confidence decays as 0.85ᵗ per step. "
-        "Use the Relationship and Custom tabs to run bespoke simulations."
-    )
-
-    _aud_c1, _aud_c2, _aud_c3 = st.columns(3)
-    with _aud_c1:
-        st.markdown("""
-    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
-    border-radius:3px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-        color:var(--muted,#7A8FA6);margin-bottom:4px">Simulation Method</div>
-        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Algebraic iteration</div>
-        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Composition semi-group</div>
-    </div>
-    """, unsafe_allow_html=True)
-    with _aud_c2:
-        st.markdown("""
-    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
-    border-radius:3px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-        color:var(--muted,#7A8FA6);margin-bottom:4px">Confidence Decay</div>
-        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">0.85ᵗ per step</div>
-        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Geometric attenuation</div>
-    </div>
-    """, unsafe_allow_html=True)
-    with _aud_c3:
-        st.markdown("""
-    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
-    border-radius:3px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-        color:var(--muted,#7A8FA6);margin-bottom:4px">Convergence</div>
-        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Attractor fixed points</div>
-        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Idempotent elements</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-
-    _fc_tab_scenarios, _fc_tab_relationship, _fc_tab_custom, _fc_tab_attractors = st.tabs([
-        "Preset Scenarios", "Relationship Forecast", "Custom Forecast", "Attractors"
-    ])
-
-    with _fc_tab_scenarios:
-        st.markdown("#### Preset Scenarios")
-        st.caption("Select a pre-defined scenario to run a forward simulation.")
-        _fc_scenarios_resp = _api._get("/analysis/forecast/scenarios")
-        if "error" in _fc_scenarios_resp:
-            st.warning(f"Forecast backend unavailable: {_fc_scenarios_resp.get('error')}")
-            st.info("Start the backend with forecast routes enabled.")
-        else:
-            _fc_scenarios = _fc_scenarios_resp.get("scenarios", [])
-            if not _fc_scenarios:
-                st.info("No preset scenarios available.")
-            for _sc in _fc_scenarios:
-                _sc_id   = _sc.get("id", "")
-                _sc_name = _sc.get("name", _sc_id)
-                _sc_desc = _sc.get("description", "")
-                _sc_pats = _sc.get("initial_patterns", [])
-                with st.expander(f"**{_sc_name}**", expanded=False):
-                    st.caption(_sc_desc)
-                    st.caption(f"Initial patterns: {', '.join(_sc_pats)}")
-                    _fc_horizon = st.slider(
-                        "Horizon (steps)", 1, 12, 6,
-                        key=f"fc_horizon_{_sc_id}"
-                    )
-                    if st.button(f"Run Forecast", key=f"fc_run_{_sc_id}"):
-                        with st.spinner("Running forward simulation…"):
-                            _fc_result = _api._post(
-                                "/analysis/forecast/relationship",
-                                json={"scenario_id": _sc_id, "horizon_steps": _fc_horizon}
-                            )
-                            if "error" in _fc_result:
-                                st.error(_fc_result["error"])
-                            else:
-                                st.session_state[f"fc_result_{_sc_id}"] = _fc_result
-
-                    _fc_res = st.session_state.get(f"fc_result_{_sc_id}")
-                    if _fc_res:
-                        _fc_attractor = _fc_res.get("primary_attractor") or {}
-                        _fc_narrative = _fc_res.get("forecast_narrative", "")
-                        _fc_confidence = _fc_attractor.get("final_probability", 0)
-                        _fc_steps = _fc_res.get("simulation_steps", [])
-                        _fc_bifur = _fc_res.get("bifurcation_points", [])
-
-                        st.markdown(f"**Primary Attractor:** `{_fc_attractor.get('name', 'unknown')}`")
-                        st.metric("Final Confidence (0.85^t decay)", f"{_fc_confidence:.1%}")
-
-                        if _fc_narrative:
-                            st.info(_fc_narrative)
-
-                        if _fc_steps:
-                            st.markdown("**Simulation Steps:**")
-                            for _step in _fc_steps:
-                                _sn = _step.get("step", "?")
-                                _sp = _step.get("active_patterns", [])
-                                _sv = _step.get("state_vector", {})
-                                _sc_conf = _step.get("confidence", 0)
-                                st.markdown(
-                                    f'<div style="border-left:3px solid var(--blue-accent,#4A8FD4);padding:4px 10px;'
-                                    f'margin-bottom:4px;background:var(--surface,#162030);border-radius:2px;font-size:12px;">'
-                                    f'<b>Step {_sn}</b> (conf={_sc_conf:.0%}) — {", ".join(_sp[:3])}'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                        if _fc_bifur:
-                            st.warning(f"⚡ Bifurcation points at steps: {_fc_bifur}")
-
-    with _fc_tab_relationship:
-        st.markdown("#### Relationship Forecast")
-        st.caption(
-            "Enter a scenario ID and horizon to run a trajectory simulation. "
-            "The engine iterates the composition table until convergence or the horizon is reached."
-        )
-        _fc_rel_col1, _fc_rel_col2 = st.columns([3, 1])
-        with _fc_rel_col1:
-            _fc_rel_scenario = st.text_input(
-                "Scenario ID", value="us_china_tech_decoupling",
-                key="fc_rel_scenario",
-                help="Use an ID from the Preset Scenarios tab, e.g. us_china_tech_decoupling"
-            )
-        with _fc_rel_col2:
-            _fc_rel_horizon = st.number_input("Steps", 1, 15, 6, key="fc_rel_horizon")
-
-        _fc_extra_pats = st.text_input(
-            "Extra patterns (comma-separated, optional)", value="",
-            key="fc_rel_extra"
-        )
-
-        if st.button("Run Relationship Forecast", type="primary", key="fc_rel_run"):
-            _extra = [p.strip() for p in _fc_extra_pats.split(",") if p.strip()]
-            with st.spinner("Running forward simulation…"):
-                _fc_rel_result = _api._post(
-                    "/analysis/forecast/relationship",
-                    json={"scenario_id": _fc_rel_scenario, "horizon_steps": _fc_rel_horizon, "extra_patterns": _extra}
-                )
-                st.session_state["fc_rel_result"] = _fc_rel_result
-
-        _fc_rel_res = st.session_state.get("fc_rel_result")
-        if _fc_rel_res:
-            if "error" in _fc_rel_res:
-                st.error(_fc_rel_res["error"])
-            else:
-                st.json(_fc_rel_res)
-
-    with _fc_tab_custom:
-        st.markdown("#### Custom Pattern Forecast")
-        st.caption("Specify initial patterns directly to run a custom forward simulation.")
-        _fc_custom_pats = st.text_area(
-            "Initial patterns (one per line)",
-            value="",
-            key="fc_custom_pats",
-            help="Enter pattern names, one per line. These will be the starting state of the simulation."
-        )
-        _fc_custom_horizon = st.slider("Horizon (steps)", 1, 12, 6, key="fc_custom_horizon")
-
-        if st.button("Run Custom Forecast", type="primary", key="fc_custom_run"):
-            _custom_pats = [p.strip() for p in _fc_custom_pats.split("\n") if p.strip()]
-            if not _custom_pats:
-                st.warning("Please enter at least one initial pattern.")
-            else:
-                with st.spinner("Running custom forward simulation…"):
-                    _fc_custom_result = _api._post(
-                        "/analysis/forecast/custom",
-                        json={"initial_patterns": _custom_pats, "horizon_steps": _fc_custom_horizon}
-                    )
-                    st.session_state["fc_custom_result"] = _fc_custom_result
-
-        _fc_cust_res = st.session_state.get("fc_custom_result")
-        if _fc_cust_res:
-            if "error" in _fc_cust_res:
-                st.error(_fc_cust_res["error"])
-            else:
-                st.json(_fc_cust_res)
-
-    with _fc_tab_attractors:
-        st.markdown("#### Known Attractors")
-        st.caption(
-            "Attractors are the algebraic fixed points of the composition semi-group. "
-            "An element P is an attractor if compose(P, P) = P (idempotent). "
-            "These represent stable terminal states of the ontological system."
-        )
-        _fc_domain = st.selectbox(
-            "Domain filter",
-            options=["all", "geopolitics", "economics", "technology", "military"],
-            key="fc_attractor_domain"
-        )
-        if st.button("Find Attractors", key="fc_attractor_run"):
-            _domain_param = "" if _fc_domain == "all" else f"?domain={_fc_domain}"
-            _fc_attr_resp = _api._get(f"/analysis/forecast/attractors{_domain_param}")
-            st.session_state["fc_attractors"] = _fc_attr_resp
-
-        _fc_attrs = st.session_state.get("fc_attractors")
-        if _fc_attrs:
-            if "error" in _fc_attrs:
-                st.error(_fc_attrs["error"])
-            else:
-                _attr_list = _fc_attrs.get("attractors", [])
-                if not _attr_list:
-                    st.info("No attractors found for the selected domain.")
-                for _attr in _attr_list:
-                    _attr_name = _attr.get("name", "")
-                    _attr_domain = _attr.get("domain", "")
-                    _attr_prob = _attr.get("probability", 0)
-                    _attr_desc = _attr.get("description", "")
-                    st.markdown(
-                        f'<div class="scenario-alpha" style="border-left:4px solid var(--gold,#C8A84B);">'
-                        f'<div class="scenario-alpha-hdr">{_attr_name}'
-                        f'<span style="font-weight:400;font-size:10px;margin-left:8px;color:var(--muted,#7A8FA6)">'
-                        f'domain={_attr_domain} · p={_attr_prob:.0%}</span></div>'
-                        f'<div style="font-size:12px;color:var(--text,#D4DDE6);margin-top:4px">{_attr_desc}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
