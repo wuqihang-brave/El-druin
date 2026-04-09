@@ -105,7 +105,7 @@ _COLLAPSE_GAP_FLOOR: float = 0.10        # top-1 vs top-2 gap should be > 10%
 
 OUTCOME_CATALOG: Dict[str, str] = {
     # ── Geopolitical / coercive ──────────────────────────────────────────────
-    "target_isolation":               "The targeted actor faces progressive exclusion from multilateral frameworks and diplomatic circuits",
+    "target_isolation":               "The affected state faces progressive exclusion from multilateral frameworks and diplomatic circuits",
     "collective_defence_formation":   "Aligned states form a coordinated collective defence posture",
     "sanctions_escalation":           "A broadening multilateral sanctions regime takes hold, tightening access to finance and technology",
     "alliance_consolidation":         "Formal and informal alliance commitments consolidate around shared threat perception",
@@ -117,24 +117,24 @@ OUTCOME_CATALOG: Dict[str, str] = {
     "supply_chain_fragmentation":     "Supply chains fracture as actors reroute sourcing, tighten export controls, and build parallel networks",
     "alliance_shift":                 "Sanctioned actors pivot toward alternative partners, reshaping alliance geometry",
     "currency_substitution":          "Alternative settlement currencies and bilateral swap arrangements emerge as dollar alternatives",
-    "domestic_consolidation":         "The targeted state consolidates internally, reducing reliance on external markets and technology",
+    "domestic_consolidation":         "The subject state consolidates internally, reducing reliance on external markets and technology",
     "third_party_arbitrage":          "Third-party states exploit the gap between sanctioners and target, extracting arbitrage rents",
     "supply_chain_decoupling":        "Supply chains decouple as sourcing relocates away from restricted suppliers",
-    "domestic_substitution_push":     "The targeted actor accelerates domestic production to replace blocked imports",
+    "domestic_substitution_push":     "The subject state accelerates domestic production to replace blocked imports",
     "third_country_re-export":        "Controlled goods re-enter the target market via third-country transshipment",
-    "technology_gap_widening":        "The technology capability gap between sanctioner and target widens over time",
+    "technology_gap_widening":        "The technology capability gap between sanctioner and subject widens over time",
     "alliance_activation":            "Mutual defence commitments activate, drawing allied states into the conflict",
     "sanctions_cascade":              "Sanctions spread rapidly across multiple jurisdictions, cascading into a global regime",
     "refugee_displacement":           "Large-scale population displacement creates regional humanitarian and security pressures",
     "energy_market_disruption":       "Energy supply chains disrupt, triggering price spikes and allocation crises across importing states",
     "regime_change_attempt":          "External actors pursue regime change through overt or covert pressure on the governing authority",
-    "policy_capitulation":            "The targeted actor yields to coercive pressure, shifting policy to accommodate the coercer's demands",
+    "policy_capitulation":            "The subject state yields to coercive pressure, shifting policy to accommodate the coercer's demands",
     "counter_alliance_formation":     "A counter-alliance forms in direct response to coercive pressure, multiplying the coercer's adversaries",
     "credibility_erosion":            "The coercing actor's deterrence credibility erodes as threats fail to produce the expected compliance",
     "arms_race_acceleration":         "An accelerating arms race unfolds as both sides expand military capabilities",
     "multilateral_compliance_cost":   "Alliance members bear rising compliance costs as sanctions tighten business and financial links",
     "sanctions_fatigue":              "Coalition cohesion weakens over time as member states diverge on compliance and enforcement",
-    "gray_zone_evasion":              "The targeted actor deploys grey-zone tactics to evade sanctions and sustain restricted access",
+    "gray_zone_evasion":              "The subject state deploys grey-zone tactics to evade sanctions and sustain restricted access",
     "state_sponsor_exposure":         "Covert state sponsorship of proxy actors is exposed, inviting sanctions and international condemnation",
     "asymmetric_escalation":          "Non-state actors escalate asymmetrically, raising costs for the state through unconventional attacks",
     "civilian_infrastructure_targeting": "Civilian infrastructure becomes a target, deepening the humanitarian toll and international pressure",
@@ -1730,12 +1730,11 @@ def _run_stage3(
     # ── Raw (deterministic) summary strings ─────────────────────────────────
 
     _evidence_summary_raw = (
-        f"Likely outcome ({alpha_path['probability']:.1%}): {_alpha_primary_phrase}."
+        f"Outcome trajectory (p={alpha_path['probability']:.1%}): {_alpha_primary_phrase}."
     )
     _hypothesis_summary_raw = (
-        f"Lower-probability alternative ({beta_path.get('probability', 0.0):.0%}): "
-        f"{_beta_primary_phrase}, "
-        f"if {_trigger_clean}."
+        f"Alternative scenario (p={beta_path.get('probability', 0.0):.0%}): "
+        f"{_beta_primary_phrase}, contingent on {_trigger_clean}."
     )
     # executive_judgement_raw: pure deterministic fallback (no LLM)
     _executive_judgement_raw = _fallback_conclusion_text(
@@ -1893,8 +1892,10 @@ the actual news events described in the fragment.
         response = llm_service.call(
             prompt=prompt,
             system=(
-                "You are a rigorous intelligence analyst. State outcomes directly. "
-                "Never output pattern names, mechanism names, JSON, or probabilities as numbers."
+                "You are a rigorous intelligence analyst. State outcomes directly, "
+                "naming the specific actors, countries, or organisations from the news. "
+                "Include the computed probability (e.g. p=65%) explicitly in your output. "
+                "Never output pattern names, mechanism class names, or JSON."
             ),
             temperature=0.10,
             max_tokens=300,
@@ -1957,9 +1958,9 @@ def _fallback_conclusion_text(
             driver_hint = f" driven by {_outcome_phrase(top_outcome).lower()}"
 
     return (
-        f"Most likely near-term trajectory (p={alpha_prob:.0%}): "
+        f"Predicted outcome (p={alpha_prob:.0%}): "
         f"{primary}{driver_hint}. "
-        f"A lower-probability but high-impact alternative (p={beta_prob:.0%}): "
+        f"Alternative scenario (p={beta_prob:.0%}): "
         f"{beta_desc}."
     )
 
@@ -1979,6 +1980,8 @@ _RENDER_DISALLOWED = [
     "assessed based on", "corroborating evidence", "evidence signals",
     "based on corroborating", "corroborating", "evidence signal",
     "computed from", "derived from ontology",
+    # Template phrasing guardrail: block generic actor label that lacks specificity
+    "targeted actor",
 ]
 
 # Precision for rounding numeric values in guardrail comparison
@@ -2676,6 +2679,10 @@ def run_evented_pipeline(
                         "source_a":          en_a,
                         "source_b":          en_b,
                         "target":            en_c,
+                        "matrix_norm":       round(_dr_match.get("lie_algebra", {}).get("matrix_norm", 0.0), 4) if _dr_match else 0.0,
+                        "sigma1":            round(_dr_match.get("lie_algebra", {}).get("sigma1", 0.0), 4) if _dr_match else 0.0,
+                        "top_emergent_dims": _dr_match.get("lie_algebra", {}).get("top_emergent_dims", []) if _dr_match else [],
+                        "top_emergent_values": _dr_match.get("lie_algebra", {}).get("top_emergent_values", []) if _dr_match else [],
                         "note": (
                             f"v_A, v_B are 8-dim semantic vectors in so(8) space. "
                             f"lie_sim = cos(v_A + v_B, v_C) ∈ [0,1] measures geometric alignment. "
