@@ -709,6 +709,106 @@ def _classify_regime(lie_algebra_data: Dict[str, Any], state_vector_data: Dict[s
     }
 
 
+def _build_trigger_sensitivity(regime_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Build a ranked trigger sensitivity list from structural regime data.
+    Returns list of dicts: {trigger, potential, potential_class, downstream, damping}
+    potential_class: "extreme" | "high" | "elevated" | "moderate" | "damping"
+    """
+    regime = regime_data.get("regime", "Linear")
+    dominant_dim = str(regime_data.get("dominant_dim", "")).lower()
+
+    if regime in ("Nonlinear Escalation", "Cascade Risk"):
+        triggers: List[Dict[str, Any]] = [
+            {
+                "trigger": "Attribution statement issued",
+                "potential": "High",
+                "potential_class": "high",
+                "downstream": "Sanctions · Energy · Shipping",
+                "damping": False,
+            },
+            {
+                "trigger": "Sanctions coordination announced",
+                "potential": "Elevated",
+                "potential_class": "elevated",
+                "downstream": "Financial · Trade · Market repricing",
+                "damping": False,
+            },
+            {
+                "trigger": "Shipping corridor incident",
+                "potential": "Extreme",
+                "potential_class": "extreme",
+                "downstream": "Crude · Insurance · Logistics cascade",
+                "damping": False,
+            },
+            {
+                "trigger": "Force posture escalation",
+                "potential": "High",
+                "potential_class": "high",
+                "downstream": "Military · Diplomatic · Regional stability",
+                "damping": False,
+            },
+            {
+                "trigger": "Ceasefire / de-escalation signal",
+                "potential": "Damping",
+                "potential_class": "damping",
+                "downstream": "Partial risk premium retracement",
+                "damping": True,
+            },
+        ]
+    elif regime == "Stress Accumulation":
+        triggers = [
+            {
+                "trigger": "Attribution statement issued",
+                "potential": "Elevated",
+                "potential_class": "elevated",
+                "downstream": "Sanctions · Diplomatic",
+                "damping": False,
+            },
+            {
+                "trigger": "Supply chain disruption",
+                "potential": "Moderate",
+                "potential_class": "moderate",
+                "downstream": "Trade · Industrial output",
+                "damping": False,
+            },
+            {
+                "trigger": "Diplomatic breakthrough",
+                "potential": "Damping",
+                "potential_class": "damping",
+                "downstream": "Risk sentiment improvement",
+                "damping": True,
+            },
+        ]
+    else:  # Linear
+        triggers = [
+            {
+                "trigger": "Major policy announcement",
+                "potential": "Moderate",
+                "potential_class": "moderate",
+                "downstream": "Market sentiment · Institutional response",
+                "damping": False,
+            },
+            {
+                "trigger": "Unexpected event shock",
+                "potential": "Elevated",
+                "potential_class": "elevated",
+                "downstream": "Broad repricing across active domains",
+                "damping": False,
+            },
+        ]
+
+    # Domain-specific overlay: if dominant_dim is military, boost military triggers
+    if "military" in dominant_dim and regime != "Linear":
+        for t in triggers:
+            if "force posture" in t["trigger"].lower() or "attribution" in t["trigger"].lower():
+                if t["potential_class"] == "elevated":
+                    t["potential"] = "High"
+                    t["potential_class"] = "high"
+
+    return triggers
+
+
 # ===========================================================================
 # Page: Dashboard
 # ===========================================================================
@@ -776,16 +876,30 @@ if page == "Dashboard":
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
         color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:4px">Tracked Entities</div>
         """, unsafe_allow_html=True)
+        # Initialize filter state
+        if "selected_entity_filter" not in st.session_state:
+            st.session_state.selected_entity_filter = ""
+
         _tracked = [k for k in st.session_state.entity_cache.keys() if len(k) >= 4][:8]
         if _tracked:
             for _ent in _tracked:
-                st.markdown(
-                    f'<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border,#2D3F52);'
-                    f'color:var(--text,#D4DDE6)">{_ent}</div>',
-                    unsafe_allow_html=True,
-                )
+                if st.button(
+                    _ent,
+                    key=f"entity_filter_{_ent}",
+                    use_container_width=True,
+                ):
+                    if st.session_state.selected_entity_filter == _ent:
+                        st.session_state.selected_entity_filter = ""  # toggle off
+                    else:
+                        st.session_state.selected_entity_filter = _ent
+                    st.rerun()
         else:
-            st.caption("No entities loaded. Refresh graph.")
+            st.caption("No entities loaded.")
+
+        if st.session_state.get("selected_entity_filter"):
+            if st.button("Clear entity filter", key="clear_entity_filter"):
+                st.session_state.selected_entity_filter = ""
+                st.rerun()
 
         st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
 
@@ -793,12 +907,19 @@ if page == "Dashboard":
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
         color:var(--muted,#7A8FA6);margin-bottom:8px;margin-top:4px">Watch Indicators</div>
         """, unsafe_allow_html=True)
+        # Dynamic watch indicators based on current regime
+        _er_wi = st.session_state.get("evented_result")
+        _regime_wi = "Linear"
+        if _er_wi:
+            _rd_wi = _classify_regime(_er_wi.get("lie_algebra", {}), _er_wi.get("state_vector", {}))
+            _regime_wi = _rd_wi.get("regime", "Linear")
+
         _watch_items = [
-            ("Sanctions coordination", "neutral"),
-            ("Force posture shift", "alert"),
-            ("Attribution pressure", "neutral"),
-            ("Shipping insurance", "neutral"),
-            ("Supply disruption", "neutral"),
+            ("Sanctions coordination",  "alert" if _regime_wi in ("Nonlinear Escalation", "Cascade Risk") else "neutral"),
+            ("Force posture shift",     "alert" if _regime_wi in ("Nonlinear Escalation", "Cascade Risk", "Stress Accumulation") else "neutral"),
+            ("Attribution pressure",    "alert" if _regime_wi == "Nonlinear Escalation" else "neutral"),
+            ("Shipping insurance",      "alert" if _regime_wi in ("Nonlinear Escalation", "Cascade Risk") else "neutral"),
+            ("Supply disruption",       "alert" if _regime_wi == "Cascade Risk" else "neutral"),
         ]
         for _wi, _ws in _watch_items:
             _wi_color = "#E05050" if _ws == "alert" else "var(--muted,#7A8FA6)"
@@ -832,7 +953,26 @@ if page == "Dashboard":
                 {"title": "US-China Chip Export Controls Expanded", "source": "FT", "published": "2026-03-28"},
             ]
 
-        for _idx, _article in enumerate(_feed_news[:8]):
+        # Filter articles by selected entity if one is selected
+        _entity_filter = st.session_state.get("selected_entity_filter", "")
+        _filtered_feed = _feed_news
+        if _entity_filter:
+            _ef_lower = _entity_filter.lower()
+            _filtered_feed = [
+                a for a in _feed_news
+                if _ef_lower in (a.get("title") or "").lower()
+                or _ef_lower in (a.get("description") or "").lower()
+                or _ef_lower in str(a.get("entities") or "").lower()
+            ]
+
+        if _entity_filter and not _filtered_feed:
+            st.markdown(
+                f'<div style="font-size:11px;color:var(--muted,#7A8FA6);padding:8px 0">'
+                f'No evidence items matching <b>{_entity_filter}</b></div>',
+                unsafe_allow_html=True,
+            )
+
+        for _idx, _article in enumerate(_filtered_feed[:8]):
             _title = (_article.get("title") or "(no title)")[:45]
             _src = _article.get("source", "")
             _pub = str(_article.get("published") or "")[:10]
@@ -976,6 +1116,15 @@ if page == "Dashboard":
                 "<div style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;"
                 "color:var(--muted,#7A8FA6);margin-bottom:8px'>STRUCTURAL REGIME ANALYSIS</div>"
                 "<div style='font-size:12px;color:var(--muted,#7A8FA6)'>Run an analysis to detect structural regime.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<div style='background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);"
+                "border-radius:3px;padding:16px;margin-top:16px;'>"
+                "<div style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;"
+                "color:var(--muted,#7A8FA6);margin-bottom:8px'>TRIGGER SENSITIVITY ANALYSIS</div>"
+                "<div style='font-size:12px;color:var(--muted,#7A8FA6)'>Run an analysis to see trigger sensitivity ranking.</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -2209,6 +2358,69 @@ border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:
                         f"</div>",
                         unsafe_allow_html=True,
                     )
+
+                    # ── Trigger Sensitivity Analysis ─────────────────────────────────────────
+                    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:9px;font-weight:700;text-transform:uppercase;"
+                        "letter-spacing:1.2px;color:var(--muted,#7A8FA6);margin-bottom:10px'>"
+                        "TRIGGER SENSITIVITY ANALYSIS</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    _triggers = _build_trigger_sensitivity(_regime_data)
+
+                    # Color map for potential classes
+                    _pot_colors = {
+                        "extreme":  ("#E05050", "#4A1818"),
+                        "high":     ("#C8A84B", "#4A3820"),
+                        "elevated": ("#4A8FD4", "#1A2D42"),
+                        "moderate": ("#7A8FA6", "#1A2030"),
+                        "damping":  ("#4CAF72", "#1A2D1A"),
+                    }
+
+                    for _trig in _triggers:
+                        _pot_cls  = _trig["potential_class"]
+                        _pot_col, _pot_bg = _pot_colors.get(_pot_cls, ("#7A8FA6", "#1A2030"))
+                        _is_damp  = _trig["damping"]
+                        _arrow    = "↓" if _is_damp else "↑"
+                        _bar_segments = {"extreme": 5, "high": 4, "elevated": 3, "moderate": 2, "damping": 1}
+                        _seg_count = _bar_segments.get(_pot_cls, 2)
+                        _bars_html = "".join(
+                            f'<span style="display:inline-block;width:10px;height:10px;border-radius:1px;'
+                            f'background:{_pot_col if i < _seg_count else "var(--border,#2D3F52)"};'
+                            f'margin-right:2px"></span>'
+                            for i in range(5)
+                        )
+
+                        st.markdown(
+                            f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                            f'border-left:3px solid {_pot_col};border-radius:3px;padding:10px 14px;margin-bottom:6px;'
+                            f'display:flex;align-items:center;gap:14px;">'
+                            f'<div style="flex:1;">'
+                            f'<div style="font-size:12px;font-weight:600;color:var(--text-strong,#EDF2F7);margin-bottom:3px">'
+                            f'{_arrow} {_trig["trigger"]}</div>'
+                            f'<div style="font-size:10px;color:var(--muted,#7A8FA6)">{_trig["downstream"]}</div>'
+                            f'</div>'
+                            f'<div style="text-align:right;flex-shrink:0;">'
+                            f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;'
+                            f'color:{_pot_col};margin-bottom:4px">{_trig["potential"]}</div>'
+                            f'{_bars_html}'
+                            f'</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # Propagation chain note
+                    _coupling = _regime_data.get("coupling_axis", "")
+                    if _coupling:
+                        st.markdown(
+                            f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-top:6px;'
+                            f'padding:6px 10px;border-left:2px solid var(--border,#2D3F52);">'
+                            f'Dominant propagation: <span style="color:var(--text,#D4DDE6);font-weight:600">'
+                            f'{_coupling}</span></div>',
+                            unsafe_allow_html=True,
+                        )
 
             if st.button("Clear Assessment", key="clear_selection_evented"):
                 st.session_state.selected_news  = None
