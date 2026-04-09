@@ -487,6 +487,7 @@ _STATE_DEFAULTS = {
     "deduction_result": None,
     "kg_cache": {},
     "kg_chat_history": [],
+    "_dashboard_feed": [],
 }
 for _k, _v in _STATE_DEFAULTS.items():
     if _k not in st.session_state:
@@ -655,66 +656,222 @@ if page == "Dashboard":
         padding:14px 16px; border-radius:3px; margin:10px 0; color:var(--text);
         font-size:1rem; line-height:1.5;
         border-top:1px solid #2A1010; border-right:1px solid #2A1010; border-bottom:1px solid #2A1010; }
+    .evidence-item { background:var(--surface,#162030); border:1px solid var(--border,#2D3F52);
+        border-radius:3px; padding:8px 10px; margin-bottom:6px; }
+    .evidence-item:hover { border-color:#4A8FD4; }
+    .regime-badge { padding:2px 8px; border-radius:2px; font-size:10px; font-weight:700;
+        text-transform:uppercase; letter-spacing:0.4px; }
+    .regime-nonlinear { background:#1A0808; color:#E05050; border:1px solid #4A1818; }
+    .regime-stress { background:#1A1500; color:#C8A84B; border:1px solid #4A3820; }
+    .regime-cascade { background:#0D1A2A; color:#4A8FD4; border:1px solid #1A3050; }
+    .regime-linear { background:#0D1A0D; color:#4CAF72; border:1px solid #1A401A; }
     </style>
     """, unsafe_allow_html=True)
 
-    _col_h1, _col_h2 = st.columns([4, 1])
-    with _col_h1:
-        st.markdown("# ⚔️ EL-DRUIN — Core Prediction & Ontological Reasoning")
-    with _col_h2:
-        st.markdown(f"**{datetime.now().strftime('%H:%M UTC')}**")
-    st.caption(
-        "Select an article from the left feed, choose your reasoning engine from the sidebar, "
-        "and click **Run Ontological Analysis** to generate a causal deduction."
-    )
+    # ── Top bar ──────────────────────────────────────────────────────────
+    _tb_col1, _tb_col2, _tb_col3, _tb_col4 = st.columns([4, 2, 2, 2])
+    with _tb_col1:
+        st.markdown("### ASSESSMENT WORKSPACE")
+    with _tb_col2:
+        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Last updated</div><div style='font-size:13px;font-weight:600'>{datetime.now().strftime('%H:%M UTC')}</div>", unsafe_allow_html=True)
+    with _tb_col3:
+        _feed_count = len(st.session_state.get("_dashboard_feed", []))
+        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Evidence items</div><div style='font-size:13px;font-weight:600'>{_feed_count} new</div>", unsafe_allow_html=True)
+    with _tb_col4:
+        _engine_label = st.session_state.get("cfg_engine", "Evented")
+        st.markdown(f"<div style='color:var(--muted,#7A8FA6);font-size:11px;text-transform:uppercase;letter-spacing:0.6px'>Engine</div><div style='font-size:13px;font-weight:600'>{_engine_label}</div>", unsafe_allow_html=True)
+
     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
-    col_feed, col_deduction = st.columns([4, 6], gap="large")
+    col_left, col_center, col_right = st.columns([2, 5, 3], gap="medium")
 
-    # ─── LEFT: 情报流 ─────────────────────────────────────────────────────
-    with col_feed:
-        st.subheader("📍 Intelligence Feed")
+    # ─── LEFT: Case Context ───────────────────────────────────────────────
+    with col_left:
+        st.markdown("""
+        <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+        border-left:3px solid #4A8FD4;border-radius:3px;padding:12px 14px;margin-bottom:12px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+            color:var(--muted,#7A8FA6);margin-bottom:6px">Active Assessment</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7);line-height:1.4">
+                Geopolitical Event Monitor</div>
+            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+                <span style="background:#1A0808;color:#E05050;border:1px solid #4A1818;
+                padding:2px 7px;border-radius:2px;font-size:10px;font-weight:700;text-transform:uppercase">
+                Escalatory</span>
+                <span style="background:#1A1500;color:#C8A84B;border:1px solid #4A3820;
+                padding:2px 7px;border-radius:2px;font-size:10px;font-weight:700;text-transform:uppercase">
+                Active</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        _feed_news: List[Dict[str, Any]] = []
-        try:
-            _feed_news = _api.get_latest_news(limit=8, hours=72).get("articles", [])
-        except Exception:
-            pass
+        st.markdown("""
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:4px">Tracked Entities</div>
+        """, unsafe_allow_html=True)
+        _tracked = list(st.session_state.entity_cache.keys())[:8]
+        if _tracked:
+            for _ent in _tracked:
+                st.markdown(
+                    f'<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border,#2D3F52);'
+                    f'color:var(--text,#D4DDE6)">{_ent}</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("No entities loaded. Refresh graph.")
+
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:8px;margin-top:4px">Watch Indicators</div>
+        """, unsafe_allow_html=True)
+        _watch_items = [
+            ("Sanctions coordination", "neutral"),
+            ("Force posture shift", "alert"),
+            ("Attribution pressure", "neutral"),
+            ("Shipping insurance", "neutral"),
+            ("Supply disruption", "neutral"),
+        ]
+        for _wi, _ws in _watch_items:
+            _wi_color = "#E05050" if _ws == "alert" else "var(--muted,#7A8FA6)"
+            st.markdown(
+                f'<div style="font-size:11px;padding:5px 0;border-bottom:1px solid var(--border,#2D3F52);'
+                f'color:{_wi_color};display:flex;align-items:center;gap:6px">'
+                f'<span style="width:6px;height:6px;border-radius:50%;background:{_wi_color};'
+                f'display:inline-block;flex-shrink:0"></span>{_wi}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:4px">Evidence Queue</div>
+        """, unsafe_allow_html=True)
+
+        if "_dashboard_feed" not in st.session_state or not st.session_state["_dashboard_feed"]:
+            try:
+                _feed_resp = _api.get_latest_news(limit=8, hours=72)
+                st.session_state["_dashboard_feed"] = _feed_resp.get("articles", [])
+            except Exception:
+                st.session_state["_dashboard_feed"] = []
+
+        _feed_news: List[Dict[str, Any]] = st.session_state.get("_dashboard_feed", [])
         if not _feed_news:
             _feed_news = [
-                {"title": "European Commission Announces AI Regulation", "source": "Reuters",
-                 "published": "2026-03-30", "description": "The EU unveiled strict new AI regulations..."},
-                {"title": "Federal Reserve Signals Rate Path", "source": "Bloomberg",
-                 "published": "2026-03-29", "description": "The Fed indicated a cautious approach..."},
-                {"title": "US-China Chip Export Controls Expanded", "source": "FT",
-                 "published": "2026-03-28", "description": "New restrictions on advanced semiconductor exports..."},
+                {"title": "European Commission Announces AI Regulation", "source": "Reuters", "published": "2026-03-30"},
+                {"title": "Federal Reserve Signals Rate Path", "source": "Bloomberg", "published": "2026-03-29"},
+                {"title": "US-China Chip Export Controls Expanded", "source": "FT", "published": "2026-03-28"},
             ]
 
         for _idx, _article in enumerate(_feed_news[:8]):
-            _title   = (_article.get("title") or "(no title)")[:55]
-            _src     = _article.get("source", "")
-            _pub     = str(_article.get("published") or "")[:10]
-            _desc    = (_article.get("description") or "")[:80]
+            _title = (_article.get("title") or "(no title)")[:45]
+            _src = _article.get("source", "")
+            _pub = str(_article.get("published") or "")[:10]
+            st.markdown(
+                f'<div class="evidence-item" style="cursor:pointer">'
+                f'<div style="font-size:12px;font-weight:600;color:var(--text-strong,#EDF2F7);'
+                f'margin-bottom:3px">{_title}…</div>'
+                f'<div style="font-size:10px;color:var(--muted,#7A8FA6)">{_src} · {_pub}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Run Assessment", key=f"deduce_{_idx}_{_article.get('title','')[:20]}", use_container_width=True):
+                st.session_state.selected_news = _article
+                st.session_state.deduction_result = None
+                st.session_state.evented_result = None
+                st.rerun()
+
+    # ─── CENTER: Core Assessment ──────────────────────────────────────────
+    with col_center:
+        # ── Forecast Brief card ──────────────────────────────────────────
+        _last_er = st.session_state.get("evented_result")
+        _last_concl = (_last_er or {}).get("conclusion", {})
+        _last_exec_j = _last_concl.get("executive_judgement") or ""
+        _last_conf = (_last_er or {}).get("conclusion", {}).get("final", {}).get("overall_confidence", 0)
+        _last_alpha = _last_concl.get("alpha_path") or {}
+        _last_alpha_prob = _last_alpha.get("probability", 0)
+        _last_sv = (_last_er or {}).get("state_vector", {})
+        _last_dom = (_last_sv.get("mean_vector") or {}).get("dominant_dim", "") if isinstance(_last_sv.get("mean_vector"), dict) else _last_sv.get("dominant_dim", "")
+
+        if _last_er:
+            _dual_list = _last_er.get("dual_inference", [])
+            _top_dual = _dual_list[0] if _dual_list else {}
+            _sigma1 = _top_dual.get("lie_algebra", {}).get("sigma1", 0) or 0
+            if _sigma1 > 5:
+                _regime_label, _regime_class = "Nonlinear Escalation", "regime-nonlinear"
+            elif _sigma1 > 2:
+                _regime_label, _regime_class = "Stress Accumulation", "regime-stress"
+            elif _sigma1 > 0.5:
+                _regime_label, _regime_class = "Cascade Risk", "regime-cascade"
+            else:
+                _regime_label, _regime_class = "Linear", "regime-linear"
+
+            _conf_dir = "High" if _last_conf >= 0.7 else "Moderate" if _last_conf >= 0.5 else "Low"
+            _horizon = "3–7 days"
+            _driver_label = _last_dom.title() if _last_dom else "Multi-domain"
 
             st.markdown(f"""
-            <div class="compact-news">
-                <div style="font-weight:600;font-size:14px;color:#333;margin-bottom:4px;">{_title}...</div>
-                <div style="font-size:12px;color:#666;margin-bottom:6px;">{_desc}</div>
-                <div style="font-size:11px;color:#999;display:flex;justify-content:space-between;">
-                    <span>{_src}</span><span>{_pub}</span>
+            <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+            border-left:3px solid #4A8FD4;border-radius:3px;padding:14px 16px;margin-bottom:14px;">
+                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+                color:var(--muted,#7A8FA6);margin-bottom:8px">Forecast Posture</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Confidence</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_conf_dir}</div></div>
+                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Horizon</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_horizon}</div></div>
+                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Dominant Driver</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_driver_label}</div></div>
+                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Regime</div>
+                    <span class="regime-badge {_regime_class}">{_regime_label}</span></div>
+                </div>
+                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.6;border-top:1px solid var(--border,#2D3F52);padding-top:8px">
+                    {_last_exec_j[:280] + "…" if len(_last_exec_j) > 280 else _last_exec_j or
+                    "Run an assessment to generate a forecast brief."}
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button("🎯 Run Ontological Analysis", key=f"deduce_{_idx}_{_article.get('title','')[:20]}", use_container_width=True):
-                st.session_state.selected_news    = _article
-                st.session_state.deduction_result = None
-                st.session_state.evented_result   = None
-                st.rerun()
+            # Scenario Stack — Alpha/Beta cards from last result
+            _sc_alpha = _last_concl.get("alpha_path") or {}
+            _sc_beta  = _last_concl.get("beta_path") or {}
+            _sc_alpha_desc = (_last_concl.get("evidence_path") or {}).get("summary", "")
+            _sc_beta_desc  = (_last_concl.get("hypothesis_path") or {}).get("summary", "")
+            _sc_alpha_prob = _sc_alpha.get("probability", 0)
+            _sc_beta_prob  = _sc_beta.get("probability", 0)
 
-    # ─── RIGHT: Deduction panel ───────────────────────────────────────────
-    with col_deduction:
-        st.subheader("🧠 Ontological Prediction & Analysis")
+            st.markdown("""
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+            color:var(--muted,#7A8FA6);margin-bottom:8px">Scenario Stack</div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="scenario-alpha">
+                <div class="scenario-alpha-hdr">Base Case — Evidence Path &nbsp; p={_sc_alpha_prob:.0%}</div>
+                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.5">
+                    {_sc_alpha_desc[:200] + "…" if len(_sc_alpha_desc) > 200 else _sc_alpha_desc or "(Run assessment to populate)"}
+                </div>
+            </div>
+            <div class="scenario-beta">
+                <div class="scenario-beta-hdr">Escalation Case — Hypothesis Path &nbsp; p={_sc_beta_prob:.0%}</div>
+                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.5">
+                    {_sc_beta_desc[:200] + "…" if len(_sc_beta_desc) > 200 else _sc_beta_desc or "(Run assessment to populate)"}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+            border-radius:3px;padding:20px 16px;margin-bottom:14px;text-align:center;">
+                <div style="font-size:11px;color:var(--muted,#7A8FA6);margin-bottom:6px;
+                text-transform:uppercase;letter-spacing:0.6px">No active assessment</div>
+                <div style="font-size:13px;color:var(--text,#D4DDE6)">
+                    Select an article from the Evidence Queue and click <b>Run Assessment</b> to begin.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         # --- Engine selection is driven by the sidebar (cfg_engine) ---
         _prev_mode = st.session_state.get("_prev_engine", "Evented")
@@ -943,7 +1100,7 @@ if page == "Dashboard":
                     with st.expander("🛠 Raw Backend deduction_result JSON", expanded=False):
                         st.json(_dr)
 
-            if st.button("🔄 Clear selection", key="clear_selection"):
+            if st.button("Clear Assessment", key="clear_selection"):
                 st.session_state.selected_news    = None
                 st.session_state.deduction_result = None
                 st.session_state.evented_result   = None
@@ -1723,20 +1880,122 @@ if page == "Dashboard":
                                     if _lim_parts:
                                         st.caption("Limits: " + " · ".join(_lim_parts))
 
-            if st.button("🔄 Clear selection", key="clear_selection_evented"):
+            if st.button("Clear Assessment", key="clear_selection_evented"):
                 st.session_state.selected_news  = None
                 st.session_state.evented_result = None
                 st.rerun()
 
-    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
-    with st.expander("ℹ️ Active Ontology Sub-Graphs", expanded=False):
-        st.write("""
-        **Current ontology engine status:**
-        * 🟢 **[Geopolitics Ontology]**: Sanctions, alliance, coercion pattern library loaded
-        * 🟢 **[Economics & Finance Ontology]**: Trade dependency, central bank transmission, supply chain patterns loaded
-        * 🟢 **[Technology Ontology]**: Tech decoupling, standards dominance, technology blockade patterns loaded
-        * 🟡 **[Technology Transition Ontology]**: Tech diffusion rate, policy resistance, compliance cost matrix (pending deep build)
-        """)
+    # ─── RIGHT: Evidence + Traceability ──────────────────────────────────
+    with col_right:
+        st.markdown("""
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:8px">Evidence Provenance</div>
+        """, unsafe_allow_html=True)
+
+        _er_right = st.session_state.get("evented_result")
+        if _er_right:
+            _enrich_right = _er_right.get("enrichment")
+            _cred_right   = _er_right.get("credibility", {})
+            _cred_score   = _cred_right.get("overall_score", 0)
+            _verif_score  = _cred_right.get("verifiability_score", 0)
+            _kg_score     = _cred_right.get("kg_consistency_score", 0)
+
+            # Credibility strip
+            st.markdown(f"""
+            <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+            border-radius:3px;padding:10px 12px;margin-bottom:10px;">
+                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+                color:var(--muted,#7A8FA6);margin-bottom:8px">Source Quality</div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-size:11px;color:var(--text,#D4DDE6)">Verifiability</span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_verif_score:.0%}</span>
+                </div>
+                <div style="background:#1A2D3D;border-radius:2px;height:4px;margin-bottom:8px">
+                    <div style="background:#4A8FD4;width:{max(4,int(_verif_score*100))}%;height:4px;border-radius:2px"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-size:11px;color:var(--text,#D4DDE6)">KG Consistency</span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_kg_score:.0%}</span>
+                </div>
+                <div style="background:#1A2D3D;border-radius:2px;height:4px;margin-bottom:8px">
+                    <div style="background:#4A8FD4;width:{max(4,int(_kg_score*100))}%;height:4px;border-radius:2px"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-size:11px;color:var(--text,#D4DDE6)">Overall</span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_cred_score:.0%}</span>
+                </div>
+                <div style="background:#1A2D3D;border-radius:2px;height:4px">
+                    <div style="background:#4CAF72;width:{max(4,int(_cred_score*100))}%;height:4px;border-radius:2px"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Causal chain
+            _ev_concl_r = _er_right.get("conclusion", {})
+            _ep_r = _ev_concl_r.get("evidence_path", {})
+            if _ep_r.get("summary"):
+                st.markdown("""
+                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+                color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:8px">Causal Chain</div>
+                """, unsafe_allow_html=True)
+                _render_causal_chain(_ep_r.get("summary", ""))
+
+            # Enrichment provenance if available
+            if _enrich_right and _enrich_right.get("provenance"):
+                st.markdown("""
+                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+                color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:8px">Source Provenance</div>
+                """, unsafe_allow_html=True)
+                for _prov in _enrich_right["provenance"][:4]:
+                    _p_anchor  = _prov.get("anchor_type", "")
+                    _p_snippet = (_prov.get("snippet") or "")[:80]
+                    _p_conf    = _prov.get("confidence", 0)
+                    _p_url     = _prov.get("source_url", "")
+                    st.markdown(
+                        f'<div class="evidence-item">'
+                        f'<div style="font-size:10px;font-weight:700;color:#4A8FD4;text-transform:uppercase;'
+                        f'letter-spacing:0.6px;margin-bottom:3px">{_p_anchor} · {_p_conf:.0%}</div>'
+                        f'<div style="font-size:11px;color:var(--text,#D4DDE6)">{_p_snippet}{"…" if len(_p_snippet)==80 else ""}</div>'
+                        + (f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-top:3px">'
+                           f'<a href="{_p_url}" target="_blank" style="color:#4A8FD4">{_p_url[:40]}…</a></div>' if _p_url else "")
+                        + f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Model trace — collapsed
+            with st.expander("Model Trace", expanded=False):
+                _ptree_r = _er_right.get("probability_tree", {})
+                _pt_trace_r = _ptree_r.get("compute_trace", {})
+                if _pt_trace_r:
+                    st.caption(f"Z = {_pt_trace_r.get('Z', 0):.6f} · {_pt_trace_r.get('n_transitions', 0)} transitions evaluated")
+                    st.caption(f"Formula: {_pt_trace_r.get('posterior_formula', '')}")
+                _dual_r = _er_right.get("dual_inference", [])
+                if _dual_r:
+                    _td_r = _dual_r[0]
+                    _la_r = _td_r.get("lie_algebra", {})
+                    st.caption(f"σ₁ = {_la_r.get('sigma1', 0):.4f} · ‖[A,B]‖ = {_la_r.get('matrix_norm', 0):.4f}")
+                with st.expander("Full JSON", expanded=False):
+                    st.json(_er_right)
+        else:
+            st.markdown("""
+            <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+            border-radius:3px;padding:16px;text-align:center;">
+                <div style="font-size:11px;color:var(--muted,#7A8FA6)">
+                    Evidence provenance appears here after running an assessment.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+        with st.expander("Ontology Status", expanded=False):
+            st.markdown("""
+            <div style="font-size:11px;color:var(--text,#D4DDE6);line-height:1.8">
+            <span style="color:#4CAF72">●</span> Geopolitics Ontology — active<br>
+            <span style="color:#4CAF72">●</span> Economics &amp; Finance Ontology — active<br>
+            <span style="color:#4CAF72">●</span> Technology Ontology — active<br>
+            <span style="color:#C8A84B">●</span> Technology Transition Ontology — partial
+            </div>
+            """, unsafe_allow_html=True)
 
 
 # ===========================================================================
