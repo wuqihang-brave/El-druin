@@ -130,3 +130,35 @@ def has_cjk(text: str) -> bool:
 def strip_cjk(text: str) -> str:
     """Remove all CJK characters from *text* and return the cleaned string."""
     return _CJK_RE.sub("", text).strip()
+
+
+# ---------------------------------------------------------------------------
+# Reverse mapping: English display label → internal CJK key
+# ---------------------------------------------------------------------------
+# Built lazily from PATTERN_DISPLAY_EN (value → key).  Used ONLY in the rare
+# case where an already-serialised display label must be fed back into an
+# internal computation path (e.g. recovering a CJK key from a serialised
+# JSON field).  Normal internal computation paths must use raw CJK keys
+# directly and must NOT call this function for every lookup.
+# ---------------------------------------------------------------------------
+
+_DISPLAY_TO_INTERNAL: Dict[str, str] = {v: k for k, v in PATTERN_DISPLAY_EN.items()}
+
+
+def internal_pattern(display_name: str) -> str:
+    """Return the raw internal CJK key for an English display label.
+
+    If *display_name* is already a CJK key (not found in the reverse map),
+    it is returned unchanged so callers can pass through internal keys safely.
+
+    IMPORTANT: this function must only be called on paths where a display label
+    has leaked into an internal computation context.  All *primary* computation
+    paths must use raw CJK keys throughout; call ``display_pattern()`` only at
+    the final serialisation boundary.
+    """
+    # Fast path: already an internal key
+    if display_name in PATTERN_DISPLAY_EN:
+        return display_name
+    # Reverse lookup
+    internal = _DISPLAY_TO_INTERNAL.get(display_name)
+    return internal if internal is not None else display_name

@@ -1808,3 +1808,114 @@ class TestConclusionPhrasingAndCompute:
                 f"Each row of bracket_matrix must have 8 elements"
             )
 
+
+class TestDualInferenceKeyUnification:
+    """Verify that every non-inverse transition node in the probability tree
+    receives fully-populated lie_algebra and dual_integration tooltip data.
+
+    Acceptance criteria (from the key-unification PR):
+      - tooltip_data.lie_algebra.matrix_norm > 0 for non-inverse transitions
+      - tooltip_data.lie_algebra.sigma1 > 0 for non-inverse transitions
+      - tooltip_data.dual_integration.verdict is present and non-empty
+      - tooltip_data.dual_integration.confidence_final is a positive float
+    These must hold for ALL non-inverse transition nodes, not just the first one,
+    so that 't0 is empty but t1 has values' can never happen again.
+    """
+
+    def _run(self):
+        from intelligence.evented_pipeline import run_evented_pipeline
+        return run_evented_pipeline(_SANCTION_FIXTURE, llm_service=None)
+
+    def _non_inverse_transition_nodes(self, result):
+        """Return all non-root, non-inverse transition nodes from probability_tree."""
+        nodes = result.probability_tree.get("nodes", [])
+        return [
+            n for n in nodes
+            if n.get("id") != "root"
+            and n.get("tooltip_data") is not None
+            and n.get("type") != "T1"  # T1 = inverse path
+        ]
+
+    def test_all_non_inverse_nodes_have_nonzero_matrix_norm(self):
+        """Every non-inverse transition node must have matrix_norm > 0.
+
+        This guards against the 't0 empty, t1 populated' mismatch caused by
+        single-active-pattern transitions not being covered by run_dual_inference.
+        """
+        result = self._run()
+        nodes = self._non_inverse_transition_nodes(result)
+        if not nodes:
+            pytest.skip("No non-inverse transition nodes in probability_tree")
+        for n in nodes:
+            lie_al = n["tooltip_data"].get("lie_algebra", {})
+            norm = lie_al.get("matrix_norm", 0.0)
+            assert norm > 0.0, (
+                f"Node {n['id']!r}: tooltip_data.lie_algebra.matrix_norm={norm!r} "
+                f"(expected > 0 — dual_inference result was not matched)"
+            )
+
+    def test_all_non_inverse_nodes_have_nonzero_sigma1(self):
+        """Every non-inverse transition node must have sigma1 > 0."""
+        result = self._run()
+        nodes = self._non_inverse_transition_nodes(result)
+        if not nodes:
+            pytest.skip("No non-inverse transition nodes in probability_tree")
+        for n in nodes:
+            lie_al = n["tooltip_data"].get("lie_algebra", {})
+            sigma1 = lie_al.get("sigma1", 0.0)
+            assert sigma1 > 0.0, (
+                f"Node {n['id']!r}: tooltip_data.lie_algebra.sigma1={sigma1!r} "
+                f"(expected > 0 — dual_inference Lie bracket was zero or unmatched)"
+            )
+
+    def test_all_non_inverse_nodes_have_dual_integration_verdict(self):
+        """Every non-inverse transition node must have a dual_integration verdict."""
+        result = self._run()
+        nodes = self._non_inverse_transition_nodes(result)
+        if not nodes:
+            pytest.skip("No non-inverse transition nodes in probability_tree")
+        for n in nodes:
+            dual = n["tooltip_data"].get("dual_integration", {})
+            verdict = dual.get("verdict", "")
+            assert verdict, (
+                f"Node {n['id']!r}: tooltip_data.dual_integration.verdict is missing or empty "
+                f"(dual_integration keys: {list(dual.keys())})"
+            )
+
+    def test_dual_inference_pass2_covers_single_active_pattern_transitions(self):
+        """run_dual_inference with transitions parameter must produce results for
+        transitions where only one pattern is in active_patterns.
+
+        This directly tests the Pass 2 addition to run_dual_inference.
+        """
+        from ontology.dual_inference_engine import run_dual_inference
+        from intelligence.evented_pipeline import TransitionEdge
+
+        # Only one pattern is "active" (has a prior)
+        active = [{"pattern_name": "霸權制裁模式", "confidence_prior": 0.72}]
+        # But the transition has a non-active pattern_b
+        transitions = [TransitionEdge(
+            from_pattern_a="霸權制裁模式",
+            from_pattern_b="正式軍事同盟模式",  # not in active_patterns
+            to_pattern="多邊聯盟制裁模式",
+            transition_type="compose",
+            prior_a=0.72,
+            prior_b=0.5,
+            lie_similarity=0.6,
+            posterior_weight=0.216,
+            typical_outcomes=[],
+            description="test",
+        )]
+        results = run_dual_inference(active, transitions)
+        assert results, "Pass 2 must produce at least one result for the single-active transition"
+        # Verify it covers the transition
+        keys = {(r["pattern_a"], r["pattern_b"], r["pattern_c"]) for r in results}
+        assert ("霸權制裁模式", "正式軍事同盟模式", "多邊聯盟制裁模式") in keys, (
+            "Pass 2 must produce a result keyed by raw CJK pattern names"
+        )
+        # Verify non-zero Lie algebra values
+        for r in results:
+            if r["pattern_a"] == "霸權制裁模式" and r["pattern_b"] == "正式軍事同盟模式":
+                lie = r["lie_algebra"]
+                assert lie["sigma1"] > 0.0, "sigma1 must be non-zero after Pass 2 fix"
+                assert lie["matrix_norm"] > 0.0, "matrix_norm must be non-zero after Pass 2 fix"
