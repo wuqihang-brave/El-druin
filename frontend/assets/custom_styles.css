@@ -29,9 +29,30 @@
 /* ─── Inter + JetBrains Mono fonts ─────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
+/* ─── CSS custom properties ─────────────────────────────────────────────── */
+:root {
+  --blue: #3B6EA8;
+  --blue-dark: #2A5280;
+  --blue-accent: #4A8FD4;
+  --gold: #C8A84B;
+  --gold-dark: #A8882A;
+  --red: #C0392B;
+  --red-dark: #A93226;
+  --bg: #0F1923;
+  --surface: #162030;
+  --surface-raised: #1E2D3D;
+  --border: #2D3F52;
+  --text: #D4DDE6;
+  --text-strong: #EDF2F7;
+  --muted: #7A8FA6;
+  --tag-bg: #1A2D42;
+  --font-sans: 'Inter', 'Segoe UI', 'Roboto', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
 /* ─── Global background & base text ─────────────────────────────────────── */
 .stApp, .main, body {
-  font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 14px !important;
   line-height: 1.5 !important;
 }
