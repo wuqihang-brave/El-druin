@@ -1529,6 +1529,15 @@ def _run_stage3(
     LLM 部分（仅限填写解释文本）：
       只被允许写 conclusion.text，解释已计算好的 alpha/beta 路径。
       所有数值字段在 LLM 调用前已确定，LLM 无法修改。
+
+    Args:
+        dual_results: Optional list of dual inference results from run_dual_inference().
+            Each element is a dict with keys: "pattern_a", "pattern_b", "pattern_c",
+            "bayesian" (BayesianInference fields), "lie_algebra" (LieAlgebraInference fields),
+            "integration" (IntegrationResult fields including consistency_score, verdict,
+            confidence_final, confidence_formula). Used to inject lie_emergence and
+            integration data into alpha_path and beta_path, and to use confidence_final
+            as the authoritative final confidence instead of the Bayesian posterior alone.
     """
     # ── A. 贝叶斯归一化概率计算 ─────────────────────────────────────────
     weights   = [t.posterior_weight for t in transitions if t.posterior_weight > 0]
@@ -1692,7 +1701,7 @@ def _run_stage3(
         _sigma1    = _lie.get("sigma1", 0.0)
         _top_dim   = _top_dims[0] if _top_dims else "unknown"
         _top_val   = _top_vals[0] if _top_vals else 0.0
-        _label = f"Strongest structural effect in '{_top_dim}' dimension (intensity={_top_val:.2f}, \u03c3\u2081={_sigma1:.3f})"
+        _label = f"Strongest structural effect in '{_top_dim}' dimension (intensity={_top_val:.2f}, σ₁={_sigma1:.3f})"
         return {
             "top_dims":       _top_dims,
             "top_values":     _top_vals,
@@ -2052,24 +2061,29 @@ def _fallback_conclusion_text(
 # Substrings that must never appear in rendered output (internal ontology jargon
 # or meta-commentary that does not belong in a real-world intelligence judgement)
 _RENDER_DISALLOWED = [
-    "⊕", "pattern", "mechanism", "composition_derived", "tech_decoupling",
+    # Ontology / math symbols that must not appear in natural language output
+    "⊕",
+    # Internal pattern / mechanism terminology
+    "pattern", "mechanism", "composition_derived", "tech_decoupling",
     "coercive_leverage", "kinetic_escalation", "oligopoly_supply",
-    "inverse_pattern", "algebra", "ontolog", "bayesian", "posterior",
+    "inverse_pattern", "semigroup", "attractor",
+    # Math / statistics jargon to be translated into natural language
+    "algebra", "ontolog", "bayesian", "posterior",
     "calibrated", "calibration", "normalisation", "normalization",
-    "deterministic", "prior", "semigroup", "attractor",
-    # Real-world phrasing guardrails: block meta-commentary
-    "assessed based on", "corroborating evidence", "evidence signals",
-    "based on corroborating", "corroborating", "evidence signal",
-    "computed from", "derived from ontology",
-    # Template phrasing guardrail: block generic actor labels that lack specificity
-    "targeted actor", "the affected state", "the subject state",
-    "the primary actor", "the coercing actor", "the dominant pattern",
-    "pattern node", "lie_sim", "prior_", "composition_derived",
-    "transition_type",
-    # Lie algebra / math jargon that must be translated to natural language
+    "deterministic", "prior",
     "commutator", "bracket", "semantic dimension", "emergence intensity",
     "sigma", "cosine similarity", "nonlinear", "active pattern",
     "composition table", "lie algebra",
+    # Meta-commentary guardrails: block self-explanation of methodology
+    "assessed based on", "corroborating evidence", "evidence signals",
+    "based on corroborating", "corroborating", "evidence signal",
+    "computed from", "derived from ontology",
+    # Generic actor label guardrails: must be replaced with named actors
+    "targeted actor", "the affected state", "the subject state",
+    "the primary actor", "the coercing actor", "the dominant pattern",
+    # Internal variable name leakage guardrails
+    "pattern node", "lie_sim", "prior_", "composition_derived",
+    "transition_type",
 ]
 
 # Precision for rounding numeric values in guardrail comparison

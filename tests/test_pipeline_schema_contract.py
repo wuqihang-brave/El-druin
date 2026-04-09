@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 import os
+import re
 from types import ModuleType
 from typing import Any
 from unittest.mock import patch
@@ -716,7 +717,6 @@ class TestConclusionProfessionalStruct:
             f"Old jargon 'Alternative scenario' found in evidence_path.summary: {summary[:120]}"
         )
         # Must contain a probability value (p=XX%)
-        import re
         assert re.search(r"p=\d+%", summary) or re.search(r"\d+%", summary), (
             f"evidence_path.summary should include a probability. Got: {summary[:120]}"
         )
