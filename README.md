@@ -12,7 +12,55 @@
 > Repository: https://github.com/wuqihang-brave/El-druin
 
 ---
+graph TD
+    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+    classDef inference fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef integration fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+    classDef output fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
 
+    %% 1. Text to Events
+    subgraph S1 [1. Text Processing & Event Extraction]
+        A[Text Input] --> B[Events Extraction<br/>T2/T1 + Evidence Anchors]
+    end
+    class S1 input;
+
+    %% 2. Mapping
+    subgraph S2 [2. Mechanism & Pattern Mapping]
+        B --> C[Mechanism Labels]
+        C --> D[Cartesian Pattern Mapping<br/>Active Patterns + Priors]
+    end
+    class S2 processing;
+
+    %% 3. Transitions
+    subgraph S3 [3. Transition Candidates]
+        D --> E[Transition Generation<br/>Composition / Inverse Table]
+    end
+    class S3 processing;
+
+    %% 4. Dual Inference
+    subgraph S4 [4. Dual Inference Engine]
+        E --> F1[Bayesian Inference<br/>P_Bayes C]
+        E --> F2[Lie Algebra Inference<br/>Nonlinear Activation 8D]
+    end
+    class S4 inference;
+
+    %% 5. Integration
+    subgraph S5 [5. Integration & Diagnostics]
+        F1 --> G[Consistency Alignment]
+        F2 --> G
+        G --> H[Final Confidence<br/>Upward Adjustment]
+        H --> I[Divergence & Emergence Diagnostics]
+    end
+    class S5 integration;
+
+    %% 6. Rendering
+    subgraph S6 [6. Rendering & Output Generation]
+        I --> J[Path Rendering<br/>Alpha/Beta Guided by Controlled Template / LLM]
+        J --> K[Security & Sanitization<br/>Strip / Escape Internal Keys]
+        K --> L((Final User Output<br/>Entities + Probabilities + Emergence))
+    end
+    class S6 output;
 ## 🔭 Project at a Glance
 
 EL-DRUIN is an **ontology-driven geopolitical intelligence platform** that forecasts how a political situation evolves by iterating named dynamic patterns through an algebraic transition system.
