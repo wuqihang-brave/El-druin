@@ -40,31 +40,14 @@ import streamlit as st
 
 # Labels for pages rendered inline inside app.py
 _INLINE_LABELS: list[str] = [
-    "🏠 Home",
-    "📝 Custom Analysis",
-    "🔮 Forecast",
-    "🕸 KG Tools",
-    "📰 Intelligence Feed",
+    "Dashboard",
+    "Assessments",
+    "Streams",
+    "Knowledge",
+    "Audit",
 ]
 
-# Pages living in the pages/ directory – (label, bootstrap-icon, relative path from root)
-_EXTERNAL_PAGES: list[tuple[str, str, str]] = [
-    ("🔬 Logic Audit",      "binoculars-fill", "pages/5_🔍_Logic_Audit.py"),
-    ("🔮 Oracle Lab (Beta)", "stars",           "pages/10_🔮_Oracle_Laboratory.py"),
-]
-
-_EXTERNAL_LABELS: list[str] = [ep[0] for ep in _EXTERNAL_PAGES]
-
-_ALL_LABELS: list[str] = _INLINE_LABELS + _EXTERNAL_LABELS
-_ALL_ICONS: list[str] = [
-    "house-fill",      # Home
-    "pencil-square",   # Custom Analysis
-    "broadcast",       # Forecast
-    "diagram-3-fill",  # KG Tools
-    "newspaper",       # Intelligence Feed
-    "binoculars-fill", # Logic Audit
-    "stars",           # Oracle Lab
-]
+_ALL_LABELS: list[str] = _INLINE_LABELS
 
 
 def render_sidebar_navigation(is_subpage: bool = False) -> str:
@@ -84,7 +67,7 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         from ``app.py``).  When ``is_subpage=True`` this function may not
         return if ``st.switch_page`` is triggered.
     """
-    _current = st.session_state.get("current_page", "🏠 Home")
+    _current = st.session_state.get("current_page", "Dashboard")
     _default_idx = _ALL_LABELS.index(_current) if _current in _ALL_LABELS else 0
 
     with st.sidebar:
@@ -92,9 +75,9 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         st.markdown(
             """
             <div style="text-align:center;padding:10px 0 4px 0;">
-                <h2 style="color:#0047AB;margin:0 0 2px 0;">EL&#39;druin</h2>
+                <h2 style="color:#0047AB;margin:0 0 2px 0;">EL&#39;DRUIN</h2>
                 <p style="color:#606060;font-size:0.78rem;margin:0;">
-                    Ontological Intelligence v1.0
+                    Intelligence Platform
                 </p>
             </div>
             """,
@@ -110,19 +93,28 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             div[data-testid="stRadio"] > div { gap: 0 !important; }
             div[data-testid="stRadio"] > div > label {
                 display: flex; align-items: center;
-                font-size: 13px; padding: 8px 14px;
-                border-bottom: 1px solid #E8E8E8;
+                font-size: 12px; font-weight: 500;
+                padding: 9px 16px;
+                border-bottom: 1px solid #1E2D3D;
                 cursor: pointer; width: 100%;
-                background: #F5F5F5;
+                background: transparent;
+                color: #8DA4B8;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
             }
             div[data-testid="stRadio"] > div > label:hover {
-                background: #E8EFF8;
+                background: #162030;
+                color: #C8D8E8;
             }
             div[data-testid="stRadio"] > div > label[data-baseweb="radio"]:has(input:checked) {
-                background: #0047AB !important; color: #FFFFFF !important; font-weight: 600;
+                background: transparent !important;
+                color: #E2EBF3 !important;
+                font-weight: 700;
+                border-left: 3px solid #4A8FD4 !important;
+                padding-left: 13px !important;
             }
             div[data-testid="stRadio"] > div > label[data-baseweb="radio"]:has(input:checked) * {
-                color: #FFFFFF !important;
+                color: #E2EBF3 !important;
             }
             </style>
             """,
@@ -136,12 +128,6 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             label_visibility="collapsed",
         )
 
-        # ── Route to external pages ────────────────────────────────────────
-        for label, _, path in _EXTERNAL_PAGES:
-            if selected == label:
-                st.session_state.current_page = selected
-                st.switch_page(path)
-
         # ── Route inline pages when called from a sub-page ─────────────────
         if is_subpage and selected in _INLINE_LABELS:
             st.session_state.current_page = selected
@@ -149,11 +135,11 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         st.markdown("---")
 
-        # ── Reasoning Engine section ───────────────────────────────────────
+        # ── Analysis Engine section ────────────────────────────────────────
         st.markdown(
             "<p style='font-weight:700;font-size:0.82rem;color:#0047AB;"
             "text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>"
-            "🧠 Reasoning Engine</p>",
+            "ANALYSIS ENGINE</p>",
             unsafe_allow_html=True,
         )
 
@@ -207,7 +193,7 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         # ── Refresh control ───────────────────────────────────────────────
         if st.button(
-            "🔄 Refresh Knowledge Graph",
+            "Refresh Graph",
             use_container_width=True,
             key="sidebar_kg_refresh",
         ):
