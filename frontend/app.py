@@ -2634,19 +2634,58 @@ elif page == "Knowledge":
 # Page: Audit
 # ===========================================================================
 elif page == "Audit":
-    st.title("🔮 Ontological Forecast")
+    st.markdown("""
+<div style="margin-bottom:6px">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+    color:var(--muted,#7A8FA6)">Structural Forecast & Attractor Audit</span>
+</div>
+""", unsafe_allow_html=True)
+    st.markdown("## Forecast Engine")
     st.caption(
-        "Forward simulation of ontological trajectories. Starting from a named relationship or scenario, "
-        "the engine performs algebraic iteration over the finite semi-group defined by the composition table, "
-        "converging to attractors (algebraic fixed points). Confidence decays as 0.85^t per step."
+        "Forward simulation of structural trajectories using algebraic iteration over the pattern composition semi-group. "
+        "Scenarios converge to attractors (idempotent fixed points). Confidence decays as 0.85ᵗ per step. "
+        "Use the Relationship and Custom tabs to run bespoke simulations."
     )
 
+    _aud_c1, _aud_c2, _aud_c3 = st.columns(3)
+    with _aud_c1:
+        st.markdown("""
+    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+    border-radius:3px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:4px">Simulation Method</div>
+        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Algebraic iteration</div>
+        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Composition semi-group</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with _aud_c2:
+        st.markdown("""
+    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+    border-radius:3px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:4px">Confidence Decay</div>
+        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">0.85ᵗ per step</div>
+        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Geometric attenuation</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with _aud_c3:
+        st.markdown("""
+    <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+    border-radius:3px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+        color:var(--muted,#7A8FA6);margin-bottom:4px">Convergence</div>
+        <div style="font-size:12px;color:var(--text-strong,#EDF2F7);font-weight:600">Attractor fixed points</div>
+        <div style="font-size:11px;color:var(--muted,#7A8FA6)">Idempotent elements</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
+
     _fc_tab_scenarios, _fc_tab_relationship, _fc_tab_custom, _fc_tab_attractors = st.tabs([
-        "📋 Preset Scenarios", "🔗 Relationship Forecast", "✏️ Custom Forecast", "🎯 Attractors"
+        "Preset Scenarios", "Relationship Forecast", "Custom Forecast", "Attractors"
     ])
 
     with _fc_tab_scenarios:
-        st.markdown("#### 📋 Preset Geopolitical Scenarios")
+        st.markdown("#### Preset Scenarios")
         st.caption("Select a pre-defined scenario to run a forward simulation.")
         _fc_scenarios_resp = _api._get("/analysis/forecast/scenarios")
         if "error" in _fc_scenarios_resp:
@@ -2668,7 +2707,7 @@ elif page == "Audit":
                         "Horizon (steps)", 1, 12, 6,
                         key=f"fc_horizon_{_sc_id}"
                     )
-                    if st.button(f"▶ Run Forecast", key=f"fc_run_{_sc_id}"):
+                    if st.button(f"Run Forecast", key=f"fc_run_{_sc_id}"):
                         with st.spinner("Running forward simulation…"):
                             _fc_result = _api._post(
                                 "/analysis/forecast/relationship",
@@ -2701,8 +2740,8 @@ elif page == "Audit":
                                 _sv = _step.get("state_vector", {})
                                 _sc_conf = _step.get("confidence", 0)
                                 st.markdown(
-                                    f'<div style="border-left:3px solid #1565C0;padding:4px 10px;'
-                                    f'margin-bottom:4px;background:#E3F2FD;font-size:12px;">'
+                                    f'<div style="border-left:3px solid var(--blue-accent,#4A8FD4);padding:4px 10px;'
+                                    f'margin-bottom:4px;background:var(--surface,#162030);border-radius:2px;font-size:12px;">'
                                     f'<b>Step {_sn}</b> (conf={_sc_conf:.0%}) — {", ".join(_sp[:3])}'
                                     f'</div>',
                                     unsafe_allow_html=True,
@@ -2712,7 +2751,7 @@ elif page == "Audit":
                             st.warning(f"⚡ Bifurcation points at steps: {_fc_bifur}")
 
     with _fc_tab_relationship:
-        st.markdown("#### 🔗 Relationship Forecast")
+        st.markdown("#### Relationship Forecast")
         st.caption(
             "Enter a scenario ID and horizon to run a trajectory simulation. "
             "The engine iterates the composition table until convergence or the horizon is reached."
@@ -2732,7 +2771,7 @@ elif page == "Audit":
             key="fc_rel_extra"
         )
 
-        if st.button("▶ Run Relationship Forecast", type="primary", key="fc_rel_run"):
+        if st.button("Run Relationship Forecast", type="primary", key="fc_rel_run"):
             _extra = [p.strip() for p in _fc_extra_pats.split(",") if p.strip()]
             with st.spinner("Running forward simulation…"):
                 _fc_rel_result = _api._post(
@@ -2749,7 +2788,7 @@ elif page == "Audit":
                 st.json(_fc_rel_res)
 
     with _fc_tab_custom:
-        st.markdown("#### ✏️ Custom Pattern Forecast")
+        st.markdown("#### Custom Pattern Forecast")
         st.caption("Specify initial patterns directly to run a custom forward simulation.")
         _fc_custom_pats = st.text_area(
             "Initial patterns (one per line)",
@@ -2759,7 +2798,7 @@ elif page == "Audit":
         )
         _fc_custom_horizon = st.slider("Horizon (steps)", 1, 12, 6, key="fc_custom_horizon")
 
-        if st.button("▶ Run Custom Forecast", type="primary", key="fc_custom_run"):
+        if st.button("Run Custom Forecast", type="primary", key="fc_custom_run"):
             _custom_pats = [p.strip() for p in _fc_custom_pats.split("\n") if p.strip()]
             if not _custom_pats:
                 st.warning("Please enter at least one initial pattern.")
@@ -2779,7 +2818,7 @@ elif page == "Audit":
                 st.json(_fc_cust_res)
 
     with _fc_tab_attractors:
-        st.markdown("#### 🎯 Known Attractors")
+        st.markdown("#### Known Attractors")
         st.caption(
             "Attractors are the algebraic fixed points of the composition semi-group. "
             "An element P is an attractor if compose(P, P) = P (idempotent). "
@@ -2790,7 +2829,7 @@ elif page == "Audit":
             options=["all", "geopolitics", "economics", "technology", "military"],
             key="fc_attractor_domain"
         )
-        if st.button("🔍 Find Attractors", key="fc_attractor_run"):
+        if st.button("Find Attractors", key="fc_attractor_run"):
             _domain_param = "" if _fc_domain == "all" else f"?domain={_fc_domain}"
             _fc_attr_resp = _api._get(f"/analysis/forecast/attractors{_domain_param}")
             st.session_state["fc_attractors"] = _fc_attr_resp
@@ -2809,12 +2848,11 @@ elif page == "Audit":
                     _attr_prob = _attr.get("probability", 0)
                     _attr_desc = _attr.get("description", "")
                     st.markdown(
-                        f'<div style="border-left:4px solid #D4AF37;padding:8px 12px;'
-                        f'margin-bottom:8px;background:#FFFDE7;border-radius:4px;">'
-                        f'<b>{_attr_name}</b>'
-                        f'&nbsp;<span style="font-size:11px;color:#888">domain={_attr_domain}</span>'
-                        f'&nbsp;<span style="font-size:11px;color:#555">p={_attr_prob:.0%}</span>'
-                        f'<div style="font-size:12px;color:#555;margin-top:4px">{_attr_desc}</div>'
+                        f'<div class="scenario-alpha" style="border-left:4px solid var(--gold,#C8A84B);">'
+                        f'<div class="scenario-alpha-hdr">{_attr_name}'
+                        f'<span style="font-weight:400;font-size:10px;margin-left:8px;color:var(--muted,#7A8FA6)">'
+                        f'domain={_attr_domain} · p={_attr_prob:.0%}</span></div>'
+                        f'<div style="font-size:12px;color:var(--text,#D4DDE6);margin-top:4px">{_attr_desc}</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
