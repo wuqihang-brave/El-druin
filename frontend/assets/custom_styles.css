@@ -1,111 +1,68 @@
 /*
- * EL-DRUIN — Divine Geometry Theme
- * Elite Intelligence aesthetic with Sacred Geometry color scheme
+ * EL-DRUIN — Gotham Intelligence Theme
+ * =====================================
  *
- * Color palette:
- *   --color-black    #0D1117  Deep Black-Blue    — global background
- *   --color-gold     #D4AF37  Apostolic Gold     — accents, links, highlights
- *   --color-white    #F0F0F0  Altar White        — primary text / headers
- *   --color-elevated #161B22  Elevated Dark      — card / container backgrounds
- *   --color-border   #30363D  Border Grey-Blue   — borders, inactive states
- *   --color-silver   #A8A8A8  Dimmed Silver      — secondary / label text
- *   --color-dark-silver #8B8B8B                 — tertiary text
+ * Restrained, dark, enterprise intelligence aesthetic.
+ *
+ * Design principles:
+ *   Dark neutral palette (dark charcoal/slate backgrounds)
+ *   Restrained accent colours (muted blue, amber for alerts, red only for critical)
+ *   Weight-based typographic hierarchy (not colour-based)
+ *   Dense information layout (reduced whitespace, smaller padding)
+ *   Square or minimal-radius cards
+ *   Monochrome line-icon aesthetic
+ *
+ * Palette:
+ *   --bg             #0F1923  Dark charcoal — main background
+ *   --surface        #162030  Dark card surface
+ *   --surface-raised #1E2D3D  Slightly raised surfaces
+ *   --border         #2D3F52  Dark border
+ *   --blue           #3B6EA8  Muted blue accent
+ *   --blue-accent    #4A8FD4  Active states and highlights
+ *   --gold           #C8A84B  Slightly desaturated amber
+ *   --red            #C0392B  Deep red for critical alerts
+ *   --text           #D4DDE6  Light text on dark
+ *   --text-strong    #EDF2F7  Headings
+ *   --muted          #7A8FA6  Secondary / label text
  */
 
-/* ─── CSS custom properties ──────────────────────────────────────────────── */
+/* ─── Inter + JetBrains Mono fonts ─────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ─── CSS custom properties ─────────────────────────────────────────────── */
 :root {
-  --color-gold:         #D4AF37;
-  --color-gold-dark:    #B8931F;
-  --color-gold-light:   #FFE066;
-  --color-gold-visited: #C9A227;
-  --color-black:        #0D1117;
-  --color-elevated:     #161B22;
-  --color-white:        #F0F0F0;
-  --color-silver:       #A8A8A8;
-  --color-dark-silver:  #8B8B8B;
-  --color-border:       #30363D;
-  --color-card-bg:      rgba(22, 27, 34, 0.7);
-  --color-gold-glow-sm: rgba(212, 175, 55, 0.1);
-  --color-gold-glow-md: rgba(212, 175, 55, 0.3);
-  --color-gold-glow-lg: rgba(212, 175, 55, 0.5);
-  --font-sans:          'Inter', 'Segoe UI', 'Roboto', sans-serif;
-  --font-mono:          'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-
-  /* Legacy aliases kept for backward compatibility */
-  --gold:       #D4AF37;
-  --gold-dark:  #B8931F;
-  --black:      #0D1117;
-  --white:      #F0F0F0;
-  --silver:     #A8A8A8;
-  --border:     #30363D;
-  --card-bg:    rgba(22, 27, 34, 0.7);
+  --blue: #3B6EA8;
+  --blue-dark: #2A5280;
+  --blue-accent: #4A8FD4;
+  --gold: #C8A84B;
+  --gold-dark: #A8882A;
+  --red: #C0392B;
+  --red-dark: #A93226;
+  --bg: #0F1923;
+  --surface: #162030;
+  --surface-raised: #1E2D3D;
+  --border: #2D3F52;
+  --text: #D4DDE6;
+  --text-strong: #EDF2F7;
+  --muted: #7A8FA6;
+  --tag-bg: #1A2D42;
+  --font-sans: 'Inter', 'Segoe UI', 'Roboto', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
 }
-
-/* ─── Inter font (Google Fonts) ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
 /* ─── Global background & base text ─────────────────────────────────────── */
 .stApp, .main, body {
-  background-color: var(--color-black) !important;
-  color: var(--color-white) !important;
   font-family: var(--font-sans) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
 }
 
 /* Main app view container */
 [data-testid="stAppViewContainer"] {
-  background-color: var(--color-black) !important;
+  background-color: var(--bg) !important;
 }
 
-/* Dot-grid texture overlay (subtle 0.05 opacity) */
-.stApp::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(circle, var(--color-border) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.05;
-  z-index: 0;
-}
-
-/* ─── All markdown / text elements ──────────────────────────────────────── */
-.stMarkdown {
-  color: var(--color-white) !important;
-}
-.stMarkdown p {
-  color: var(--color-white) !important;
-}
-.stMarkdown h1,
-.stMarkdown h2,
-.stMarkdown h3,
-.stMarkdown h4,
-.stMarkdown h5,
-.stMarkdown h6 {
-  color: var(--color-white) !important;
-}
-.stMarkdown li,
-.stMarkdown td,
-.stMarkdown th {
-  color: var(--color-white) !important;
-}
-p, span, div {
-  color: var(--color-white);
-}
-
-/* ─── Hyperlinks ─────────────────────────────────────────────────────────── */
-a {
-  color: var(--color-gold) !important;
-  text-decoration: none !important;
-}
-a:hover {
-  color: var(--color-gold-light) !important;
-  text-decoration: underline !important;
-}
-a:visited {
-  color: var(--color-gold-visited) !important;
-}
-
-/* ─── Main container ─────────────────────────────────────────────────────── */
+/* Main content block padding */
 .main .block-container {
   padding-top: 1.2rem !important;
   padding-bottom: 1.2rem !important;
@@ -114,244 +71,121 @@ a:visited {
   background: transparent !important;
 }
 
-/* ─── Sidebar ────────────────────────────────────────────────────────────── */
-section[data-testid="stSidebar"],
-[data-testid="stSidebar"] {
-  background-color: var(--color-black) !important;
-  border-right: 1px solid var(--color-border) !important;
+/* ─── All markdown / text elements ──────────────────────────────────────── */
+.stMarkdown {
+  color: var(--text) !important;
 }
-[data-testid="stSidebar"] .stMarkdown {
-  color: var(--color-white) !important;
+.stMarkdown p {
+  color: var(--text) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
 }
-[data-testid="stSidebar"] .stMarkdown p {
-  color: var(--color-white) !important;
+.stMarkdown h1,
+.stMarkdown h2,
+.stMarkdown h3,
+.stMarkdown h4,
+.stMarkdown h5,
+.stMarkdown h6 {
+  color: var(--text-strong) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
 }
-[data-testid="stSidebar"] .stMarkdown h1,
-[data-testid="stSidebar"] .stMarkdown h2,
-[data-testid="stSidebar"] .stMarkdown h3 {
-  color: var(--color-white) !important;
-}
-section[data-testid="stSidebar"] * {
-  color: var(--color-white) !important;
-}
-section[data-testid="stSidebar"] .stRadio label {
-  color: var(--color-white) !important;
-}
-section[data-testid="stSidebar"] .stButton > button {
-  color: var(--color-black) !important;
+.stMarkdown li,
+.stMarkdown td,
+.stMarkdown th {
+  color: var(--text) !important;
 }
 
-/* Sidebar footer quote */
-section[data-testid="stSidebar"] .sidebar-footer {
-  color: var(--color-white) !important;
-  font-size: 0.75rem !important;
-  font-style: italic !important;
+/* ─── Hyperlinks ─────────────────────────────────────────────────────────── */
+a {
+  color: var(--blue-accent) !important;
+  text-decoration: none !important;
 }
-
-/* ─── Headings ───────────────────────────────────────────────────────────── */
-h1, h2, h3, h4, h5, h6 {
-  color: var(--color-white) !important;
-  font-family: var(--font-sans) !important;
-  font-weight: 300 !important;
-  letter-spacing: 0.08em !important;
+a:hover {
+  color: var(--text-strong) !important;
+  text-decoration: underline !important;
 }
 
 /* ─── Containers & cards ─────────────────────────────────────────────────── */
-div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
-  padding: 0.75rem !important;
-  background-color: var(--color-card-bg) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
-}
-
-/* st.container explicit selector */
 .stContainer,
 div[data-testid="stContainer"] {
-  background-color: var(--color-elevated) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 3px !important;
 }
 
 /* ─── Expanders ──────────────────────────────────────────────────────────── */
-.stExpander,
-div[data-testid="stExpander"] {
-  background-color: var(--color-elevated) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
-}
-/* Expander header text */
-.stExpander details summary,
-div[data-testid="stExpander"] summary {
-  color: var(--color-white) !important;
-}
 .stExpander details summary:hover,
 div[data-testid="stExpander"] summary:hover {
-  background-color: var(--color-gold-glow-sm) !important;
+  background-color: var(--surface-raised) !important;
 }
-/* Expander arrow icon */
 .stExpander details summary svg,
 div[data-testid="stExpander"] summary svg {
-  color: var(--color-gold) !important;
-  fill: var(--color-gold) !important;
+  color: var(--blue-accent) !important;
+  fill: var(--blue-accent) !important;
 }
 [data-testid="stExpanderToggleIcon"] {
-  color: var(--color-gold) !important;
-}
-
-/* ─── Metrics ────────────────────────────────────────────────────────────── */
-.stMetric,
-div[data-testid="metric-container"] {
-  background-color: var(--color-elevated) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 6px !important;
-  padding: 12px !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
-}
-[data-testid="stMetricValue"] {
-  color: var(--color-gold) !important;
-  font-weight: 700 !important;
-  font-size: 1.6rem !important;
-}
-[data-testid="stMetricLabel"] {
-  color: var(--color-silver) !important;
-  font-size: 0.8rem !important;
-}
-
-/* ─── Input fields ───────────────────────────────────────────────────────── */
-.stTextInput input,
-.stTextArea textarea,
-.stNumberInput input,
-.stSelectbox select {
-  background-color: var(--color-elevated) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 4px !important;
-  color: var(--color-white) !important;
-  font-family: var(--font-sans) !important;
-}
-.stTextInput input:focus,
-.stTextArea textarea:focus,
-.stNumberInput input:focus {
-  border-color: var(--color-gold) !important;
-  box-shadow: 0 0 8px var(--color-gold-glow-md) !important;
-  outline: none !important;
-}
-.stTextInput label,
-.stTextArea label,
-.stNumberInput label,
-.stSelectbox label {
-  color: var(--color-silver) !important;
-  font-size: 0.82rem !important;
-}
-
-/* ─── Buttons ────────────────────────────────────────────────────────────── */
-.stButton > button {
-  background-color: var(--color-gold) !important;
-  color: var(--color-black) !important;
-  border: 1px solid var(--color-gold) !important;
-  border-radius: 4px !important;
-  font-weight: 600 !important;
-  font-family: var(--font-sans) !important;
-  letter-spacing: 0.04em !important;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
-}
-.stButton > button:hover {
-  background-color: var(--color-gold-dark) !important;
-  box-shadow: 0 0 15px var(--color-gold-glow-lg) !important;
-}
-.stButton > button[kind="secondary"] {
-  background-color: var(--color-border) !important;
-  color: var(--color-white) !important;
-  border: 1px solid var(--color-border) !important;
-}
-.stButton > button[kind="secondary"]:hover {
-  background-color: #3a4149 !important;
-  border: 1px solid var(--color-gold) !important;
-  color: var(--color-white) !important;
-}
-
-/* ─── Dividers ───────────────────────────────────────────────────────────── */
-hr {
-  border-color: var(--color-border) !important;
+  color: var(--blue-accent) !important;
 }
 
 /* ─── Progress bars ──────────────────────────────────────────────────────── */
 .stProgress > div > div > div {
-  background-color: var(--color-gold) !important;
+  background-color: var(--blue-accent) !important;
 }
 .stProgress > div > div {
-  background-color: var(--color-border) !important;
+  background-color: var(--border) !important;
 }
 
 /* ─── Tabs ───────────────────────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
   background-color: transparent !important;
-  border-bottom: 1px solid var(--color-border) !important;
-}
-.stTabs [data-baseweb="tab"] {
-  color: var(--color-silver) !important;
-  background-color: transparent !important;
-  border-bottom: 2px solid transparent !important;
-  transition: color 0.2s ease !important;
-}
-.stTabs [aria-selected="true"] {
-  color: var(--color-gold) !important;
-  border-bottom: 2px solid var(--color-gold) !important;
-  background-color: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 /* ─── Dataframes / tables ────────────────────────────────────────────────── */
 .stDataFrame {
-  background-color: var(--color-elevated) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 4px !important;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 3px !important;
 }
 .stDataFrame th {
-  background-color: var(--color-elevated) !important;
-  color: var(--color-gold) !important;
+  background-color: var(--surface-raised) !important;
+  color: var(--blue-accent) !important;
   font-size: 0.8rem !important;
   letter-spacing: 0.05em !important;
 }
 .stDataFrame td {
-  color: var(--color-white) !important;
+  color: var(--text) !important;
   font-size: 0.82rem !important;
 }
 
 /* ─── Captions / help text ───────────────────────────────────────────────── */
 .stCaption, small, caption {
-  color: var(--color-silver) !important;
+  color: var(--muted) !important;
   font-size: 0.78rem !important;
 }
 
 /* ─── Info / warning / error / success boxes ─────────────────────────────── */
 .stAlert {
-  border-radius: 4px !important;
-  border: 1px solid var(--color-border) !important;
-  background-color: var(--color-elevated) !important;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
 }
-.stAlert [data-testid="stAlertDynamicIcon"] { color: var(--color-gold) !important; }
 
 /* ─── Selectbox ──────────────────────────────────────────────────────────── */
 [data-baseweb="select"] {
-  background-color: var(--color-elevated) !important;
+  background-color: var(--surface-raised) !important;
 }
 [data-baseweb="select"] > div {
-  background-color: var(--color-elevated) !important;
-  border-color: var(--color-border) !important;
-  color: var(--color-white) !important;
+  background-color: var(--surface-raised) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
 }
 
 /* ─── Radio buttons ──────────────────────────────────────────────────────── */
-.stRadio label { color: var(--color-white) !important; }
+.stRadio label { color: var(--text) !important; }
 
 /* ─── Spinner ────────────────────────────────────────────────────────────── */
-.stSpinner > div { border-top-color: var(--color-gold) !important; }
+.stSpinner > div { border-top-color: var(--blue-accent) !important; }
 
 /* ─── Fade-in animation for main pane ───────────────────────────────────── */
 @keyframes eldruin-fadein {
@@ -361,55 +195,41 @@ hr {
 .main .block-container {
   animation: eldruin-fadein 0.4s ease-in !important;
 }
-section[data-testid="stSidebar"] {
-  animation: eldruin-fadein 0.4s ease-in !important;
-}
-div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-  animation: eldruin-fadein 0.4s ease-in !important;
-}
 
 /* ─── Custom utility classes ─────────────────────────────────────────────── */
-/* Gold accent label */
-.gold-label {
-  color: var(--color-gold);
-  font-weight: 600;
-}
 /* Entity tag chips */
 .entity-tag {
   display: inline-block;
-  background: var(--color-elevated);
-  color: var(--color-gold);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 2px 10px;
+  background: var(--tag-bg);
+  color: var(--blue-accent);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 8px;
   margin: 2px;
   font-size: 0.78rem;
   font-weight: 600;
-}
-/* Order score label */
-.score-label {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--color-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 /* Status dots */
-.status-ok   { color: #27ae60; font-size: 1.1rem; }
-.status-err  { color: #e74c3c; font-size: 1.1rem; }
-.status-warn { color: #f39c12; font-size: 1.1rem; }
+.status-ok   { color: #4CAF72; font-size: 1.1rem; }
+.status-err  { color: var(--red); font-size: 1.1rem; }
+.status-warn { color: var(--gold); font-size: 1.1rem; }
 /* Order analysis card */
 .order-card {
-  background: rgba(22, 27, 34, 0.8);
-  color: var(--color-white);
-  border-left: 4px solid var(--color-gold);
-  border-radius: 6px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  margin-bottom: 12px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--surface);
+  color: var(--text);
+  border-left: 4px solid var(--gold);
+  border-radius: 3px;
+  padding: 14px 16px;
+  box-shadow: none;
+  margin-bottom: 10px;
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
-.order-card h3 { color: var(--color-gold) !important; margin: 0 0 8px 0; }
-.order-card p  { margin: 4px 0; font-size: 0.9rem; color: var(--color-silver); }
+.order-card h3 { color: var(--gold) !important; margin: 0 0 8px 0; }
+.order-card p  { margin: 4px 0; font-size: 0.9rem; color: var(--muted); }
 
 /* ─── Object Explorer – Borderless Tables ───────────────────────────────── */
 .stDataFrame table {
@@ -419,39 +239,27 @@ div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
 .stDataFrame th,
 .stDataFrame td {
   border: none;
-  border-bottom: 1px solid #30363D;
+  border-bottom: 1px solid var(--border);
 }
 
-/* ─── Metrics & Expandable Cards ────────────────────────────────────────── */
-.stMetric,
-.stExpandable-section {
-  background-color: #1A1A1A;
-  border: 1px solid #30363D;
-  border-radius: 8px;
-  padding: 16px;
-}
-
-/* ─── Pulse animation for recently-updated graph nodes ───────────────────── */
-@keyframes pulse-glow {
-  0%   { box-shadow: 0 0 0 0   rgba(212, 175, 55, 0.7); }
-  70%  { box-shadow: 0 0 0 10px rgba(212, 175, 55, 0);   }
-  100% { box-shadow: 0 0 0 0   rgba(212, 175, 55, 0);   }
-}
-.node-updated-recent {
-  animation: pulse-glow 2s infinite;
+/* ─── Proof Panel ────────────────────────────────────────────────────────── */
+.proof-snippet {
+  border-left: 3px solid var(--gold);
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: var(--surface);
+  border-radius: 0 3px 3px 0;
+  font-style: italic;
+  font-size: 0.85rem;
 }
 
 /* ─── Graph node styling ─────────────────────────────────────────────────── */
-/* Core entities (high influence) */
 .node-core {
-  border: 2px solid #D4AF37;
-  box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+  border: 2px solid var(--blue-accent);
 }
-/* Secondary entities */
 .node-secondary {
-  border: 1px solid #A8A8A8;
+  border: 1px solid var(--muted);
 }
-/* Edge defaults */
 .graph-edge {
   opacity: 0.6;
   transition: opacity 0.2s, stroke-width 0.2s;
@@ -460,13 +268,10 @@ div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
   opacity: 1.0;
 }
 
-/* ─── Proof Panel ────────────────────────────────────────────────────────── */
-.proof-snippet {
-  border-left: 3px solid var(--color-gold);
-  padding: 8px 12px;
-  margin: 8px 0;
-  background: #1A1A1A;
-  border-radius: 0 4px 4px 0;
-  font-style: italic;
-  font-size: 0.85rem;
+/* ─── Score label ────────────────────────────────────────────────────────── */
+.score-label {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--blue-accent);
 }
+
