@@ -1545,35 +1545,56 @@ def _run_stage3(
             as the authoritative final confidence instead of the Bayesian posterior alone.
     """
     # ── A. 贝叶斯归一化概率计算 ─────────────────────────────────────────
-    weights   = [t.posterior_weight for t in transitions if t.posterior_weight > 0]
-    Z         = sum(weights) if weights else 1.0
+    # Build a weight vector aligned to the transitions list (preserving index order).
+    # When collapse is detected we sharpen the weights with a power transform so
+    # that the displayed probabilities spread beyond the 45–65% band.
+    _SHARPEN_POWER = 2.5  # raise weights to this power when distribution is flat
+    _aligned_weights = [t.posterior_weight for t in transitions]
+    _pos_weights     = [w for w in _aligned_weights if w > 0]
+    Z                = sum(_pos_weights) if _pos_weights else 1.0
 
-    alpha_prob = round(transitions[0].posterior_weight / Z, 3) if transitions else 0.6
-    beta_prob  = round(transitions[1].posterior_weight / Z, 3) if len(transitions) >= 2 else (1 - alpha_prob)
-
-    # Instrumentation: detect and warn about distribution collapse.
-    # "Collapse" means all outcomes have similar probability (near-uniform).
-    # We check: top probability > floor AND top1-top2 gap > floor.
-    if len(weights) >= 2:
-        _sorted_w = sorted(weights, reverse=True)
-        _top_prob = _sorted_w[0] / Z
-        _gap = (_sorted_w[0] - _sorted_w[1]) / Z
+    _sharpened_note = ""
+    if len(_pos_weights) >= 2:
+        _sorted_w   = sorted(_pos_weights, reverse=True)
+        _top_prob   = _sorted_w[0] / Z
+        _gap        = (_sorted_w[0] - _sorted_w[1]) / Z
         if _top_prob <= _COLLAPSE_TOP_PROB_FLOOR or _gap < _COLLAPSE_GAP_FLOOR:
-            logger.warning(
-                "Stage3: distribution collapse detected — top_prob=%.3f (floor=%.2f), "
-                "top1-top2 gap=%.3f (floor=%.2f). "
-                "Top weights: %s. Z=%.4f. "
-                "Consider reviewing priors or the composition table.",
-                _top_prob, _COLLAPSE_TOP_PROB_FLOOR,
-                _gap, _COLLAPSE_GAP_FLOOR,
-                [round(w, 4) for w in _sorted_w[:5]],
-                Z,
-            )
+            # Apply power sharpening: w_i → w_i^SHARPEN_POWER to amplify differences.
+            # Filter zeros before applying the transform so positive-weight transitions
+            # drive the computation; zeros raised to any positive power remain zero.
+            _sharp_aligned = [
+                w ** _SHARPEN_POWER if w > 0 else 0.0 for w in _aligned_weights
+            ]
+            _Z_sharp       = sum(w for w in _sharp_aligned if w > 0)
+            if _Z_sharp > 1e-9:
+                _aligned_weights = _sharp_aligned
+                Z                = _Z_sharp
+                _sharpened_note  = f" [sharpened ^{_SHARPEN_POWER}]"
+                logger.info(
+                    "Stage3: distribution collapse (top_prob=%.3f, gap=%.3f); "
+                    "applied power sharpening (^%.1f) → new_top=%.3f",
+                    _top_prob, _gap, _SHARPEN_POWER,
+                    max(w for w in _sharp_aligned if w > 0) / _Z_sharp,
+                )
+            else:
+                logger.warning(
+                    "Stage3: distribution collapse detected but sharpening produced zero Z; "
+                    "keeping original weights.",
+                )
         else:
             logger.info(
                 "Stage3: probability distribution well-spread — top_prob=%.3f, gap=%.3f",
                 _top_prob, _gap,
             )
+
+    # alpha_prob / beta_prob from (possibly sharpened) aligned weights
+    alpha_prob = round(_aligned_weights[0] / Z, 3) if transitions and _aligned_weights[0] > 0 else 0.6
+    beta_prob  = (
+        round(_aligned_weights[1] / Z, 3)
+        if len(transitions) >= 2 and _aligned_weights[1] > 0
+        else (1 - alpha_prob)
+    )
+    weights = _aligned_weights  # use sharpened weights downstream for Z checks
 
     # Alpha 路径 = 最高后验转移
     alpha_transition = transitions[0] if transitions else None
@@ -1800,22 +1821,41 @@ def _run_stage3(
     _beta_primary_phrase  = _outcome_phrase(beta_path.get("primary_outcome", "structural_disruption"))
 
     # ── Raw (deterministic) summary strings ─────────────────────────────────
-
+    # Inject Lie algebra emergence signal into evidence summary so it propagates
+    # through the rendering pass and appears in the final output.
+    _lie_em_raw   = alpha_path.get("lie_emergence", {})
+    _lie_dims_raw = _lie_em_raw.get("top_dims", [])
+    _lie_sig_raw  = _lie_em_raw.get("sigma1", 0.0)
+    _lie_note_raw = (
+        f" Structural emergence: {_lie_dims_raw[0]} (σ₁={_lie_sig_raw:.3f})."
+        if len(_lie_dims_raw) > 0 and _lie_sig_raw > 0
+        else ""
+    )
     _evidence_summary_raw = (
-        f"{_alpha_primary_phrase} (p={alpha_path['probability']:.1%})."
+        f"{_alpha_primary_phrase} (p={alpha_path['probability']:.1%}).{_lie_note_raw}"
     )
     _hypothesis_summary_raw = (
         f"{_beta_primary_phrase} (p={beta_path.get('probability', 0.0):.0%}), "
         f"contingent on {_trigger_clean}."
     )
-    # executive_judgement_raw: pure deterministic fallback (no LLM)
-    _executive_judgement_raw = _fallback_conclusion_text(
-        alpha_path, beta_path, driving_factors, composite
+    # executive_judgement_raw: use LLM output from _generate_conclusion_text if
+    # available (it contains the Lie algebra narrative), otherwise fall back to
+    # the deterministic template.  This ensures the Lie block reaches the
+    # render_conclusion_with_llm rendering pass instead of being silently dropped.
+    _executive_judgement_raw = (
+        conclusion_text
+        if conclusion_text and conclusion_text.strip()
+        else _fallback_conclusion_text(alpha_path, beta_path, driving_factors, composite)
     )
 
     # ── LLM rendering pass (post-deterministic paraphrase) ──────────────────
-    # Extract entity strings from events for the allowed-entity list.
-    # EventNode.entities is Dict[str, List[str]], e.g. {"actor": ["US"], "target": ["China"]}.
+    # Build allowed-entity list from:
+    # 1. EventNode.entities (Dict[str, List[str]]) — the primary structured source.
+    #    (EventNode does not have an 'args' attribute; using ev.entities is correct.)
+    # 2. proper nouns extracted directly from the news text — catches named entities
+    #    that the LLM uses in rendered output but were not in the event dicts.
+    # This combination prevents the guardrail from reverting to raw when the LLM
+    # references entities present in the fragment but absent from event dicts.
     _allowed_entities: List[str] = []
     for ev in events:
         _ents = ev.entities if hasattr(ev, "entities") else {}
@@ -1826,6 +1866,8 @@ def _run_stage3(
                         _allowed_entities.append(_v)
             elif isinstance(_vlist, str) and _vlist:
                 _allowed_entities.append(_vlist)
+    # Supplement with proper nouns extracted from the news text itself
+    _allowed_entities.extend(sorted(_extract_proper_nouns(text)))
     # Deduplicate, keep order
     _seen: set = set()
     _allowed_entities_dedup: List[str] = []
@@ -2758,10 +2800,21 @@ def run_evented_pipeline(
             )
             # Dual integration info: look up by (raw) pattern names instead of
             # array index, since dual_results and transitions may be sorted differently.
+            # For inverse transitions (from_pattern_b == "(inverse)"), the dual_lookup
+            # won't have an entry — use a secondary lookup on (pattern_a, to_pattern).
             _dual_info: Dict[str, Any] = {}
             _dr_match = _dual_lookup.get(
                 (t.from_pattern_a, t.from_pattern_b, t.to_pattern)
             )
+            if _dr_match is None and t.transition_type == "inverse":
+                # Fallback: match on source pattern_a and target pattern_c only
+                for _dr_fb in (dual_results or []):
+                    if (
+                        _dr_fb.get("pattern_a") == t.from_pattern_a
+                        and _dr_fb.get("pattern_c") == t.to_pattern
+                    ):
+                        _dr_match = _dr_fb
+                        break
             if _dr_match:
                 _di = _dr_match.get("integration", {})
                 _dual_info = {

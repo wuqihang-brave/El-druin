@@ -11,17 +11,6 @@
 > Author: Qihang Wu — The Hong Kong Polytechnic University  
 > Repository: https://github.com/wuqihang-brave/El-druin
 
----
-
-## 🔭 Project at a Glance
-
-EL-DRUIN is an **ontology-driven geopolitical intelligence platform** that forecasts how a political situation evolves by iterating named dynamic patterns through an algebraic transition system.
-
-- **What it does:** Given a news excerpt, EL-DRUIN extracts events, activates ontology patterns (e.g. *Hegemonic Sanctions*, *Tech Decoupling*), computes Lie-algebra similarity-weighted transitions, and outputs a Bayesian confidence distribution over future trajectories — all in a single deterministic pipeline.
-- **Traceability & auditability:** Every confidence value is anchored to a `compute_trace_ref` string of the form `bayesian_posterior|Z=…` that encodes the exact formula used. No stochastic guess-work: same input always produces the same number, with a full computation trace any analyst can verify.
-- **Hallucination guard:** An entity-invention guard rejects any LLM rendering that introduces proper nouns absent from the source text. A numeric consistency guard ensures rendered numbers match the deterministic output exactly.
-
----
 
 ## ⚡ 60-Second Overview
 
