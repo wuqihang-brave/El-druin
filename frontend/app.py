@@ -2669,6 +2669,31 @@ elif page == "Streams":
         if search_query:
             st.info(f"🔍 Found {len(articles)} results")
 
+        import hashlib as _hashlib
+
+        # Domain auto-tag mapping based on category field
+        _DOMAIN_TAG_MAP: Dict[str, str] = {
+            "geopolitics": "GEOPOLITICS",
+            "geopolitical": "GEOPOLITICS",
+            "military": "MILITARY",
+            "defense": "MILITARY",
+            "defence": "MILITARY",
+            "economic": "ECONOMIC",
+            "economics": "ECONOMIC",
+            "finance": "ECONOMIC",
+            "financial": "ECONOMIC",
+            "technology": "TECHNOLOGY",
+            "tech": "TECHNOLOGY",
+            "science": "TECHNOLOGY",
+        }
+
+        def _domain_tag(article: Dict[str, Any]) -> str:
+            _cat = (article.get("category") or "").lower()
+            for _key, _label in _DOMAIN_TAG_MAP.items():
+                if _key in _cat:
+                    return _label
+            return "GENERAL"
+
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Articles", len(articles))
         m2.metric("Categories", len({a.get("category", "?") for a in articles}))
@@ -2742,31 +2767,6 @@ elif page == "Streams":
         _display_articles = articles
         if _selected_domain != "All":
             _display_articles = [a for a in articles if _domain_tag(a) == _selected_domain]
-
-        import hashlib as _hashlib
-
-        # Domain auto-tag mapping based on category field
-        _DOMAIN_TAG_MAP: Dict[str, str] = {
-            "geopolitics": "GEOPOLITICS",
-            "geopolitical": "GEOPOLITICS",
-            "military": "MILITARY",
-            "defense": "MILITARY",
-            "defence": "MILITARY",
-            "economic": "ECONOMIC",
-            "economics": "ECONOMIC",
-            "finance": "ECONOMIC",
-            "financial": "ECONOMIC",
-            "technology": "TECHNOLOGY",
-            "tech": "TECHNOLOGY",
-            "science": "TECHNOLOGY",
-        }
-
-        def _domain_tag(article: Dict[str, Any]) -> str:
-            _cat = (article.get("category") or "").lower()
-            for _key, _label in _DOMAIN_TAG_MAP.items():
-                if _key in _cat:
-                    return _label
-            return "GENERAL"
 
         if not articles:
             st.info("No articles found. Adjust filters or refresh.")
