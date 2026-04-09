@@ -644,12 +644,15 @@ def _domain_class(domain: str) -> str:
 
 def _classify_regime(lie_algebra_data: Dict[str, Any], state_vector_data: Dict[str, Any]) -> Dict[str, Any]:
     """Map Lie algebra outputs to a discrete structural regime classification."""
-    sigma1 = lie_algebra_data.get("sigma1") or 0.0
-    mat_norm = lie_algebra_data.get("matrix_norm") or 0.0
+    _sigma1_raw = lie_algebra_data.get("sigma1")
+    sigma1 = float(_sigma1_raw) if _sigma1_raw is not None else 0.0
+    _mat_norm_raw = lie_algebra_data.get("matrix_norm")
+    mat_norm = float(_mat_norm_raw) if _mat_norm_raw is not None else 0.0
     phase_transitions = lie_algebra_data.get("phase_transitions") or []
-    dominant_dim = state_vector_data.get("dominant_dim") or (
-        state_vector_data.get("mean_vector", {}).get("dominant_dim") if isinstance(state_vector_data.get("mean_vector"), dict) else None
-    ) or "unknown"
+    _dom_raw = state_vector_data.get("dominant_dim")
+    if _dom_raw is None and isinstance(state_vector_data.get("mean_vector"), dict):
+        _dom_raw = state_vector_data.get("mean_vector", {}).get("dominant_dim")
+    dominant_dim = _dom_raw if _dom_raw is not None else "unknown"
 
     # Regime classification thresholds (checked in priority order)
     if sigma1 >= 6.0 or mat_norm >= 2.0 or len(phase_transitions) >= 2:
