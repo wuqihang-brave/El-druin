@@ -44,7 +44,6 @@ _INLINE_LABELS: list[str] = [
     "Assessments",
     "Streams",
     "Knowledge",
-    "Audit",
 ]
 
 _ALL_LABELS: list[str] = _INLINE_LABELS
