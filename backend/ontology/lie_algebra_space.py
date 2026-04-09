@@ -116,7 +116,11 @@ _PATTERN_VECTORS: Dict[str, List[float]] = {
     "實體清單技術封鎖模式":  [ 0.80,  -0.20,  0.30, 0.10,  0.50, 0.10,  0.50, 0.90],  # traditional alias
     "国家间武力冲突模式":   [ 0.70,  -0.70,  0.00, 0.20,  0.10, 0.95,  0.30, 0.10],
     "國家間武力衝突模式":   [ 0.70,  -0.70,  0.00, 0.20,  0.10, 0.95,  0.30, 0.10],  # traditional alias
+    # NOTE: "大国脅迫/威懾模式" uses simplified 国; the registry key uses traditional 國.
+    # _vec() normalises whitespace but cannot bridge the 国/國 char difference, so we
+    # keep both forms explicitly here.
     "大国脅迫/威懾模式":    [ 0.85,  -0.50,  0.10, 0.40,  0.20, 0.60,  0.20, 0.20],
+    "大國脅迫/威懾模式":    [ 0.85,  -0.50,  0.10, 0.40,  0.20, 0.60,  0.20, 0.20],  # traditional alias
     "多邊聯盟制裁模式":     [ 0.75,  -0.20,  0.10, 0.30,  0.60, 0.15,  0.65, 0.25],
     "非國家武裝代理衝突模式":[ 0.60,  -0.60,  0.00, 0.30,  0.05, 0.90,  0.10, 0.05],
     "正式軍事同盟模式":     [ 0.20,   0.70,  0.40, 0.20,  0.70, 0.60,  0.20, 0.15],
@@ -125,6 +129,7 @@ _PATTERN_VECTORS: Dict[str, List[float]] = {
     # ── 经济/金融模式 ─────────────────────────────────────────────────
     "雙邊貿易依存模式":     [-0.20,   0.70,  0.90, 0.10,  0.30, 0.00,  0.85, 0.25],
     "央行貨幣政策傳導模式":  [ 0.10,   0.20,  0.60, 0.20,  0.80, 0.00,  0.90, 0.10],
+    # _vec() whitespace normalisation maps "金融孤立 / SWIFT 切斷模式" → "金融孤立/SWIFT切斷模式"
     "金融孤立/SWIFT切斷模式":[ 0.85,  -0.40,  0.20, 0.10,  0.50, 0.15,  0.85, 0.20],
     "企業供應鏈單點依賴模式":[ 0.10,   0.30,  0.90, 0.10,  0.30, 0.00,  0.70, 0.60],
     "資源依賴/能源武器化模式":[ 0.70,   0.00,  0.80, 0.20,  0.25, 0.30,  0.75, 0.15],
@@ -133,6 +138,8 @@ _PATTERN_VECTORS: Dict[str, List[float]] = {
     "技術標準主導模式":     [ 0.30,   0.30,  0.50, 0.30,  0.75, 0.00,  0.40, 0.90],
     "關鍵零部件寡頭供應模式":[ 0.40,   0.10,  0.70, 0.10,  0.40, 0.00,  0.55, 0.85],
     "科技脫鉤/技術鐵幕模式": [ 0.70,  -0.50,  0.20, 0.20,  0.50, 0.10,  0.40, 0.90],
+    # Technology breakthrough / space exploration: high technology dimension, moderate coercion
+    "技術突破/太空探索模式": [ 0.20,   0.40,  0.20, 0.30,  0.30, 0.10,  0.30, 0.95],
 
     # ── 信息/制度模式 ─────────────────────────────────────────────────
     "信息戰/敘事操控模式":  [ 0.60,  -0.30,  0.10, 0.95,  0.20, 0.25,  0.10, 0.30],
@@ -148,10 +155,30 @@ _PATTERN_VECTORS: Dict[str, List[float]] = {
     "信息環境修復模式":     [-0.40,   0.50, -0.05, 0.70,  0.40,-0.15,  0.10, 0.20],
 }
 
+def _normalise_key(name: str) -> str:
+    """Normalise a pattern key for _PATTERN_VECTORS lookup.
+
+    composition_table / CARTESIAN_PATTERN_REGISTRY uses keys with spaces around
+    the "/" separator (e.g. "金融孤立 / SWIFT 切斷模式"), while _PATTERN_VECTORS
+    was initially populated without those spaces.  Strip ALL whitespace from the
+    key before the lookup so both forms resolve to the same entry.
+    """
+    return name.replace(" ", "")
+
 
 def _vec(pattern_name: str) -> np.ndarray:
-    """获取模式向量，未知模式返回零向量。"""
+    """获取模式向量，未知模式返回零向量。
+
+    Internal key discipline: *pattern_name* must be a raw CJK ontology key
+    (never an English display label).  A normalised form (whitespace stripped)
+    is tried as a fallback to bridge the slash-spacing difference between
+    composition_table keys ("X / Y模式") and _PATTERN_VECTORS keys ("X/Y模式").
+    """
     v = _PATTERN_VECTORS.get(pattern_name)
+    if v is None:
+        # Fallback: normalise whitespace and retry (handles "X / Y" vs "X/Y")
+        norm = _normalise_key(pattern_name)
+        v = _PATTERN_VECTORS.get(norm)
     if v is None:
         logger.debug("LieAlgebraSpace: unknown pattern '%s', using zero vector", pattern_name)
         return np.zeros(DIM)

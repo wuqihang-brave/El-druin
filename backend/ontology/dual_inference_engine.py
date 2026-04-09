@@ -348,22 +348,34 @@ def run_dual_inference(
     transitions: List[Any],
 ) -> List[Dict[str, Any]]:
     """
-    Run dual inference for all active (A, B) pairs that appear in composition_table.
+    Run dual inference for all transition pairs that appear in the pipeline.
+
+    Two-pass design:
+      Pass 1 — composition_table pairs where BOTH patterns are active (full prior info).
+      Pass 2 — TransitionEdge list (raw internal CJK keys) for single-active-pattern
+               coverage.  Inverse transitions (from_pattern_b == "(inverse)") are
+               skipped because they don't have a meaningful two-pattern Lie bracket.
+
+    All pattern keys used here are raw internal CJK keys (never display labels).
+    Translation to English happens only at the serialisation boundary in
+    evented_pipeline.py.
 
     Args:
-        active_patterns: list of dicts with "pattern_name" and "confidence_prior" keys
-        transitions: existing transition list (unused, kept for API compatibility)
+        active_patterns: list of dicts with "pattern_name" (raw CJK key) and
+                         "confidence_prior" keys.
+        transitions:     list of TransitionEdge objects from _run_stage2b, carrying
+                         raw CJK keys in from_pattern_a / from_pattern_b / to_pattern.
 
     Returns:
-        list of dicts with "bayesian", "lie_algebra", "integration" keys,
-        sorted by confidence_final descending
+        list of dicts with "pattern_a", "pattern_b", "pattern_c", "bayesian",
+        "lie_algebra", "integration" keys, sorted by confidence_final descending.
     """
     try:
         from ontology.relation_schema import composition_table
     except ImportError:
         return []
 
-    # Build prior lookup
+    # Build prior lookup using raw internal CJK pattern keys
     pattern_priors: Dict[str, float] = {
         p["pattern_name"]: float(p.get("confidence_prior", 0.5))
         for p in active_patterns
@@ -373,17 +385,8 @@ def run_dual_inference(
     results: List[Dict[str, Any]] = []
     processed: set = set()
 
-    for (pa, pb), pc in composition_table.items():
-        if pa not in pattern_priors or pb not in pattern_priors:
-            continue
-        key = (pa, pb, pc)
-        if key in processed:
-            continue
-        processed.add(key)
-
-        prior_a = pattern_priors[pa]
-        prior_b = pattern_priors[pb]
-
+    def _compute_and_append(pa: str, pb: str, pc: str, prior_a: float, prior_b: float) -> None:
+        """Shared helper: compute bayesian + lie algebra + integration and append result."""
         try:
             posteriors = _compute_bayesian_posteriors(pa, pb, prior_a, prior_b)
             bayes = run_bayesian_inference(pa, pb, pc, prior_a, prior_b, posteriors)
@@ -424,6 +427,44 @@ def run_dual_inference(
             logger.warning(
                 "run_dual_inference: error for (%s, %s) → %s: %s", pa, pb, pc, exc
             )
+
+    # ── Pass 1: composition_table pairs where BOTH patterns are active ────────
+    for (pa, pb), pc in composition_table.items():
+        if pa not in pattern_priors or pb not in pattern_priors:
+            continue
+        key = (pa, pb, pc)
+        if key in processed:
+            continue
+        processed.add(key)
+        _compute_and_append(pa, pb, pc, pattern_priors[pa], pattern_priors[pb])
+
+    # ── Pass 2: TransitionEdge list — cover single-active-pattern transitions ─
+    # _run_stage2b emits edges where only ONE of (pa, pb) is active but a
+    # composition_table entry exists.  Pass 1 skips those.  We handle them here
+    # so that every edge in the probability tree gets a dual_inference entry,
+    # making _dual_lookup in evented_pipeline resolve to a non-None match.
+    # NOTE: All from_pattern_a / from_pattern_b / to_pattern values on a
+    # TransitionEdge are raw internal CJK keys — no display_pattern() is called.
+    for t in transitions:
+        pa = getattr(t, "from_pattern_a", "")
+        pb = getattr(t, "from_pattern_b", "")
+        pc = getattr(t, "to_pattern", "")
+
+        # Inverse transitions use a synthetic "(inverse)" marker for pb;
+        # there is no meaningful two-pattern Lie bracket to compute.
+        # Also skip entries where any key is missing/empty.
+        if pb == "(inverse)" or not pa or not pc:
+            continue
+
+        key = (pa, pb, pc)
+        if key in processed:
+            continue
+        processed.add(key)
+
+        # Use whatever priors are available; default to 0.5 for non-active patterns
+        prior_a = pattern_priors.get(pa, 0.5)
+        prior_b = pattern_priors.get(pb, 0.5)
+        _compute_and_append(pa, pb, pc, prior_a, prior_b)
 
     results.sort(key=lambda r: r["integration"]["confidence_final"], reverse=True)
     return results
