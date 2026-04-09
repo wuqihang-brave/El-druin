@@ -1,0 +1,370 @@
+"""
+Assessments API routes
+======================
+
+Endpoints:
+  GET  /assessments                              – list all assessments
+  GET  /assessments/{assessment_id}              – single assessment detail
+  GET  /assessments/{assessment_id}/brief        – executive brief
+  GET  /assessments/{assessment_id}/regime       – regime state output
+  GET  /assessments/{assessment_id}/triggers     – trigger amplification output
+  GET  /assessments/{assessment_id}/attractors   – attractor output
+  GET  /assessments/{assessment_id}/propagation  – propagation sequence output
+  GET  /assessments/{assessment_id}/delta        – update delta output
+  GET  /assessments/{assessment_id}/evidence     – evidence output
+
+Stubs return realistic placeholder data keyed to assessment_id "ae-204".
+Actual engine wiring will follow in PR-4 through PR-8.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
+
+from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
+from app.schemas.structural_forecast import (
+    AttractorOutput,
+    AttractorsOutput,
+    BriefOutput,
+    DeltaField,
+    DeltaOutput,
+    EvidenceItem,
+    EvidenceOutput,
+    PropagationOutput,
+    PropagationStep,
+    RegimeOutput,
+    TriggerOutput,
+    TriggersOutput,
+)
+
+router = APIRouter(prefix="/assessments", tags=["assessments"])
+
+# ---------------------------------------------------------------------------
+# Demo stub data – keyed to assessment "ae-204"
+# ---------------------------------------------------------------------------
+
+_DEMO_ID = "ae-204"
+_NOW = datetime(2026, 4, 9, 18, 0, 0, tzinfo=timezone.utc)
+
+_DEMO_ASSESSMENT = Assessment(
+    assessment_id=_DEMO_ID,
+    title="Black Sea Energy Corridor – Structural Watch",
+    assessment_type=AssessmentType.structural_watch,
+    status=AssessmentStatus.active,
+    region_tags=["Eastern Europe", "Black Sea", "Middle East"],
+    domain_tags=["energy", "military", "sanctions", "finance"],
+    created_at=datetime(2026, 3, 1, 9, 0, 0, tzinfo=timezone.utc),
+    updated_at=_NOW,
+    last_regime="Nonlinear Escalation",
+    last_confidence="High",
+    alert_count=3,
+    analyst_notes="Pipeline disruption risk elevated following recent naval incidents.",
+)
+
+_DEMO_BRIEF = BriefOutput(
+    assessment_id=_DEMO_ID,
+    forecast_posture="Upward-skewed energy risk",
+    time_horizon="3-7 days",
+    confidence="High",
+    why_it_matters=(
+        "A disruption to the Black Sea energy corridor would cascade into EU "
+        "spot-market prices within 24 hours and increase sanctions pressure on "
+        "transit states within 72 hours."
+    ),
+    dominant_driver="Naval interdiction pressure on energy transit routes",
+    strengthening_conditions=[
+        "Additional naval assets deployed in contested waters",
+        "Insurance market withdrawal from corridor tankers",
+        "Diplomatic channel breakdown between transit states",
+    ],
+    weakening_conditions=[
+        "Ceasefire or de-escalation agreement signed",
+        "Alternative pipeline capacity comes online",
+        "Third-party mediation accepted by all parties",
+    ],
+    invalidation_conditions=[
+        "Full corridor reopening confirmed by all transit operators",
+        "Regional security guarantee treaty ratified",
+    ],
+    updated_at=_NOW,
+)
+
+_DEMO_REGIME = RegimeOutput(
+    assessment_id=_DEMO_ID,
+    current_regime="Nonlinear Escalation",
+    threshold_distance=0.18,
+    transition_volatility=0.74,
+    reversibility_index=0.31,
+    dominant_axis="military -> sanctions -> energy",
+    coupling_asymmetry=0.62,
+    damping_capacity=0.29,
+    forecast_implication=(
+        "System is within the nonlinear escalation band. A moderate shock to "
+        "any coupled domain is sufficient to trigger cascade propagation. "
+        "Damping capacity is low; diplomatic interventions have a narrow window."
+    ),
+    updated_at=_NOW,
+)
+
+_DEMO_TRIGGERS = TriggersOutput(
+    assessment_id=_DEMO_ID,
+    triggers=[
+        TriggerOutput(
+            name="Naval incident in contested strait",
+            amplification_factor=0.87,
+            jump_potential="Critical",
+            impacted_domains=["military", "energy", "insurance", "finance"],
+            expected_lag_hours=6,
+            confidence=0.81,
+            watch_signals=[
+                "AIS dark zones expanding",
+                "Insurance premium spike >20%",
+                "Emergency UNSC session called",
+            ],
+            damping_opportunities=[
+                "Bilateral hotline activation",
+                "Neutral maritime observer deployment",
+            ],
+        ),
+        TriggerOutput(
+            name="Secondary sanctions package announced",
+            amplification_factor=0.71,
+            jump_potential="High",
+            impacted_domains=["finance", "energy", "trade"],
+            expected_lag_hours=48,
+            confidence=0.68,
+            watch_signals=[
+                "Treasury OFAC pre-designation briefings",
+                "Correspondent banking withdrawals from region",
+            ],
+            damping_opportunities=[
+                "Carve-out negotiations via EU intermediaries",
+                "Humanitarian exemption framework agreed",
+            ],
+        ),
+    ],
+    updated_at=_NOW,
+)
+
+_DEMO_ATTRACTORS = AttractorsOutput(
+    assessment_id=_DEMO_ID,
+    attractors=[
+        AttractorOutput(
+            name="Protracted low-level blockade equilibrium",
+            pull_strength=0.78,
+            horizon="3-10d",
+            supporting_evidence_count=14,
+            counterforces=[
+                "Economic cost to blocking state",
+                "NATO maritime presence",
+            ],
+            invalidation_conditions=[
+                "Full unilateral withdrawal of naval assets",
+                "Internationally brokered corridor guarantee",
+            ],
+            trend="up",
+        ),
+        AttractorOutput(
+            name="Fragile corridor reopening under third-party guarantee",
+            pull_strength=0.41,
+            horizon="10-21d",
+            supporting_evidence_count=6,
+            counterforces=[
+                "Domestic political constraints on concessions",
+                "Ongoing military operations in adjacent theatre",
+            ],
+            invalidation_conditions=[
+                "Escalation to direct state-on-state naval exchange",
+            ],
+            trend="stable",
+        ),
+    ],
+    updated_at=_NOW,
+)
+
+_DEMO_PROPAGATION = PropagationOutput(
+    assessment_id=_DEMO_ID,
+    sequence=[
+        PropagationStep(step=1, domain="military", event="Naval assets block strait access", time_bucket="T+0"),
+        PropagationStep(step=2, domain="energy", event="Tanker transit suspended; spot prices spike 12%", time_bucket="T+24h"),
+        PropagationStep(step=3, domain="insurance", event="Lloyd's withdraws corridor coverage", time_bucket="T+24h"),
+        PropagationStep(step=4, domain="finance", event="Regional sovereign spreads widen 40bps", time_bucket="T+72h"),
+        PropagationStep(step=5, domain="trade", event="Alternative routing adds $3.2/bbl cost; contract renegotiations begin", time_bucket="T+7d"),
+        PropagationStep(step=6, domain="political", event="Emergency EU energy council; sanctions expansion tabled", time_bucket="T+2-6w"),
+    ],
+    bottlenecks=[
+        "Single strait chokepoint with no viable short-term alternative",
+        "Insurance market concentration in London market",
+    ],
+    second_order_effects=[
+        "Increased LNG spot demand in Mediterranean markets",
+        "Accelerated permitting for alternative pipeline routes",
+        "Domestic energy rationing measures in downstream states",
+    ],
+    updated_at=_NOW,
+)
+
+_DEMO_DELTA = DeltaOutput(
+    assessment_id=_DEMO_ID,
+    regime_changed=True,
+    threshold_direction="narrowing",
+    trigger_ranking_changes=[
+        DeltaField(
+            field="Naval incident trigger rank",
+            previous=2,
+            current=1,
+            direction="increased",
+        ),
+        DeltaField(
+            field="Sanctions trigger rank",
+            previous=1,
+            current=2,
+            direction="decreased",
+        ),
+    ],
+    attractor_pull_changes=[
+        DeltaField(
+            field="Protracted blockade pull_strength",
+            previous=0.61,
+            current=0.78,
+            direction="increased",
+        ),
+    ],
+    damping_capacity_delta=-0.12,
+    confidence_delta=0.07,
+    new_evidence_count=4,
+    summary=(
+        "Regime shifted from Stress Accumulation to Nonlinear Escalation "
+        "following confirmation of naval asset deployment. Damping capacity "
+        "deteriorated by 12 points. Four new high-quality evidence items "
+        "incorporated, raising overall confidence."
+    ),
+    updated_at=_NOW,
+)
+
+_DEMO_EVIDENCE = EvidenceOutput(
+    assessment_id=_DEMO_ID,
+    evidence=[
+        EvidenceItem(
+            evidence_id="ev-1001",
+            source="Lloyd's List Intelligence – AIS Feed",
+            timestamp=datetime(2026, 4, 9, 6, 14, 0, tzinfo=timezone.utc),
+            source_quality="Primary",
+            impacted_area="energy / maritime",
+            structural_novelty=0.82,
+            confidence_contribution=0.19,
+            provenance_link="/api/v1/provenance/entity/ev-1001",
+        ),
+        EvidenceItem(
+            evidence_id="ev-1002",
+            source="Reuters – Diplomatic correspondent",
+            timestamp=datetime(2026, 4, 9, 9, 45, 0, tzinfo=timezone.utc),
+            source_quality="High",
+            impacted_area="political / sanctions",
+            structural_novelty=0.54,
+            confidence_contribution=0.11,
+            provenance_link="/api/v1/provenance/entity/ev-1002",
+        ),
+        EvidenceItem(
+            evidence_id="ev-1003",
+            source="EU Commission energy market daily bulletin",
+            timestamp=datetime(2026, 4, 9, 12, 0, 0, tzinfo=timezone.utc),
+            source_quality="Primary",
+            impacted_area="energy / finance",
+            structural_novelty=0.67,
+            confidence_contribution=0.14,
+            provenance_link="/api/v1/provenance/entity/ev-1003",
+        ),
+        EvidenceItem(
+            evidence_id="ev-1004",
+            source="Regional think-tank analysis",
+            timestamp=datetime(2026, 4, 8, 17, 30, 0, tzinfo=timezone.utc),
+            source_quality="Medium",
+            impacted_area="military / political",
+            structural_novelty=0.39,
+            confidence_contribution=0.06,
+            provenance_link=None,
+        ),
+    ],
+    updated_at=_NOW,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _stub_or_404(assessment_id: str) -> None:
+    """Raise 404 for any assessment_id that is not the demo stub."""
+    if assessment_id != _DEMO_ID:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Assessment '{assessment_id}' not found. Only '{_DEMO_ID}' is available in stub mode.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@router.get("", response_model=AssessmentListResponse)
+def list_assessments() -> AssessmentListResponse:
+    """Return all available assessments."""
+    return AssessmentListResponse(assessments=[_DEMO_ASSESSMENT], total=1)
+
+
+@router.get("/{assessment_id}", response_model=Assessment)
+def get_assessment(assessment_id: str) -> Assessment:
+    """Return a single assessment by ID."""
+    _stub_or_404(assessment_id)
+    return _DEMO_ASSESSMENT
+
+
+@router.get("/{assessment_id}/brief", response_model=BriefOutput)
+def get_brief(assessment_id: str) -> BriefOutput:
+    """Return the executive brief for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_BRIEF
+
+
+@router.get("/{assessment_id}/regime", response_model=RegimeOutput)
+def get_regime(assessment_id: str) -> RegimeOutput:
+    """Return the current regime state for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_REGIME
+
+
+@router.get("/{assessment_id}/triggers", response_model=TriggersOutput)
+def get_triggers(assessment_id: str) -> TriggersOutput:
+    """Return the trigger amplification output for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_TRIGGERS
+
+
+@router.get("/{assessment_id}/attractors", response_model=AttractorsOutput)
+def get_attractors(assessment_id: str) -> AttractorsOutput:
+    """Return the attractor output for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_ATTRACTORS
+
+
+@router.get("/{assessment_id}/propagation", response_model=PropagationOutput)
+def get_propagation(assessment_id: str) -> PropagationOutput:
+    """Return the propagation sequence for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_PROPAGATION
+
+
+@router.get("/{assessment_id}/delta", response_model=DeltaOutput)
+def get_delta(assessment_id: str) -> DeltaOutput:
+    """Return the update delta output for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_DELTA
+
+
+@router.get("/{assessment_id}/evidence", response_model=EvidenceOutput)
+def get_evidence(assessment_id: str) -> EvidenceOutput:
+    """Return the evidence items for an assessment."""
+    _stub_or_404(assessment_id)
+    return _DEMO_EVIDENCE
