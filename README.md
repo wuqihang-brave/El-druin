@@ -20,57 +20,42 @@ graph TD
     classDef integration fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
     classDef output fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
 
-    %% 1. Text to Events
     subgraph S1 [1. Text Processing & Event Extraction]
         A[Text Input] --> B[Events Extraction<br/>T2/T1 + Evidence Anchors]
     end
     class S1 input;
 
-    %% 2. Mapping
     subgraph S2 [2. Mechanism & Pattern Mapping]
         B --> C[Mechanism Labels]
-        C --> D[Cartesian Pattern Mapping<br/>Active Patterns + Priors]
+        C --> D[Cartesian Pattern Mapping]
     end
     class S2 processing;
 
-    %% 3. Transitions
     subgraph S3 [3. Transition Candidates]
-        D --> E[Transition Generation<br/>Composition / Inverse Table]
+        D --> E[Transition Generation]
     end
     class S3 processing;
 
-    %% 4. Dual Inference
     subgraph S4 [4. Dual Inference Engine]
-        E --> F1[Bayesian Inference<br/>P_Bayes C]
-        E --> F2[Lie Algebra Inference<br/>Nonlinear Activation 8D]
+        E --> F1[Bayesian: P_Bayes C]
+        E --> F2[Lie: Nonlinear Activation 8D]
     end
     class S4 inference;
 
-    %% 5. Integration
     subgraph S5 [5. Integration & Diagnostics]
         F1 --> G[Consistency Alignment]
         F2 --> G
-        G --> H[Final Confidence<br/>Upward Adjustment]
-        H --> I[Divergence & Emergence Diagnostics]
+        G --> H[Final Confidence]
+        H --> I[Divergence/Emergence Diagnostics]
     end
     class S5 integration;
 
-    %% 6. Rendering
-    subgraph S6 [6. Rendering & Output Generation]
-        I --> J[Path Rendering<br/>Alpha/Beta Guided by Controlled Template / LLM]
-        J --> K[Security & Sanitization<br/>Strip / Escape Internal Keys]
-        K --> L((Final User Output<br/>Entities + Probabilities + Emergence))
+    subgraph S6 [6. Rendering & Output]
+        I --> J[Path Rendering]
+        J --> K[Strip/Escape Keys]
+        K --> L((Final User Output))
     end
     class S6 output;
-## 🔭 Project at a Glance
-
-EL-DRUIN is an **ontology-driven geopolitical intelligence platform** that forecasts how a political situation evolves by iterating named dynamic patterns through an algebraic transition system.
-
-- **What it does:** Given a news excerpt, EL-DRUIN extracts events, activates ontology patterns (e.g. *Hegemonic Sanctions*, *Tech Decoupling*), computes Lie-algebra similarity-weighted transitions, and outputs a Bayesian confidence distribution over future trajectories — all in a single deterministic pipeline.
-- **Traceability & auditability:** Every confidence value is anchored to a `compute_trace_ref` string of the form `bayesian_posterior|Z=…` that encodes the exact formula used. No stochastic guess-work: same input always produces the same number, with a full computation trace any analyst can verify.
-- **Hallucination guard:** An entity-invention guard rejects any LLM rendering that introduces proper nouns absent from the source text. A numeric consistency guard ensures rendered numbers match the deterministic output exactly.
-
----
 
 ## ⚡ 60-Second Overview
 
