@@ -70,7 +70,7 @@ if not _backend_url_raw:
     except Exception:
         pass
     st.info(
-        "KG Tools requires a running backend. Start the backend to use this feature.\n\n"
+        "Knowledge Graph requires a running backend. Start the backend to use this feature.\n\n"
         "To run locally: `cd backend && uvicorn app.main:app --port 8000`\n\n"
         "Then set the `BACKEND_URL` environment variable to point to it."
     )
@@ -308,7 +308,7 @@ with tab_viz:
                 for r in cached_viz.get("relations", [])
             ]
         else:
-            st.info("👆 Please extract knowledge in the '📝 Text Extraction' tab first, or switch to 'Load from graph database'.")
+            st.info("Please extract knowledge in the 'Text Extraction' tab first, or switch to 'Load from graph database'.")
     else:
         with st.spinner("📡 Loading entities and relations from database…"):
             ent_resp = _api.get_kg_entities(limit=200)
@@ -455,8 +455,8 @@ with tab_viz:
     elif data_source == "Load from graph database":
         if "error" not in _api.get_kg_stats():
             st.info(
-                "📭 **No data in the graph yet.**\n\n"
-                "Add knowledge via the '📝 Text Extraction' tab, or click the button below to inject sample data."
+                "No data in the graph yet.\n\n"
+                "Add knowledge via the 'Text Extraction' tab, or click the button below to inject sample data."
             )
             if st.button("🌱 Inject Sample Triples", key="btn_seed_viz", type="primary"):
                 with st.spinner("Injecting sample data…"):
@@ -494,10 +494,10 @@ with tab_onto:
     # ── Show friendly message when no data is available ───────────────────
     if not og_entities_all:
         st.info(
-            "📭 **No entities found in the knowledge graph.**\n\n"
+            "No entities found in the knowledge graph.\n\n"
             "The ontology graph requires data in the database before it can be "
             "displayed. You can:\n"
-            "- Extract knowledge from a text in the **📝 Text Extraction** tab\n"
+            "- Extract knowledge from a text in the **Text Extraction** tab\n"
             "- Seed the graph with example data using the button below"
         )
         if st.button("🌱 Seed Example Data", key="btn_seed_onto", type="primary"):
@@ -820,8 +820,8 @@ with tab_hierarchy:
                 total_nodes = hg_data.get("total_nodes", 0)
                 if total_nodes == 0 and st.session_state.hg_min_degree == 0:
                     st.info(
-                        "📭 **The knowledge graph is empty.**\n\n"
-                        "Add data by extracting knowledge in the **📝 Text Extraction** tab "
+                        "The knowledge graph is empty.\n\n"
+                        "Add data by extracting knowledge in the **Text Extraction** tab "
                         "or seed the graph with example triples:"
                     )
                     if st.button("🌱 Seed Example Data", key="btn_seed_hg", type="primary"):
