@@ -883,7 +883,6 @@ if page == "Dashboard":
         _tracked = [k for k in st.session_state.entity_cache.keys() if len(k) >= 4][:8]
         if _tracked:
             for _ent in _tracked:
-                _is_selected = st.session_state.selected_entity_filter == _ent
                 if st.button(
                     _ent,
                     key=f"entity_filter_{_ent}",
@@ -958,11 +957,12 @@ if page == "Dashboard":
         _entity_filter = st.session_state.get("selected_entity_filter", "")
         _filtered_feed = _feed_news
         if _entity_filter:
+            _ef_lower = _entity_filter.lower()
             _filtered_feed = [
                 a for a in _feed_news
-                if _entity_filter.lower() in (a.get("title") or "").lower()
-                or _entity_filter.lower() in (a.get("description") or "").lower()
-                or _entity_filter.lower() in str(a.get("entities") or "").lower()
+                if _ef_lower in (a.get("title") or "").lower()
+                or _ef_lower in (a.get("description") or "").lower()
+                or _ef_lower in str(a.get("entities") or "").lower()
             ]
 
         if _entity_filter and not _filtered_feed:
