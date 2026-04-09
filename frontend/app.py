@@ -776,7 +776,7 @@ if page == "Dashboard":
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
         color:var(--muted,#7A8FA6);margin-bottom:6px;margin-top:4px">Tracked Entities</div>
         """, unsafe_allow_html=True)
-        _tracked = list(st.session_state.entity_cache.keys())[:8]
+        _tracked = [k for k in st.session_state.entity_cache.keys() if len(k) >= 4][:8]
         if _tracked:
             for _ent in _tracked:
                 st.markdown(
@@ -1449,33 +1449,267 @@ if page == "Dashboard":
                         _ev_path  = _ev_concl.get("evidence_path", {})
                         _hyp_path = _ev_concl.get("hypothesis_path", {})
 
-                        # Evidence Path (T2 grounded)
-                        st.markdown("#### 🟢 Evidence Path — T2 Grounded")
+                        # Data extraction
                         _ev_summary = _ev_path.get("summary") or "(No grounded evidence path available)"
-
-                        # Change E: Show both Bayesian and Lie algebra results in the summary box
-                        _alpha_path_data = _ev_concl.get("alpha_path") or {}
-                        _alpha_prob_val  = _alpha_path_data.get("probability", 0)
-                        _alpha_lie_em    = _alpha_path_data.get("lie_emergence", {})
-                        _alpha_lie_label = _alpha_lie_em.get("nonlinear_label", "")
-                        _alpha_integ     = _alpha_path_data.get("integration", {})
+                        _alpha_path_data  = _ev_concl.get("alpha_path") or {}
+                        _alpha_prob_val   = _alpha_path_data.get("probability", 0)
+                        _alpha_lie_em     = _alpha_path_data.get("lie_emergence", {})
+                        _alpha_lie_label  = _alpha_lie_em.get("nonlinear_label", "")
+                        _alpha_integ      = _alpha_path_data.get("integration", {})
                         _alpha_conf_final = _alpha_integ.get("confidence_final")
-                        _alpha_verdict   = _alpha_integ.get("verdict", "")
-                        _ev_summary_html = (
-                            f'<div style="background:#E8F5E9;border-left:4px solid #2E7D32;'
-                            f'padding:10px 14px;border-radius:4px;font-size:14px">'
-                            f'<b>Bayesian (p={_alpha_prob_val:.0%}):</b> {_ev_summary}'
-                            + (f'<br><br><b>Structural emergence:</b> {_alpha_lie_label}' if _alpha_lie_label else '')
-                            + (f'<br><span style="font-size:12px;color:#555">Integration verdict: {_alpha_verdict}'
-                               f' | final confidence: {_alpha_conf_final:.0%}</span>' if _alpha_conf_final is not None else '')
-                            + f'</div>'
+                        _alpha_verdict    = _alpha_integ.get("verdict", "")
+                        _beta_path_data   = _ev_concl.get("beta_path") or {}
+                        _beta_prob_val    = _beta_path_data.get("probability", 0)
+                        _beta_lie_em      = _beta_path_data.get("lie_emergence", {})
+                        _beta_lie_label   = _beta_lie_em.get("nonlinear_label", "")
+                        _exec_j = (
+                            _ev_concl.get("executive_judgement")
+                            or _ev_concl.get("conclusion")
+                            or "(No judgement available)"
                         )
-                        st.markdown(_ev_summary_html, unsafe_allow_html=True)
+                        if not isinstance(_exec_j, str):
+                            _exec_j = str(_exec_j)
+                        _render_meta = _ev_concl.get("rendering_meta", {})
+                        _raw_ej  = _ev_concl.get("executive_judgement_raw", "")
+                        _raw_ep  = (_ev_concl.get("evidence_path") or {}).get("summary_raw", "")
+                        _raw_hp  = (_ev_concl.get("hypothesis_path") or {}).get("summary_raw", "")
+                        _final        = _ev_concl.get("final", {})
+                        _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
+                        _compute_ref  = _final.get("compute_trace_ref", "")
+                        _concl_ptree  = _ev_ptree.get("nodes", [])
+                        _top_node = next(
+                            (n for n in _concl_ptree if n.get("id") not in ("root",) and n.get("tooltip_data")),
+                            None,
+                        )
+                        _ev_dual_list = _er.get("dual_inference", [])
+                        _top_dual     = _ev_dual_list[0] if _ev_dual_list else {}
 
-                        # Change A: Move outcome bars into a collapsed expander
-                        _ep_outcomes = _ev_path.get("outcomes", [])
-                        if _ep_outcomes:
-                            with st.expander("📊 Supporting evidence chains", expanded=False):
+                        # ── ASSESSMENT BRIEF ──────────────────────────────────────
+                        st.markdown(f"""
+<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
+border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:14px;">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
+    color:var(--muted,#7A8FA6);margin-bottom:10px">Assessment Brief</div>
+    <div style="font-size:14px;color:var(--text-strong,#EDF2F7);line-height:1.65;font-weight:500">
+        {_exec_j}
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+                        # Confidence badge row
+                        _conf_pct   = int(_overall_conf * 100)
+                        _conf_color = "#4CAF72" if _conf_pct >= 65 else "#C8A84B" if _conf_pct >= 45 else "#E53935"
+                        st.markdown(
+                            f'<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">'
+                            f'<span style="font-size:10px;font-weight:700;text-transform:uppercase;'
+                            f'color:{_conf_color};letter-spacing:0.8px">● Confidence {_conf_pct}%</span>'
+                            + (f'<span style="font-size:10px;color:var(--muted,#7A8FA6)">· Compute ref: {_compute_ref}</span>'
+                               if _compute_ref else '')
+                            + f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # ── BASE CASE (Evidence Path) ──────────────────────────────
+                        st.markdown(
+                            f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                            f'border-left:4px solid #2E7D32;border-radius:3px;padding:12px 14px;margin-bottom:10px;">'
+                            f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;'
+                            f'color:#4CAF72;margin-bottom:6px">Base Case — Evidence Path</div>'
+                            f'<div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.6">{_ev_summary}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Credibility row
+                        _vs = _ev_cred.get("verifiability_score", 0)
+                        _ks = _ev_cred.get("kg_consistency_score", 0)
+                        _os = _ev_cred.get("overall_score", 0)
+                        _cred_c1, _cred_c2, _cred_c3 = st.columns(3)
+                        _cred_c1.metric("Verifiability", f"{_vs:.0%}")
+                        _cred_c2.metric("KG Consistency", f"{_ks:.0%}")
+                        _cred_c3.metric("Credibility", f"{_os:.0%}")
+
+                        # ── ESCALATION CASE (Hypothesis Path) ─────────────────────
+                        if _show_hidden:
+                            _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
+                            st.markdown(
+                                f'<div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);'
+                                f'border-left:4px solid #C8A84B;border-radius:3px;padding:12px 14px;margin-bottom:10px;">'
+                                f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;'
+                                f'color:#C8A84B;margin-bottom:6px">Escalation Case — Hypothesis Path</div>'
+                                f'<div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.6">{_hyp_summary}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _hyp_gaps = _hyp_path.get("verification_gaps", [])
+                            if _hyp_gaps:
+                                st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
+                        else:
+                            st.caption("💡 Hypothesis path hidden — enable 'Show hypothesis path' in the sidebar.")
+
+                        # ── SCENARIO INDICATORS ────────────────────────────────────
+                        _si_c1, _si_c2, _si_c3 = st.columns(3)
+                        _si_c1.metric("Alpha Probability", f"{_alpha_prob_val:.0%}")
+                        _si_c2.metric("Beta Probability", f"{_beta_prob_val:.0%}")
+                        _si_c3.metric("Overall Confidence", f"{_overall_conf:.0%}")
+
+                        # ── MODEL TRACE (collapsed expander) ──────────────────────
+                        with st.expander("Model Trace", expanded=False):
+                            # Bayesian summary
+                            st.markdown("**Bayesian Path Data**")
+                            _mt_c1, _mt_c2 = st.columns(2)
+                            with _mt_c1:
+                                st.metric("Alpha p (Bayesian)", f"{_alpha_prob_val:.0%}")
+                                if _alpha_verdict:
+                                    st.caption(f"Integration verdict: {_alpha_verdict}")
+                                if _alpha_conf_final is not None:
+                                    st.caption(f"Final confidence: {_alpha_conf_final:.0%}")
+                            with _mt_c2:
+                                st.metric("Beta p (Bayesian)", f"{_beta_prob_val:.0%}")
+                                if _alpha_lie_label:
+                                    st.caption(f"Alpha structural emergence: {_alpha_lie_label}")
+                                if _beta_lie_label:
+                                    st.caption(f"Beta structural emergence: {_beta_lie_label}")
+
+                            # Key Computation Process
+                            if _top_node:
+                                _td = _top_node.get("tooltip_data", {})
+                                _kc_bayes = _td.get("bayesian", {})
+                                _kc_lie   = _td.get("lie_algebra", {})
+                                _kc_dual  = _td.get("dual_integration", {})
+
+                                st.markdown("**Key Computation Process**")
+                                _kca_col, _kcb_col = st.columns(2)
+
+                                # ── A: Bayesian path ──────────────────────────────
+                                with _kca_col:
+                                    _kc_prior_a   = _kc_bayes.get("prior_a", 0)
+                                    _kc_prior_b   = _kc_bayes.get("prior_b", 0)
+                                    _kc_lie_sim   = _kc_bayes.get("lie_sim", 0)
+                                    _kc_posterior = _kc_bayes.get("posterior", 0)
+                                    _kc_Z         = _kc_bayes.get("Z", 1)
+                                    _kc_p         = _kc_bayes.get("probability", 0)
+                                    _kc_bar_pct   = max(4, int(_kc_p * 100))
+
+                                    st.markdown("**A · Bayesian Path — Transition Probability**")
+                                    st.markdown(
+                                        f'<div style="font-size:11px;font-family:monospace;'
+                                        f'background:var(--surface-raised,#1E2D3D);'
+                                        f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #4A8FD4">'
+                                        f'<b>Question: Which pattern C is most likely activated next?</b><br>'
+                                        f'w(A,B→C) = &pi;(A) &times; &pi;(B) &times; cos(v_A + v_B, v_C)<br>'
+                                        f'= {_kc_prior_a:.3f} &times; {_kc_prior_b:.3f} &times; {_kc_lie_sim:.3f}<br>'
+                                        f'P_Bayes(C) = w / Z = {_kc_posterior:.4f} / {_kc_Z:.4f}'
+                                        f' &nbsp;→&nbsp; <b>p = {_kc_p:.1%}</b>'
+                                        f'</div>'
+                                        f'<div style="background:#1A2D3D;border-radius:4px;height:10px;margin:4px 0;">'
+                                        f'<div style="background:#4A8FD4;width:{_kc_bar_pct}%;height:10px;'
+                                        f'border-radius:4px;"></div></div>'
+                                        f'<div style="font-size:11px;color:var(--muted,#7A8FA6)">'
+                                        f'p = <b>{_kc_p:.1%}</b> &nbsp;|&nbsp; Z = {_kc_Z:.4f}'
+                                        f' &nbsp;|&nbsp; '
+                                        + (_prob_tooltip_html(_kc_p, _top_node) if _top_node else f'{_kc_p:.1%}')
+                                        + '</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                # ── B: Lie algebra path ────────────────────────────
+                                with _kcb_col:
+                                    _kc_mat_norm  = _kc_lie.get("matrix_norm") or _top_dual.get("lie_algebra", {}).get("matrix_norm", 0.0)
+                                    _kc_sigma1    = _kc_lie.get("sigma1") or _top_dual.get("lie_algebra", {}).get("sigma1", 0.0)
+                                    _kc_top_dims  = _kc_lie.get("top_emergent_dims") or _top_dual.get("lie_algebra", {}).get("top_emergent_dims", [])
+                                    _kc_top_vals  = _kc_lie.get("top_emergent_values") or _top_dual.get("lie_algebra", {}).get("top_emergent_values", [])
+
+                                    st.markdown("**B · Lie Algebra Path — Emergence Detection (parallel, independent)**")
+                                    _kc_mat_str   = f"‖[A,B]‖_F = {_kc_mat_norm:.4f}" if _kc_mat_norm else "‖[A,B]‖_F = —"
+                                    _kc_sigma_str = f" &nbsp;|&nbsp; σ₁ = {_kc_sigma1:.4f}" if _kc_sigma1 else ""
+                                    st.markdown(
+                                        f'<div style="font-size:11px;font-family:monospace;'
+                                        f'background:var(--surface-raised,#1E2D3D);'
+                                        f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #7B1FA2">'
+                                        f'<b>Question: Which dimensions show non-linear structural effects?</b><br>'
+                                        f'C = [X_A, X_B] = X_A @ X_B &minus; X_B @ X_A &nbsp;(8&times;8 commutator)<br>'
+                                        f'nonlinear_activation[i] = ‖C[i,:]‖₂ per dimension<br>'
+                                        f'<b>{_kc_mat_str}</b>{_kc_sigma_str}'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    if _kc_top_dims and _kc_top_vals:
+                                        _max_v = max(_kc_top_vals) if _kc_top_vals else 1.0
+                                        _dim_bar_max_px = 80
+                                        for _dim, _val in zip(_kc_top_dims[:3], _kc_top_vals[:3]):
+                                            _dim_bar = max(2, int(_val / max(_max_v, 1e-9) * _dim_bar_max_px))
+                                            st.markdown(
+                                                f'<div style="font-size:11px;margin:2px 0;display:flex;align-items:center;gap:6px">'
+                                                f'<span style="display:inline-block;min-width:72px;color:var(--muted,#7A8FA6)">{_dim}</span>'
+                                                f'<span style="display:inline-block;background:#7B1FA2;height:6px;'
+                                                f'width:{_dim_bar}px;border-radius:2px"></span>'
+                                                f'<span style="color:var(--muted,#7A8FA6)">{_val:.3f}</span>'
+                                                f'</div>',
+                                                unsafe_allow_html=True,
+                                            )
+
+                                    _kc_bracket = _top_dual.get("lie_algebra", {}).get("bracket_matrix")
+                                    if _kc_bracket:
+                                        import json as _json
+                                        _mat_json = _json.dumps(_kc_bracket, separators=(",", ":"))
+                                        with st.expander("🔎 Inspect 8×8 bracket matrix [X_A, X_B]", expanded=False):
+                                            st.caption(
+                                                "C = [X_A, X_B] = X_A @ X_B − X_B @ X_A (8×8 antisymmetric matrix). "
+                                                "Row i shows non-linear interference of dimension i on all others."
+                                            )
+                                            _rows = ["coercion", "cooperation", "dependency", "information",
+                                                     "regulation", "military", "economic", "technology"]
+                                            for _ri, _row in enumerate(_kc_bracket):
+                                                _row_vals = "  ".join(f"{v:+.3f}" for v in _row)
+                                                _row_label = _rows[_ri] if _ri < len(_rows) else f"dim{_ri}"
+                                                st.markdown(
+                                                    f'<div style="font-size:10px;font-family:monospace;'
+                                                    f'color:var(--text,#D4DDE6);padding:1px 0">'
+                                                    f'<span style="color:var(--muted,#7A8FA6);display:inline-block;width:80px">{_row_label}</span>'
+                                                    f'{_row_vals}'
+                                                    f'</div>',
+                                                    unsafe_allow_html=True,
+                                                )
+                                            st.download_button(
+                                                label="⬇️ Download matrix JSON",
+                                                data=_mat_json,
+                                                file_name="bracket_matrix.json",
+                                                mime="application/json",
+                                            )
+
+                                # ── C: Integration Layer ───────────────────────────
+                                st.markdown("**C · Integration Layer**")
+                                _kc_dual_integ = _kc_dual if _kc_dual else (_ev_concl.get("final", {}).get("dual_integration", {}))
+                                _consist       = _kc_dual_integ.get("consistency_score")
+                                _verdict       = _kc_dual_integ.get("verdict", "")
+                                _conf_final    = _kc_dual_integ.get("confidence_final")
+                                _conf_formula  = _kc_dual_integ.get("confidence_formula", "")
+                                if _consist is not None:
+                                    st.markdown(
+                                        f'<div style="font-size:11px;font-family:monospace;'
+                                        f'background:var(--surface,#162030);'
+                                        f'padding:8px 10px;border-radius:4px;border-left:3px solid #2E7D32">'
+                                        f'consistency = cos(nonlinear_activation, v_C) = <b>{_consist:.3f}</b>'
+                                        f' &nbsp; verdict: <b>{_verdict}</b><br>'
+                                        f'confidence_final = P_Bayes &times; (1 + 0.3 &times; max(0, consistency)) / 1.3<br>'
+                                        + (f'= <b>{_conf_formula}</b>' if _conf_formula else (f'= <b>{_conf_final:.3f}</b>' if _conf_final is not None else ''))
+                                        + f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    st.caption("Integration layer data not available for this result.")
+                            else:
+                                st.caption(
+                                    "Run an analysis to see the Key Computation Process "
+                                    "(Bayesian formula + Lie algebra results) displayed here."
+                                )
+
+                            # Supporting evidence chains
+                            _ep_outcomes = _ev_path.get("outcomes", [])
+                            if _ep_outcomes:
+                                st.markdown("**Supporting evidence chains**")
                                 for _oc in _ep_outcomes:
                                     _oc_text = _oc.get("text") or _oc.get("id", "")
                                     _oc_prob = _oc.get("probability", 0)
@@ -1483,72 +1717,36 @@ if page == "Dashboard":
                                     st.markdown(
                                         f'<div style="margin:4px 0;">'
                                         f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
-                                        f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
+                                        f'<div style="background:#1A2D3D;border-radius:4px;height:5px;margin-top:3px;">'
                                         f'<div style="background:#2E7D32;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
                                         f'</div></div>',
                                         unsafe_allow_html=True,
                                     )
 
-                        # Hypothesis Path (T1 inferred)
-                        if _show_hidden:
-                            st.markdown("#### 🟡 Hypothesis Path — T1 Inferred")
-                            _hyp_summary = _hyp_path.get("summary") or "(No hypothesis path available)"
-                            _beta_path_data = _ev_concl.get("beta_path") or {}
-                            _beta_prob_val  = _beta_path_data.get("probability", 0)
-                            _beta_lie_em    = _beta_path_data.get("lie_emergence", {})
-                            _beta_lie_label = _beta_lie_em.get("nonlinear_label", "")
-                            _hyp_summary_html = (
-                                f'<div style="background:#FFF8E1;border-left:4px solid #F9A825;'
-                                f'padding:10px 14px;border-radius:4px;font-size:14px">'
-                                f'<b>Bayesian (p={_beta_prob_val:.0%}):</b> {_hyp_summary}'
-                                + (f'<br><br><b>Structural emergence:</b> {_beta_lie_label}' if _beta_lie_label else '')
-                                + f'</div>'
-                            )
-                            st.markdown(_hyp_summary_html, unsafe_allow_html=True)
-
-                            # Change A: Move hypothesis outcome bars into a collapsed expander
+                            # Alternative scenario evidence
                             _hyp_outcomes = _hyp_path.get("outcomes", [])
                             if _hyp_outcomes:
-                                with st.expander("📊 Alternative scenario evidence", expanded=False):
-                                    for _oc in _hyp_outcomes:
-                                        _oc_text = _oc.get("text") or _oc.get("id", "")
-                                        _oc_prob = _oc.get("probability", 0)
-                                        _oc_bar  = max(4, int(_oc_prob * 100))
-                                        st.markdown(
-                                            f'<div style="margin:4px 0;">'
-                                            f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
-                                            f'<div style="background:#E0E0E0;border-radius:4px;height:5px;margin-top:3px;">'
-                                            f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
-                                            f'</div></div>',
-                                            unsafe_allow_html=True,
-                                        )
-                            _hyp_gaps = _hyp_path.get("verification_gaps", [])
-                            if _hyp_gaps:
-                                st.caption("Verification gaps: " + " · ".join(_hyp_gaps))
-                        else:
-                            st.caption("💡 Hypothesis path hidden — enable 'Show hypothesis path' in the sidebar.")
+                                st.markdown("**Alternative scenario evidence**")
+                                for _oc in _hyp_outcomes:
+                                    _oc_text = _oc.get("text") or _oc.get("id", "")
+                                    _oc_prob = _oc.get("probability", 0)
+                                    _oc_bar  = max(4, int(_oc_prob * 100))
+                                    st.markdown(
+                                        f'<div style="margin:4px 0;">'
+                                        f'<span style="font-size:13px;font-weight:600">{_oc_text}</span>'
+                                        f'<div style="background:#1A2D3D;border-radius:4px;height:5px;margin-top:3px;">'
+                                        f'<div style="background:#F9A825;width:{_oc_bar}%;height:5px;border-radius:4px;"></div>'
+                                        f'</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
 
-                        # Executive Judgement
-                        st.markdown("#### 📋 Executive Judgement")
-                        _exec_j = (
-                            _ev_concl.get("executive_judgement")
-                            or _ev_concl.get("conclusion")
-                            or "(No judgement available)"
-                        )
-                        # Guard: if backend returns a dict instead of str, convert defensively
-                        if not isinstance(_exec_j, str):
-                            _exec_j = str(_exec_j)
-                        st.info(_exec_j)
-
-                        # Show raw (deterministic) fields in an expander
-                        _render_meta = _ev_concl.get("rendering_meta", {})
-                        _raw_ej  = _ev_concl.get("executive_judgement_raw", "")
-                        _raw_ep  = (_ev_concl.get("evidence_path") or {}).get("summary_raw", "")
-                        _raw_hp  = (_ev_concl.get("hypothesis_path") or {}).get("summary_raw", "")
-                        if _raw_ej or _raw_ep or _raw_hp:
-                            with st.expander("🔍 Show raw (deterministic)", expanded=False):
+                            # Raw deterministic output
+                            if _raw_ej or _raw_ep or _raw_hp:
+                                st.markdown("**Raw deterministic output**")
                                 if _render_meta.get("enabled"):
-                                    _guard_note = "⚠️ Guardrails triggered — raw text was used for one or more fields." if _render_meta.get("guardrails_triggered") else "✅ All rendered fields passed guardrails."
+                                    _guard_note = ("⚠️ Guardrails triggered — raw text was used for one or more fields."
+                                                   if _render_meta.get("guardrails_triggered")
+                                                   else "✅ All rendered fields passed guardrails.")
                                     st.caption(_guard_note)
                                 if _raw_ej:
                                     st.markdown("**Executive Judgement (raw)**")
@@ -1560,163 +1758,8 @@ if page == "Dashboard":
                                     st.markdown("**Hypothesis Path Summary (raw)**")
                                     st.text(_raw_hp)
 
-                        # Confidence from Bayesian posterior
-                        _final = _ev_concl.get("final", {})
-                        _overall_conf = _final.get("overall_confidence") or _ev_concl.get("confidence", 0)
-                        _compute_ref  = _final.get("compute_trace_ref", "")
-
-                        # ── Key Computation Process (always visible, non-hover) ──────
-                        # Extract top probability-tree node and dual inference data
-                        _concl_ptree = _ev_ptree.get("nodes", [])
-                        _top_node = next(
-                            (n for n in _concl_ptree if n.get("id") not in ("root",) and n.get("tooltip_data")),
-                            None,
-                        )
-                        _ev_dual_list = _er.get("dual_inference", [])
-                        _top_dual     = _ev_dual_list[0] if _ev_dual_list else {}
-
-                        if _top_node:
-                            _td = _top_node.get("tooltip_data", {})
-                            _kc_bayes = _td.get("bayesian", {})
-                            _kc_lie   = _td.get("lie_algebra", {})
-                            _kc_dual  = _td.get("dual_integration", {})
-
-                            st.markdown("#### 📐 Key Computation Process")
-                            _kca_col, _kcb_col = st.columns(2)
-
-                            # ── A: Bayesian path (Change B: correct formula, no lie_sim^k) ────
-                            with _kca_col:
-                                _kc_prior_a   = _kc_bayes.get("prior_a", 0)
-                                _kc_prior_b   = _kc_bayes.get("prior_b", 0)
-                                _kc_lie_sim   = _kc_bayes.get("lie_sim", 0)
-                                _kc_posterior = _kc_bayes.get("posterior", 0)
-                                _kc_Z         = _kc_bayes.get("Z", 1)
-                                _kc_p         = _kc_bayes.get("probability", 0)
-                                # Minimum 4% width so even tiny probabilities render a visible bar sliver
-                                _kc_bar_pct   = max(4, int(_kc_p * 100))
-
-                                st.markdown("**A · Bayesian Path — Transition Probability**")
-                                st.markdown(
-                                    f'<div style="font-size:11px;font-family:monospace;background:#F0F4FF;'
-                                    f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #0047AB">'
-                                    f'<b>Question: Which pattern C is most likely activated next?</b><br>'
-                                    f'w(A,B→C) = &pi;(A) &times; &pi;(B) &times; cos(v_A + v_B, v_C)<br>'
-                                    f'= {_kc_prior_a:.3f} &times; {_kc_prior_b:.3f} &times; {_kc_lie_sim:.3f}<br>'
-                                    f'P_Bayes(C) = w / Z = {_kc_posterior:.4f} / {_kc_Z:.4f}'
-                                    f' &nbsp;→&nbsp; <b>p = {_kc_p:.1%}</b>'
-                                    f'</div>'
-                                    # horizontal bar: fill from left, length proportional to p
-                                    f'<div style="background:#D8E4F8;border-radius:4px;height:10px;margin:4px 0;">'
-                                    f'<div style="background:#0047AB;width:{_kc_bar_pct}%;height:10px;'
-                                    f'border-radius:4px;"></div></div>'
-                                    f'<div style="font-size:11px;color:#555">'
-                                    f'p = <b>{_kc_p:.1%}</b> &nbsp;|&nbsp; Z = {_kc_Z:.4f}'
-                                    f' &nbsp;|&nbsp; '
-                                    + (_prob_tooltip_html(_kc_p, _top_node) if _top_node else f'{_kc_p:.1%}')
-                                    + '</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                            # ── B: Lie algebra path (Change C: parallel independent path with emergence) ──
-                            with _kcb_col:
-                                _kc_mat_norm  = _kc_lie.get("matrix_norm") or _top_dual.get("lie_algebra", {}).get("matrix_norm", 0.0)
-                                _kc_sigma1    = _kc_lie.get("sigma1") or _top_dual.get("lie_algebra", {}).get("sigma1", 0.0)
-                                _kc_top_dims  = _kc_lie.get("top_emergent_dims") or _top_dual.get("lie_algebra", {}).get("top_emergent_dims", [])
-                                _kc_top_vals  = _kc_lie.get("top_emergent_values") or _top_dual.get("lie_algebra", {}).get("top_emergent_values", [])
-
-                                st.markdown("**B · Lie Algebra Path — Emergence Detection (parallel, independent)**")
-                                _kc_mat_str   = f"‖[A,B]‖_F = {_kc_mat_norm:.4f}" if _kc_mat_norm else "‖[A,B]‖_F = —"
-                                _kc_sigma_str = f" &nbsp;|&nbsp; σ₁ = {_kc_sigma1:.4f}" if _kc_sigma1 else ""
-                                st.markdown(
-                                    f'<div style="font-size:11px;font-family:monospace;background:#F5F0FF;'
-                                    f'padding:8px 10px;border-radius:4px;margin-bottom:6px;border-left:3px solid #7B1FA2">'
-                                    f'<b>Question: Which dimensions show non-linear structural effects?</b><br>'
-                                    f'C = [X_A, X_B] = X_A @ X_B &minus; X_B @ X_A &nbsp;(8&times;8 commutator)<br>'
-                                    f'nonlinear_activation[i] = ‖C[i,:]‖₂ per dimension<br>'
-                                    f'<b>{_kc_mat_str}</b>{_kc_sigma_str}'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                                # Show top emergent dimensions as bars
-                                if _kc_top_dims and _kc_top_vals:
-                                    _max_v = max(_kc_top_vals) if _kc_top_vals else 1.0
-                                    # Bar width scaled to 80px max; minimum 2px for visibility
-                                    _dim_bar_max_px = 80
-                                    for _dim, _val in zip(_kc_top_dims[:3], _kc_top_vals[:3]):
-                                        _dim_bar = max(2, int(_val / max(_max_v, 1e-9) * _dim_bar_max_px))
-                                        st.markdown(
-                                            f'<div style="font-size:11px;margin:2px 0;display:flex;align-items:center;gap:6px">'
-                                            f'<span style="display:inline-block;min-width:72px;color:#555">{_dim}</span>'
-                                            f'<span style="display:inline-block;background:#7B1FA2;height:6px;'
-                                            f'width:{_dim_bar}px;border-radius:2px"></span>'
-                                            f'<span style="color:#555">{_val:.3f}</span>'
-                                            f'</div>',
-                                            unsafe_allow_html=True,
-                                        )
-
-                                # Expand/collapse: inspect 8x8 bracket matrix
-                                _kc_bracket = _top_dual.get("lie_algebra", {}).get("bracket_matrix")
-                                if _kc_bracket:
-                                    import json as _json
-                                    _mat_json = _json.dumps(_kc_bracket, separators=(",", ":"))
-                                    with st.expander("🔎 Inspect 8×8 bracket matrix [X_A, X_B]", expanded=False):
-                                        st.caption(
-                                            "C = [X_A, X_B] = X_A @ X_B − X_B @ X_A (8×8 antisymmetric matrix). "
-                                            "Row i shows non-linear interference of dimension i on all others."
-                                        )
-                                        _rows = ["coercion", "cooperation", "dependency", "information",
-                                                 "regulation", "military", "economic", "technology"]
-                                        for _ri, _row in enumerate(_kc_bracket):
-                                            _row_vals = "  ".join(f"{v:+.3f}" for v in _row)
-                                            _row_label = _rows[_ri] if _ri < len(_rows) else f"dim{_ri}"
-                                            st.markdown(
-                                                f'<div style="font-size:10px;font-family:monospace;'
-                                                f'color:#333;padding:1px 0">'
-                                                f'<span style="color:#555;display:inline-block;width:80px">{_row_label}</span>'
-                                                f'{_row_vals}'
-                                                f'</div>',
-                                                unsafe_allow_html=True,
-                                            )
-                                        st.download_button(
-                                            label="⬇️ Download matrix JSON",
-                                            data=_mat_json,
-                                            file_name="bracket_matrix.json",
-                                            mime="application/json",
-                                        )
-
-                            # ── C: Integration Layer (Change D) ───────────────────────────
-                            st.markdown("**C · Integration Layer**")
-                            _kc_dual_integ = _kc_dual if _kc_dual else (_ev_concl.get("final", {}).get("dual_integration", {}))
-                            _consist       = _kc_dual_integ.get("consistency_score")
-                            _verdict       = _kc_dual_integ.get("verdict", "")
-                            _conf_final    = _kc_dual_integ.get("confidence_final")
-                            _conf_formula  = _kc_dual_integ.get("confidence_formula", "")
-                            if _consist is not None:
-                                st.markdown(
-                                    f'<div style="font-size:11px;font-family:monospace;background:#F0FFF0;'
-                                    f'padding:8px 10px;border-radius:4px;border-left:3px solid #2E7D32">'
-                                    f'consistency = cos(nonlinear_activation, v_C) = <b>{_consist:.3f}</b>'
-                                    f' &nbsp; verdict: <b>{_verdict}</b><br>'
-                                    f'confidence_final = P_Bayes &times; (1 + 0.3 &times; max(0, consistency)) / 1.3<br>'
-                                    + (f'= <b>{_conf_formula}</b>' if _conf_formula else (f'= <b>{_conf_final:.3f}</b>' if _conf_final is not None else ''))
-                                    + f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                st.caption("Integration layer data not available for this result.")
-                        else:
-                            st.caption(
-                                "📐 Run an analysis to see the Key Computation Process "
-                                "(Bayesian formula + Lie algebra results) displayed here."
-                            )
-
-                        # Confidence metric row
-                        _c1, _c2 = st.columns(2)
-                        with _c1:
-                            st.metric("Overall Confidence", f"{_overall_conf:.0%}")
-                        with _c2:
-                            st.caption(f"Compute trace: `{_compute_ref}`")
+                            if _compute_ref:
+                                st.caption(f"Compute trace: `{_compute_ref}`")
 
                         with st.expander("🛠 Raw JSON (Evented result)", expanded=False):
                             st.json(_er)
@@ -1734,13 +1777,13 @@ if page == "Dashboard":
                             _ev_type = _ev.get("type", "unknown")
                             st.markdown(
                                 f'<div style="border-left:3px solid {_ev_tier_color};'
-                                f'padding:8px 12px;margin-bottom:8px;background:#FAFAFA;border-radius:4px;">'
+                                f'padding:8px 12px;margin-bottom:8px;background:var(--surface,#162030);border-radius:4px;">'
                                 f'<span style="font-weight:700;font-size:13px">{_ev_type}</span>'
                                 f'&nbsp;&nbsp;<span style="background:{_ev_tier_color};color:#fff;'
                                 f'padding:1px 7px;border-radius:10px;font-size:11px">{_ev_tier}</span>'
-                                f'&nbsp;&nbsp;<span style="color:#666;font-size:11px">confidence {_ev_conf:.0%}</span>'
-                                f'<div style="font-size:12px;color:#555;margin-top:4px">📎 {_ev_quote}</div>'
-                                f'<div style="font-size:11px;color:#888;margin-top:2px">Inferred fields: {_ev_inf}</div>'
+                                f'&nbsp;&nbsp;<span style="color:var(--text,#D4DDE6);font-size:11px">confidence {_ev_conf:.0%}</span>'
+                                f'<div style="font-size:12px;color:var(--muted,#7A8FA6);margin-top:4px">📎 {_ev_quote}</div>'
+                                f'<div style="font-size:11px;color:var(--muted,#7A8FA6);margin-top:2px">Inferred fields: {_ev_inf}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
@@ -1756,13 +1799,13 @@ if page == "Dashboard":
                                 _ap_color = "#2E7D32" if _ap_tier == "T2" else "#E65100"
                                 st.markdown(
                                     f'<div style="border-left:3px solid {_ap_color};'
-                                    f'padding:6px 10px;margin-bottom:6px;background:#FAFAFA;">'
+                                    f'padding:6px 10px;margin-bottom:6px;background:var(--surface,#162030);">'
                                     f'<b>{_ap.get("pattern", _ap.get("pattern_name", ""))}</b>'
                                     f'&nbsp;<span style="background:{_ap_color};color:#fff;'
                                     f'padding:1px 6px;border-radius:8px;font-size:11px">{_ap_tier}</span>'
-                                    f'&nbsp;<span style="color:#888;font-size:11px">Pr={_ap_conf:.0%}'
+                                    f'&nbsp;<span style="color:var(--muted,#7A8FA6);font-size:11px">Pr={_ap_conf:.0%}'
                                     f'{" · inferred" if _ap_inf else ""}</span>'
-                                    f'&nbsp;<span style="color:#aaa;font-size:10px">← {_ap.get("from_event","")}</span>'
+                                    f'&nbsp;<span style="color:var(--muted,#7A8FA6);font-size:10px">← {_ap.get("from_event","")}</span>'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
@@ -1778,12 +1821,12 @@ if page == "Dashboard":
                                 _dp_color = "#2E7D32" if _dp_tier == "T2" else "#7B1FA2"
                                 st.markdown(
                                     f'<div style="border-left:3px solid {_dp_color};'
-                                    f'padding:6px 10px;margin-bottom:6px;background:#F8F0FF;">'
+                                    f'padding:6px 10px;margin-bottom:6px;background:var(--surface-raised,#1E2D3D);">'
                                     f'<b>{_dp.get("derived", _dp.get("pattern_name", ""))}</b>'
                                     f'&nbsp;<span style="background:{_dp_color};color:#fff;'
                                     f'padding:1px 6px;border-radius:8px;font-size:11px">{_dp_tier}</span>'
-                                    f'&nbsp;<span style="color:#888;font-size:11px">Pr={_dp_conf:.0%}</span>'
-                                    f'<div style="font-size:10px;color:#aaa;margin-top:2px">rule: {_dp_rule}</div>'
+                                    f'&nbsp;<span style="color:var(--muted,#7A8FA6);font-size:11px">Pr={_dp_conf:.0%}</span>'
+                                    f'<div style="font-size:10px;color:var(--muted,#7A8FA6);margin-top:2px">rule: {_dp_rule}</div>'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
@@ -1807,10 +1850,10 @@ if page == "Dashboard":
                                 _tx_color = "#7B1FA2" if _tx_tt == "inverse" else "#1565C0"
                                 st.markdown(
                                     f'<div style="border-left:3px solid {_tx_color};'
-                                    f'padding:4px 10px;margin-bottom:4px;background:#FAFAFA;font-size:12px;">'
+                                    f'padding:4px 10px;margin-bottom:4px;background:var(--surface,#162030);font-size:12px;">'
                                     f'<b>[{_tx_tt.upper()}]</b> '
                                     f'{_tx_a} ⊕ {_tx_b} → <b>{_tx_c}</b>'
-                                    f'&nbsp;<span style="color:#888">posterior={_tx_pw:.4f}</span>'
+                                    f'&nbsp;<span style="color:var(--muted,#7A8FA6)">posterior={_tx_pw:.4f}</span>'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
@@ -1849,7 +1892,7 @@ if page == "Dashboard":
                             _root = next((n for n in _pt_nodes if n.get("id") == "root"), None)
                             if _root:
                                 st.markdown(
-                                    f'<div style="background:#E3F2FD;border-left:4px solid #0047AB;'
+                                    f'<div style="background:var(--surface-raised,#1E2D3D);border-left:4px solid #4A8FD4;'
                                     f'padding:8px 12px;border-radius:4px;margin-bottom:8px;">'
                                     f'<b>ROOT:</b> {_root.get("evidence", "")}'
                                     f'</div>',
@@ -1865,12 +1908,12 @@ if page == "Dashboard":
                                 _cn_evid  = _cn.get("evidence", "")
                                 _cn_gap   = _cn.get("verification_gap", "")
                                 _is_best  = (_cn.get("id") == _pt_selected)
-                                _cn_bg    = "#E8F5E9" if _is_best else "#FAFAFA"
-                                _cn_bdr   = "#2E7D32" if _is_best else "#90A4AE"
+                                _cn_bg    = "var(--surface,#162030)" if _is_best else "var(--surface,#162030)"
+                                _cn_bdr   = "#4CAF72" if _is_best else "#2D3F52"
                                 _bar_w    = max(4, int(_cn_prob * 100))
                                 _star_html = "&nbsp; ⭐ <em>highest probability</em>" if _is_best else ""
                                 _evid_html = (
-                                    f'<div style="font-size:11px;color:#777;margin-top:3px">'
+                                    f'<div style="font-size:11px;color:var(--muted,#7A8FA6);margin-top:3px">'
                                     f'🧮 {_cn_evid[:120]}</div>'
                                 ) if _cn_evid else ""
                                 _gap_html = (
@@ -1882,17 +1925,17 @@ if page == "Dashboard":
                                 _prob_html = (
                                     _prob_tooltip_html(_cn_prob, _cn)
                                     if _has_tooltip
-                                    else f'<span style="font-size:11px;color:#555">p = {_cn_prob:.2%}</span>'
+                                    else f'<span style="font-size:11px;color:var(--muted,#7A8FA6)">p = {_cn_prob:.2%}</span>'
                                 )
                                 st.markdown(
                                     f'<div style="background:{_cn_bg};border-left:4px solid {_cn_bdr};'
                                     f'padding:8px 12px;border-radius:4px;margin-bottom:6px;">'
                                     f'<b>{_cn_label}</b>{_star_html}'
-                                    f'<div style="margin:4px 0;background:#E0E0E0;border-radius:4px;height:6px;">'
+                                    f'<div style="margin:4px 0;background:#1A2D3D;border-radius:4px;height:6px;">'
                                     f'<div style="background:{_cn_bdr};width:{_bar_w}%;height:6px;border-radius:4px;"></div>'
                                     f'</div>'
                                     f'{_prob_html}'
-                                    f'<span style="font-size:11px;color:#555"> · tier: {_cn_type}</span>'
+                                    f'<span style="font-size:11px;color:var(--muted,#7A8FA6)"> · tier: {_cn_type}</span>'
                                     f'{_evid_html}{_gap_html}'
                                     f'</div>',
                                     unsafe_allow_html=True,
@@ -2289,7 +2332,7 @@ if page == "Dashboard":
 # Page: Streams
 # ===========================================================================
 elif page == "Streams":
-    st.title("📡 Intelligence Streams")
+    st.title("Intelligence Streams")
     st.caption(
         "Aggregated evidence intake from monitored sources. "
         "Attach any article to an active assessment or run a new assessment directly."
@@ -2315,7 +2358,7 @@ elif page == "Streams":
             help="Max articles to display",
         )
     with _sf_col4:
-        if st.button("🔄 Refresh", key="refresh_news", use_container_width=True):
+        if st.button("Refresh", key="refresh_news", use_container_width=True):
             with st.spinner("📡 Aggregating news…"):
                 result = _api.ingest_news()
                 if "error" not in result:
@@ -2341,10 +2384,10 @@ elif page == "Streams":
             st.info(f"🔍 Found {len(articles)} results")
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("📰 Articles", len(articles))
-        m2.metric("📂 Categories", len({a.get("category", "?") for a in articles}))
-        m3.metric("🏢 Sources", len({a.get("source", "?") for a in articles}))
-        m4.metric("⏰ Time range", f"{int(hours)} h")
+        m1.metric("Articles", len(articles))
+        m2.metric("Categories", len({a.get("category", "?") for a in articles}))
+        m3.metric("Sources", len({a.get("source", "?") for a in articles}))
+        m4.metric("Time Range", f"{int(hours)} h")
         st.divider()
 
         import hashlib as _hashlib
@@ -2489,7 +2532,7 @@ elif page == "Streams":
 # Page: Assessments  (Compose | Forecast | Scenario Stack)
 # ===========================================================================
 elif page == "Assessments":
-    st.title("📝 Assessments")
+    st.title("Assessments")
 
     _assess_tab_compose, _assess_tab_forecast, _assess_tab_stack = st.tabs([
         "Compose", "Forecast", "Scenario Stack"
@@ -2666,12 +2709,12 @@ elif page == "Assessments":
                                 ):
                                     _bar = max(4, int(_cn.get("probability", 0) * 100))
                                     st.markdown(
-                                        f'<div style="border-left:3px solid #0047AB;'
-                                        f'padding:4px 8px;margin-bottom:4px;background:#F5F5F5;">'
+                                        f'<div style="border-left:3px solid #4A8FD4;'
+                                        f'padding:4px 8px;margin-bottom:4px;background:var(--surface,#162030);">'
                                         f'<b>{_cn.get("label","")}</b> &nbsp;'
-                                        f'<span style="color:#555;font-size:11px">p={_cn.get("probability",0):.2%}</span>'
-                                        f'<div style="background:#E0E0E0;height:4px;border-radius:2px;margin-top:3px;">'
-                                        f'<div style="background:#0047AB;width:{_bar}%;height:4px;border-radius:2px;"></div>'
+                                        f'<span style="color:var(--muted,#7A8FA6);font-size:11px">p={_cn.get("probability",0):.2%}</span>'
+                                        f'<div style="background:#1A2D3D;height:4px;border-radius:2px;margin-top:3px;">'
+                                        f'<div style="background:#4A8FD4;width:{_bar}%;height:4px;border-radius:2px;"></div>'
                                         f'</div></div>',
                                         unsafe_allow_html=True,
                                     )
@@ -3044,7 +3087,7 @@ elif page == "Assessments":
 # Page: Knowledge
 # ===========================================================================
 elif page == "Knowledge":
-    st.title("🕸 Knowledge Graph Tools")
+    st.title("Knowledge")
     st.caption(
         "View and query the Knowledge Graph stored in KuzuDB. "
         "The graph is populated by the intelligence ingestion pipeline. "
@@ -3054,8 +3097,8 @@ elif page == "Knowledge":
     col_graph, col_chat = st.columns([3, 2], gap="large")
 
     with col_graph:
-        st.subheader("🌐 Knowledge Graph View")
-        if st.button("🔄 Update Graph", type="primary", key="kg_update"):
+        st.subheader("Entity Network")
+        if st.button("Refresh Graph", type="primary", key="kg_update"):
             with st.spinner("Ingesting graph data…"):
                 _resp = _api.ingest_news()
                 st.success("✅ Done" if "error" not in _resp else f"❌ {_resp['error']}")
@@ -3073,7 +3116,7 @@ elif page == "Knowledge":
         render_graph(_gdata)
 
     with col_chat:
-        st.subheader("💬 Cypher Query")
+        st.subheader("Advanced Query")
         st.caption("Cypher queries are supported with KuzuDB backend (`GRAPH_BACKEND=kuzu`).")
         _default_cypher = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"
         _cypher_input = st.text_area(
@@ -3099,9 +3142,9 @@ elif page == "Knowledge":
 
         for _item in st.session_state.kg_chat_history:
             st.markdown(
-                f"<div style='background:#F5F5F5;border:1px solid #E0E0E0;border-radius:4px;"
+                f"<div style='background:var(--surface-raised,#1E2D3D);border:1px solid var(--border,#2D3F52);border-radius:4px;"
                 f"padding:8px 12px;margin-bottom:4px;font-family:monospace;font-size:13px;"
-                f"color:#606060'>{_item['query']}</div>",
+                f"color:var(--muted,#7A8FA6)'>{_item['query']}</div>",
                 unsafe_allow_html=True,
             )
             _resp = _item["response"]
