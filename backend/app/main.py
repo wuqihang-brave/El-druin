@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.analysis import router as analysis_router
+from app.api.routes.assessments import router as assessments_router
 from app.api.routes.entities import router as entities_router
 from app.api.routes.extract import router as extract_router
 from app.api.routes.health import router as health_router
@@ -104,6 +105,7 @@ app.include_router(intelligence_router, prefix=_API_PREFIX)
 app.include_router(provenance_router, prefix=_API_PREFIX)
 app.include_router(analysis_router, prefix=_API_PREFIX)
 app.include_router(entities_router, prefix=_API_PREFIX)
+app.include_router(assessments_router, prefix=_API_PREFIX, tags=["assessments"])
 
 
 # ---------------------------------------------------------------------------
