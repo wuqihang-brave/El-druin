@@ -35,19 +35,16 @@ import streamlit as st
 # Navigation configuration
 # ---------------------------------------------------------------------------
 
-# Labels for pages rendered inline inside app.py
-_INLINE_LABELS: list[str] = [
-    "Dashboard",
-    "Streams",
-    "Knowledge",
-]
+# All nav items in display order
+_ALL_LABELS: list[str] = ["Dashboard", "Assessments", "Streams", "Knowledge"]
 
 # Labels that navigate to a dedicated pages/ file instead of rendering inline
 _PAGE_FILE_LABELS: dict[str, str] = {
     "Assessments": "pages/2_Assessments.py",
 }
 
-_ALL_LABELS: list[str] = ["Dashboard", "Assessments", "Streams", "Knowledge"]
+# Labels rendered inline inside app.py (derived; do not edit directly)
+_INLINE_LABELS: list[str] = [l for l in _ALL_LABELS if l not in _PAGE_FILE_LABELS]
 
 
 def render_sidebar_navigation(is_subpage: bool = False) -> str:
