@@ -8,20 +8,23 @@ Endpoints:
   GET  /assessments/{assessment_id}/brief        – executive brief
   GET  /assessments/{assessment_id}/regime       – regime state output
   GET  /assessments/{assessment_id}/triggers     – trigger amplification output
-  GET  /assessments/{assessment_id}/attractors   – attractor output
+  GET  /assessments/{assessment_id}/attractors   – attractor output (live engine)
   GET  /assessments/{assessment_id}/propagation  – propagation sequence output
   GET  /assessments/{assessment_id}/delta        – update delta output
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
 Stubs return realistic placeholder data keyed to assessment_id "ae-204".
-Actual engine wiring will follow in PR-4 through PR-8.
+The attractors endpoint uses the AttractorEngine (PR-6) with graceful stub fallback.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
 
 from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
 from app.schemas.structural_forecast import (
@@ -304,6 +307,19 @@ def _stub_or_404(assessment_id: str) -> None:
         )
 
 
+def _build_assessment_context(assessment_id: str) -> dict:
+    """Build context dict for the AttractorEngine from available assessment data."""
+    if assessment_id == _DEMO_ID:
+        return {
+            "assessment_id": assessment_id,
+            "title": _DEMO_ASSESSMENT.title,
+            "domain_tags": list(_DEMO_ASSESSMENT.domain_tags),
+            "region_tags": list(_DEMO_ASSESSMENT.region_tags),
+            "evidence_count": len(_DEMO_EVIDENCE.evidence),
+        }
+    return {}
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -343,9 +359,19 @@ def get_triggers(assessment_id: str) -> TriggersOutput:
 
 
 @router.get("/{assessment_id}/attractors", response_model=AttractorsOutput)
-def get_attractors(assessment_id: str) -> AttractorsOutput:
-    """Return the attractor output for an assessment."""
+async def get_attractors(assessment_id: str) -> AttractorsOutput:
+    """Return the attractor output for an assessment (live engine with stub fallback)."""
     _stub_or_404(assessment_id)
+    context = _build_assessment_context(assessment_id)
+    if context:
+        try:
+            from app.services.attractor_engine import AttractorEngine
+            engine = AttractorEngine()
+            return await engine.compute_attractors(assessment_id, context)
+        except Exception:
+            logger.warning(
+                "get_attractors: engine unavailable for %s, returning stub", assessment_id
+            )
     return _DEMO_ATTRACTORS
 
 
