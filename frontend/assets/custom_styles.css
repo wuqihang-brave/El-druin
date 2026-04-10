@@ -275,3 +275,29 @@ div[data-testid="stExpander"] summary svg {
   color: var(--blue-accent);
 }
 
+/* ─── Forecast Brief card ────────────────────────────────────────────────── */
+.brief-posture {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin: 4px 0 10px 0;
+}
+.brief-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+}
+.brief-value {
+  font-size: 0.95rem;
+  color: #c8c8c8;
+}
+.confidence-high  { color: #4caf7d; font-weight: 600; }
+.confidence-medium { color: #e8a742; font-weight: 600; }
+.confidence-low   { color: #e05c5c; font-weight: 600; }
+.condition-item {
+  padding: 2px 0;
+  color: #b0b0b0;
+  font-size: 0.88rem;
+}
+
