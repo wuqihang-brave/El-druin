@@ -21,7 +21,7 @@ if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
 from utils.api_client import APIClient
-from components.sidebar import render_sidebar_navigation
+from components.sidebar import render_sidebar_navigation, PAGE_FILE_LABELS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -386,11 +386,5 @@ if page == "Dashboard":
         "is implemented."
     )
 
-elif page == "Streams":
-    st.switch_page("pages/4_Streams.py")
-
-elif page == "Knowledge":
-    st.switch_page("pages/3_Knowledge.py")
-
-elif page == "Assessments":
-    st.switch_page("pages/2_Assessments.py")
+elif page in PAGE_FILE_LABELS:
+    st.switch_page(PAGE_FILE_LABELS[page])

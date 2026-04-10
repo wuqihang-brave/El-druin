@@ -44,6 +44,8 @@ _PAGE_FILE_LABELS: dict[str, str] = {
     "Streams": "pages/4_Streams.py",
     "Knowledge": "pages/3_Knowledge.py",
 }
+# Public alias for use by app.py router
+PAGE_FILE_LABELS = _PAGE_FILE_LABELS
 
 # Labels rendered inline inside app.py (derived; do not edit directly)
 _INLINE_LABELS: list[str] = [l for l in _ALL_LABELS if l not in _PAGE_FILE_LABELS]
