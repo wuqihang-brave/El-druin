@@ -643,6 +643,367 @@ class APIClient:
 
         return self._post("/analysis/evented/deduce", json=payload)
 
+    # ------------------------------------------------------------------
+    # Assessment workspace endpoints
+    # ------------------------------------------------------------------
+
+    def get_assessments(self) -> list:
+        """Return all available assessments.
+
+        Returns:
+            List of assessment dicts.  Falls back to a minimal stub list when
+            the backend is unreachable so the UI always renders.
+        """
+        result = self._get("/api/v1/assessments")
+        if "error" in result:
+            return _ASSESSMENT_LIST_STUB
+        return result.get("assessments", [])
+
+    def get_assessment(self, assessment_id: str) -> Dict[str, Any]:
+        """Return a single assessment by ID.
+
+        Returns:
+            Assessment dict or a stub fallback.
+        """
+        result = self._get(f"/api/v1/assessments/{assessment_id}")
+        if "error" in result:
+            return _ASSESSMENT_STUB
+        return result
+
+    def get_brief(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the executive brief for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/brief")
+        if "error" in result:
+            return _BRIEF_STUB
+        return result
+
+    def get_regime(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the current regime state for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/regime")
+        if "error" in result:
+            return _REGIME_STUB
+        return result
+
+    def get_triggers(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the trigger amplification output for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/triggers")
+        if "error" in result:
+            return _TRIGGERS_STUB
+        return result
+
+    def get_attractors(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the attractor output for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/attractors")
+        if "error" in result:
+            return _ATTRACTORS_STUB
+        return result
+
+    def get_propagation(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the propagation sequence for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/propagation")
+        if "error" in result:
+            return _PROPAGATION_STUB
+        return result
+
+    def get_delta(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the update delta output for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/delta")
+        if "error" in result:
+            return _DELTA_STUB
+        return result
+
+    def get_evidence(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the evidence items for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/evidence")
+        if "error" in result:
+            return _EVIDENCE_STUB
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Offline fallback stubs – returned when backend is unreachable
+# These match the shape of the backend schemas so the UI always renders.
+# ---------------------------------------------------------------------------
+
+_ASSESSMENT_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "title": "Black Sea Energy Corridor – Structural Watch",
+    "assessment_type": "structural_watch",
+    "status": "active",
+    "region_tags": ["Eastern Europe", "Black Sea", "Middle East"],
+    "domain_tags": ["energy", "military", "sanctions", "finance"],
+    "created_at": "2026-03-01T09:00:00Z",
+    "updated_at": "2026-04-09T18:00:00Z",
+    "last_regime": "Nonlinear Escalation",
+    "last_confidence": "High",
+    "alert_count": 3,
+    "analyst_notes": "Pipeline disruption risk elevated following recent naval incidents.",
+}
+
+_ASSESSMENT_LIST_STUB: list = [_ASSESSMENT_STUB]
+
+_BRIEF_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "forecast_posture": "Upward-skewed energy risk",
+    "time_horizon": "3-7 days",
+    "confidence": "High",
+    "why_it_matters": (
+        "A disruption to the Black Sea energy corridor would cascade into EU "
+        "spot-market prices within 24 hours and increase sanctions pressure on "
+        "transit states within 72 hours."
+    ),
+    "dominant_driver": "Naval interdiction pressure on energy transit routes",
+    "strengthening_conditions": [
+        "Additional naval assets deployed in contested waters",
+        "Insurance market withdrawal from corridor tankers",
+        "Diplomatic channel breakdown between transit states",
+    ],
+    "weakening_conditions": [
+        "Ceasefire or de-escalation agreement signed",
+        "Alternative pipeline capacity comes online",
+        "Third-party mediation accepted by all parties",
+    ],
+    "invalidation_conditions": [
+        "Full corridor reopening confirmed by all transit operators",
+        "Regional security guarantee treaty ratified",
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_REGIME_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "current_regime": "Nonlinear Escalation",
+    "threshold_distance": 0.18,
+    "transition_volatility": 0.74,
+    "reversibility_index": 0.31,
+    "dominant_axis": "military -> sanctions -> energy",
+    "coupling_asymmetry": 0.62,
+    "damping_capacity": 0.29,
+    "forecast_implication": (
+        "System is within the nonlinear escalation band. A moderate shock to "
+        "any coupled domain is sufficient to trigger cascade propagation. "
+        "Damping capacity is low; diplomatic interventions have a narrow window."
+    ),
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_TRIGGERS_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "triggers": [
+        {
+            "name": "Naval incident in contested strait",
+            "amplification_factor": 0.87,
+            "jump_potential": "Critical",
+            "impacted_domains": ["military", "energy", "insurance", "finance"],
+            "expected_lag_hours": 6,
+            "confidence": 0.81,
+            "watch_signals": [
+                "AIS dark zones expanding",
+                "Insurance premium spike >20%",
+                "Emergency UNSC session called",
+            ],
+            "damping_opportunities": [
+                "Bilateral hotline activation",
+                "Neutral maritime observer deployment",
+            ],
+        },
+        {
+            "name": "Secondary sanctions package announced",
+            "amplification_factor": 0.71,
+            "jump_potential": "High",
+            "impacted_domains": ["finance", "energy", "trade"],
+            "expected_lag_hours": 48,
+            "confidence": 0.68,
+            "watch_signals": [
+                "Treasury OFAC pre-designation briefings",
+                "Correspondent banking withdrawals from region",
+            ],
+            "damping_opportunities": [
+                "Carve-out negotiations via EU intermediaries",
+                "Humanitarian exemption framework agreed",
+            ],
+        },
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_ATTRACTORS_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "attractors": [
+        {
+            "name": "Protracted low-level blockade equilibrium",
+            "pull_strength": 0.78,
+            "horizon": "3-10d",
+            "supporting_evidence_count": 14,
+            "counterforces": [
+                "Economic cost to blocking state",
+                "NATO maritime presence",
+            ],
+            "invalidation_conditions": [
+                "Full unilateral withdrawal of naval assets",
+                "Internationally brokered corridor guarantee",
+            ],
+            "trend": "up",
+        },
+        {
+            "name": "Fragile corridor reopening under third-party guarantee",
+            "pull_strength": 0.41,
+            "horizon": "10-21d",
+            "supporting_evidence_count": 6,
+            "counterforces": [
+                "Domestic political constraints on concessions",
+                "Ongoing military operations in adjacent theatre",
+            ],
+            "invalidation_conditions": [
+                "Escalation to direct state-on-state naval exchange",
+            ],
+            "trend": "stable",
+        },
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_PROPAGATION_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "sequence": [
+        {"step": 1, "domain": "military", "event": "Naval assets block strait access", "time_bucket": "T+0"},
+        {"step": 2, "domain": "energy", "event": "Tanker transit suspended; spot prices spike 12%", "time_bucket": "T+24h"},
+        {"step": 3, "domain": "insurance", "event": "Lloyd's withdraws corridor coverage", "time_bucket": "T+24h"},
+        {"step": 4, "domain": "finance", "event": "Regional sovereign spreads widen 40bps", "time_bucket": "T+72h"},
+        {"step": 5, "domain": "trade", "event": "Alternative routing adds $3.2/bbl cost; contract renegotiations begin", "time_bucket": "T+7d"},
+        {"step": 6, "domain": "political", "event": "Emergency EU energy council; sanctions expansion tabled", "time_bucket": "T+2-6w"},
+    ],
+    "bottlenecks": [
+        "Single strait chokepoint with no viable short-term alternative",
+        "Insurance market concentration in London market",
+    ],
+    "second_order_effects": [
+        "Increased LNG spot demand in Mediterranean markets",
+        "Accelerated permitting for alternative pipeline routes",
+        "Domestic energy rationing measures in downstream states",
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_DELTA_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "regime_changed": True,
+    "threshold_direction": "narrowing",
+    "trigger_ranking_changes": [
+        {"field": "Naval incident trigger rank", "previous": 2, "current": 1, "direction": "increased"},
+        {"field": "Sanctions trigger rank", "previous": 1, "current": 2, "direction": "decreased"},
+    ],
+    "attractor_pull_changes": [
+        {"field": "Protracted blockade pull_strength", "previous": 0.61, "current": 0.78, "direction": "increased"},
+    ],
+    "damping_capacity_delta": -0.12,
+    "confidence_delta": 0.07,
+    "new_evidence_count": 4,
+    "summary": (
+        "Regime shifted from Stress Accumulation to Nonlinear Escalation "
+        "following confirmation of naval asset deployment. Damping capacity "
+        "deteriorated by 12 points. Four new high-quality evidence items "
+        "incorporated, raising overall confidence."
+    ),
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+_EVIDENCE_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "evidence": [
+        {
+            "evidence_id": "ev-1001",
+            "source": "Lloyd's List Intelligence – AIS Feed",
+            "timestamp": "2026-04-09T06:14:00Z",
+            "source_quality": "Primary",
+            "impacted_area": "energy / maritime",
+            "structural_novelty": 0.82,
+            "confidence_contribution": 0.19,
+            "provenance_link": "/api/v1/provenance/entity/ev-1001",
+        },
+        {
+            "evidence_id": "ev-1002",
+            "source": "Reuters – Diplomatic correspondent",
+            "timestamp": "2026-04-09T09:45:00Z",
+            "source_quality": "High",
+            "impacted_area": "political / sanctions",
+            "structural_novelty": 0.54,
+            "confidence_contribution": 0.11,
+            "provenance_link": "/api/v1/provenance/entity/ev-1002",
+        },
+        {
+            "evidence_id": "ev-1003",
+            "source": "EU Commission energy market daily bulletin",
+            "timestamp": "2026-04-09T12:00:00Z",
+            "source_quality": "Primary",
+            "impacted_area": "energy / finance",
+            "structural_novelty": 0.67,
+            "confidence_contribution": 0.14,
+            "provenance_link": "/api/v1/provenance/entity/ev-1003",
+        },
+        {
+            "evidence_id": "ev-1004",
+            "source": "Regional think-tank analysis",
+            "timestamp": "2026-04-08T17:30:00Z",
+            "source_quality": "Medium",
+            "impacted_area": "military / political",
+            "structural_novelty": 0.39,
+            "confidence_contribution": 0.06,
+            "provenance_link": None,
+        },
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience functions (functional-style API)
+# ---------------------------------------------------------------------------
+
+def get_assessments() -> list:
+    """Return all available assessments (module-level convenience function)."""
+    return api_client.get_assessments()
+
+
+def get_assessment(assessment_id: str) -> Dict[str, Any]:
+    """Return a single assessment by ID (module-level convenience function)."""
+    return api_client.get_assessment(assessment_id)
+
+
+def get_brief(assessment_id: str) -> Dict[str, Any]:
+    """Return the executive brief for an assessment."""
+    return api_client.get_brief(assessment_id)
+
+
+def get_regime(assessment_id: str) -> Dict[str, Any]:
+    """Return the current regime state for an assessment."""
+    return api_client.get_regime(assessment_id)
+
+
+def get_triggers(assessment_id: str) -> Dict[str, Any]:
+    """Return the trigger amplification output for an assessment."""
+    return api_client.get_triggers(assessment_id)
+
+
+def get_attractors(assessment_id: str) -> Dict[str, Any]:
+    """Return the attractor output for an assessment."""
+    return api_client.get_attractors(assessment_id)
+
+
+def get_propagation(assessment_id: str) -> Dict[str, Any]:
+    """Return the propagation sequence for an assessment."""
+    return api_client.get_propagation(assessment_id)
+
+
+def get_delta(assessment_id: str) -> Dict[str, Any]:
+    """Return the update delta output for an assessment."""
+    return api_client.get_delta(assessment_id)
+
+
+def get_evidence(assessment_id: str) -> Dict[str, Any]:
+    """Return the evidence items for an assessment."""
+    return api_client.get_evidence(assessment_id)
+
 
 # Module-level singleton – import and use directly in Streamlit pages.
 api_client = APIClient()
