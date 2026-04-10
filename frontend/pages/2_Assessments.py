@@ -90,6 +90,15 @@ _TYPE_LABELS: Dict[str, str] = {
     "custom_scenario": "Custom Scenario",
 }
 
+# Amplification factor display: amplification_factor ∈ [0,1] is mapped to a
+# ×multiplier for analyst readability. The factor 4.0 maps the normalised range
+# [0,1] to a ×1–×4 display scale that mirrors typical structural leverage values.
+_AMP_DISPLAY_SCALE: float = 4.0
+
+# Maximum number of characters shown for a propagation event in the inline
+# Propagation Sequence panel (keeps each row to a single readable line).
+_MAX_EVENT_PREVIEW_LENGTH: int = 60
+
 # ---------------------------------------------------------------------------
 # Inline CSS
 # ---------------------------------------------------------------------------
@@ -678,7 +687,7 @@ with _center_col:
         _amp = float(_t.get("amplification_factor", 0))
         _jump = _t.get("jump_potential", "Low")
         _jcolor = _jump_color(_jump)
-        _amp_x = f"×{_amp * 4:.1f}"  # scale 0-1 to display ×1–×4
+        _amp_x = f"×{_amp * _AMP_DISPLAY_SCALE:.1f}"
         _trend_arrow = "↑" if _amp >= 0.7 else ("→" if _amp >= 0.4 else "↓")
         _trig_rows += (
             f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;'
@@ -753,7 +762,7 @@ with _center_col:
     for _bk in _bucket_order:
         _bk_steps = _time_buckets_inline.get(_bk, [])
         _step_labels = "; ".join(
-            f'<span class="aw-step-domain">{s.get("domain", "")}</span> {s.get("event", "")[:60]}'
+            f'<span class="aw-step-domain">{s.get("domain", "")}</span> {s.get("event", "")[:_MAX_EVENT_PREVIEW_LENGTH]}'
             for s in _bk_steps
         )
         if _step_labels:
