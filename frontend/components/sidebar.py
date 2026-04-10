@@ -4,8 +4,7 @@ EL'druin Intelligence Platform – Sidebar Navigation Component
 
 Provides a unified, English-first navigation sidebar with:
   1. Page navigation (inline pages handled by app.py + external pages/ files)
-  2. Reasoning engine configuration (Engine, Deep Ontology level, Hypothesis toggle)
-  3. Single refresh control
+  2. Analysis depth configuration (Standard / Deep, Hypothesis toggle)
 
 Usage
 -----
@@ -66,6 +65,8 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         from ``app.py``).  When ``is_subpage=True`` this function may not
         return if ``st.switch_page`` is triggered.
     """
+    st.session_state["cfg_engine"] = "Evented"
+
     _current = st.session_state.get("current_page", "Dashboard")
     _default_idx = _ALL_LABELS.index(_current) if _current in _ALL_LABELS else 0
 
@@ -134,51 +135,30 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         st.markdown("---")
 
-        # ── Analysis Engine section ────────────────────────────────────────
+        # ── Analysis Depth section ─────────────────────────────────────────
         st.markdown(
             "<p style='font-weight:700;font-size:0.82rem;color:#0047AB;"
             "text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>"
-            "ANALYSIS ENGINE</p>",
+            "ANALYSIS DEPTH</p>",
             unsafe_allow_html=True,
         )
-
-        st.radio(
-            "Engine",
-            options=["Evented", "Grounded"],
-            index=0,
+        _depth_choice = st.radio(
+            "Analysis depth",
+            options=["Standard", "Deep"],
+            index=0 if st.session_state.get("cfg_deep_level", 0) < 2 else 1,
             horizontal=True,
-            key="cfg_engine",
+            key="cfg_depth_radio",
             help=(
-                "**Evented** – event-based three-stage pipeline "
-                "(recommended; works without a Knowledge Graph).\n\n"
-                "**Grounded** – knowledge-graph-grounded reasoning "
-                "(requires a populated KuzuDB)."
+                "**Standard** – normal analysis pipeline (fast).\n\n"
+                "**Deep** – fetches source URLs for richer context (slower)."
             ),
             label_visibility="collapsed",
         )
-        if st.session_state.get("cfg_engine") == "Grounded":
-            st.caption("⚠️ Grounded requires a non-empty Knowledge Graph.")
-
-        st.markdown(
-            "<p style='font-size:0.78rem;color:#444;margin:8px 0 2px 0'>"
-            "Deep Ontology Level</p>",
-            unsafe_allow_html=True,
-        )
-        st.slider(
-            "Deep level",
-            min_value=0,
-            max_value=3,
-            value=st.session_state.get("cfg_deep_level", 0),
-            key="cfg_deep_level",
-            help=(
-                "0 = Normal  ·  1 = Local metadata enrichment  ·  "
-                "2 = + Fetch source URL  ·  3 = + Web search"
-            ),
-            label_visibility="collapsed",
-        )
-        _level_desc = {0: "Normal", 1: "Local metadata", 2: "+ Fetch source", 3: "+ Web search"}
+        # Map back to numeric level for downstream compatibility
+        st.session_state["cfg_deep_level"] = 0 if _depth_choice == "Standard" else 2
         st.caption(
-            f"Mode: **{_level_desc.get(st.session_state.get('cfg_deep_level', 0), 'Normal')}**"
+            "Standard: fast analysis" if _depth_choice == "Standard"
+            else "Deep: fetch source URLs"
         )
 
         st.toggle(
@@ -189,18 +169,6 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         )
 
         st.markdown("---")
-
-        # ── Refresh control ───────────────────────────────────────────────
-        if st.button(
-            "Refresh Graph",
-            use_container_width=True,
-            key="sidebar_kg_refresh",
-        ):
-            st.session_state.graph_data = {
-                "entities": [], "relations": [], "status": "not_loaded"
-            }
-            st.session_state["_kg_cache_clear"] = True
-            st.rerun()
 
     st.session_state.current_page = selected
     return selected
