@@ -13,6 +13,7 @@ Endpoints:
   GET  /assessments/{assessment_id}/delta        – update delta output
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
+The regime endpoint now calls the real RegimeEngine adapter (PR-4).
 Live engine endpoints fall back to stub data when context is unavailable.
 All other endpoints remain as stubs keyed to assessment_id "ae-204".
 """
@@ -25,6 +26,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -35,7 +38,6 @@ except Exception as _te_exc:  # noqa: BLE001
     _TriggerEngine = None  # type: ignore[assignment,misc]
     _TRIGGER_ENGINE_AVAILABLE = False
 
-from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
 from app.schemas.structural_forecast import (
     AttractorOutput,
     AttractorsOutput,
