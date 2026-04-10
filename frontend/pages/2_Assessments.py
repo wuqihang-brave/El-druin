@@ -216,7 +216,7 @@ def _regime_badge_html(regime: str, small: bool = False) -> str:
     size = "10px" if small else "11px"
     return (
         f'<span class="aw-regime-badge" style="background:{color}22;color:{color};'
-        f'border:1px solid {color}55;font-size:{size}">{regime or "\u2014"}</span>'
+        f'border:1px solid {color}55;font-size:{size}">{regime or "—"}</span>'
     )
 
 
@@ -715,7 +715,7 @@ with _center_col:
             _bk_steps = _bucket_map.get(_bk, [])
             if _bk_steps:
                 _domain_cell = " ".join(
-                    f'<span class="aw-step-domain">{s.get("domain", "\u2014")}</span>'
+                    f'<span class="aw-step-domain">{s.get("domain", "—")}</span>'
                     for s in _bk_steps
                 )
                 _ev_preview = _bk_steps[0].get("event", "")[:_MAX_EVENT_PREVIEW_LENGTH]
