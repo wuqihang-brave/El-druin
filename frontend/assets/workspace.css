@@ -1,0 +1,70 @@
+/* =========================================================
+   EL'druin — Assessment Workspace Styles
+   ========================================================= */
+
+/* ----------------------------------------------------------
+   Regime banner
+   ---------------------------------------------------------- */
+
+.regime-banner {
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+}
+
+.regime-linear      { background: #2d3748; color: #a0aec0; }
+.regime-stress      { background: #3d2e00; color: #fbd38d; }
+.regime-nonlinear   { background: #3d1f00; color: #fbd38d; }
+.regime-cascade     { background: #3d0000; color: #fc8181; }
+.regime-attractor   { background: #2d0020; color: #f687b3; }
+.regime-dissipating { background: #0d2d20; color: #68d391; }
+
+/* ----------------------------------------------------------
+   Metric grid cards
+   ---------------------------------------------------------- */
+
+.metric-card {
+    background: #1a202c;
+    border: 1px solid #2d3748;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.metric-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #718096;
+}
+
+.metric-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+/* ----------------------------------------------------------
+   Dominant axis chain display
+   ---------------------------------------------------------- */
+
+.axis-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: #1e2d3d;
+    color: #C8A84B;
+    border: 1px solid #2D3F52;
+}
+
+.axis-arrow {
+    color: #4A6FA5;
+    font-weight: 700;
+}
+
+.threshold-safe     { color: #68d391; }
+.threshold-advisory { color: #f6ad55; }
+.threshold-critical { color: #fc8181; }
