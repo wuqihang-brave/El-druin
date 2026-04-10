@@ -442,6 +442,10 @@ Step 5: 指出当前推演中最大的数据空白 → verification_gap。
 """
 
 
+# Backwards-compatible alias so callers that import DEDUCTION_SOUL_SYSTEM_PROMPT
+# (without the _V3 suffix) continue to work.
+DEDUCTION_SOUL_SYSTEM_PROMPT = DEDUCTION_SOUL_SYSTEM_PROMPT_V3
+
 # ---------------------------------------------------------------------------
 # 7. DeductionEngine v3
 # ---------------------------------------------------------------------------
