@@ -1,13 +1,13 @@
 """
-KG Tools – Text Extraction, Visualisation, Cypher Query
-========================================================
+Streams – Text Extraction, Visualisation, Query
+================================================
 
 Features:
-  Tab 1 - 📝 Text Extraction: input text → extract entities/relations → show metrics
-  Tab 2 - 🕸️ Graph Visualisation: NetworkX + streamlit-agraph interactive display
-  Tab 3 - 🌈 Ontology Graph: 3-column layout with ontology class filters
-  Tab 4 - 🎚️ Hierarchical Graph: Degree-filtered hierarchical graph
-  Tab 5 - 💬 Cypher Query: input Cypher → execute → show DataFrame
+  Tab 1 - Text Extraction: input text → extract entities/relations → show metrics
+  Tab 2 - Graph Visualisation: NetworkX + streamlit-agraph interactive display
+  Tab 3 - Ontology Graph: 3-column layout with ontology class filters
+  Tab 4 - Hierarchical Graph: Degree-filtered hierarchical graph
+  Tab 5 - Advanced Query: input Cypher → execute → show DataFrame
 
 Uses st.session_state to cache extraction results.
 """
@@ -53,7 +53,7 @@ from components.ontological_panel import render_ontological_significance  # noqa
 # Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="KG Tools – EL-DRUIN",
+    page_title="Streams – EL-DRUIN",
     page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -70,7 +70,7 @@ if not _backend_url_raw:
     except Exception:
         pass
     st.info(
-        "KG Tools requires a running backend. Start the backend to use this feature.\n\n"
+        "Knowledge Graph requires a running backend. Start the backend to use this feature.\n\n"
         "To run locally: `cd backend && uvicorn app.main:app --port 8000`\n\n"
         "Then set the `BACKEND_URL` environment variable to point to it."
     )
@@ -155,18 +155,13 @@ def _node_visual(degree: int):
 st.markdown(
     """
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-        <svg width="32" height="32" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-          <line x1="20" y1="5" x2="20" y2="35" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-          <line x1="12" y1="15" x2="28" y2="15" stroke="#0047AB" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="20" cy="15" r="2" fill="#0047AB"/>
-        </svg>
-        <h1 style="color:#0047AB;margin:0;font-weight:600;letter-spacing:2px;
-                   font-family:'Inter',sans-serif;">KG Tools</h1>
+        <h1 style="color:#4A8FD4;margin:0;font-weight:600;letter-spacing:2px;
+                   font-family:'Inter',sans-serif;">Knowledge Graph</h1>
     </div>
     """,
     unsafe_allow_html=True,
 )
-st.caption("Extract entities and relations from text, visualise the Knowledge Graph, and explore data via Cypher query.")
+st.caption("Extract entities and relations from text, visualise the Knowledge Graph, and explore data via advanced query.")
 
 st.divider()
 
@@ -174,14 +169,14 @@ st.divider()
 # Tabs
 # ===========================================================================
 tab_extract, tab_viz, tab_onto, tab_hierarchy, tab_query = st.tabs(
-    ["📝 Text Extraction", "🕸️ Graph Visualisation", "🌈 Ontology Graph", "🎚️ Hierarchical Graph", "💬 Cypher Query"]
+    ["Text Extraction", "Graph Visualisation", "Ontology Graph", "Hierarchical Graph", "Advanced Query"]
 )
 
 # ===========================================================================
 # Tab 1 – Text Extraction
 # ===========================================================================
 with tab_extract:
-    st.subheader("📝 Extract Knowledge from Text")
+    st.subheader("Extract Knowledge from Text")
 
     input_text = st.text_area(
         "News article text",
@@ -193,7 +188,7 @@ with tab_extract:
 
     col_btn, col_clear = st.columns([1, 5])
     with col_btn:
-        do_extract = st.button("⚔️ Manifest Knowledge", type="primary", key="btn_extract")
+        do_extract = st.button("Attach to Assessment", type="primary", key="btn_extract")
     with col_clear:
         if st.button("🗑️ Clear results", key="btn_clear_extract"):
             st.session_state.kg_extract_result = {}
@@ -231,7 +226,7 @@ with tab_extract:
         ]
 
         # ── Metrics ──────────────────────────────────────────────────────────
-        st.markdown("#### 📊 Extraction Summary")
+        st.markdown("#### Extraction Summary")
         m1, m2, m3 = st.columns(3)
         m1.metric("🔵 Entities", len(entities))
         m2.metric("🔗 Relations", len(relations))
@@ -240,7 +235,7 @@ with tab_extract:
         st.divider()
 
         # ── Entities table ────────────────────────────────────────────────────
-        st.markdown("#### 📋 Extracted Entities")
+        st.markdown("#### Extracted Entities")
         if entities:
             df_entities = pd.DataFrame(
                 [
@@ -258,7 +253,7 @@ with tab_extract:
             st.info("No entities extracted.")
 
         # ── Relations table ───────────────────────────────────────────────────
-        st.markdown("#### 🔗 Extracted Relations")
+        st.markdown("#### Extracted Relations")
         if relations:
             df_relations = pd.DataFrame(
                 [
@@ -276,17 +271,17 @@ with tab_extract:
 
         # ── Triples table ─────────────────────────────────────────────────────
         if triples:
-            st.markdown("#### 📐 Triple List")
+            st.markdown("#### Triple List")
             st.dataframe(pd.DataFrame(triples), use_container_width=True, height=200)
 
     elif not do_extract:
-        st.info("👆 Enter text above and click '⚔️ Manifest Knowledge' to begin extraction.")
+        st.info("Enter text above and click 'Attach to Assessment' to begin extraction.")
 
 # ===========================================================================
 # Tab 2 – Graph Visualisation
 # ===========================================================================
 with tab_viz:
-    st.subheader("🕸️ Knowledge Graph Visualisation")
+    st.subheader("Knowledge Graph Visualisation")
 
     # ── Data source selector ─────────────────────────────────────────────────
     data_source = st.radio(
@@ -313,7 +308,7 @@ with tab_viz:
                 for r in cached_viz.get("relations", [])
             ]
         else:
-            st.info("👆 Please extract knowledge in the '📝 Text Extraction' tab first, or switch to 'Load from graph database'.")
+            st.info("Please extract knowledge in the 'Text Extraction' tab first, or switch to 'Load from graph database'.")
     else:
         with st.spinner("📡 Loading entities and relations from database…"):
             ent_resp = _api.get_kg_entities(limit=200)
@@ -460,8 +455,8 @@ with tab_viz:
     elif data_source == "Load from graph database":
         if "error" not in _api.get_kg_stats():
             st.info(
-                "📭 **No data in the graph yet.**\n\n"
-                "Add knowledge via the '📝 Text Extraction' tab, or click the button below to inject sample data."
+                "No data in the graph yet.\n\n"
+                "Add knowledge via the 'Text Extraction' tab, or click the button below to inject sample data."
             )
             if st.button("🌱 Inject Sample Triples", key="btn_seed_viz", type="primary"):
                 with st.spinner("Injecting sample data…"):
@@ -476,7 +471,7 @@ with tab_viz:
 # Tab 3 – 🌈 Ontology Graph (3-column layout with color-coded nodes)
 # ===========================================================================
 with tab_onto:
-    st.subheader("🌈 Ontology Graph")
+    st.subheader("Ontology Graph")
     st.caption(
         "Knowledge graph nodes colored by ontological class. "
         "Select a node to view its philosophical significance."
@@ -499,10 +494,10 @@ with tab_onto:
     # ── Show friendly message when no data is available ───────────────────
     if not og_entities_all:
         st.info(
-            "📭 **No entities found in the knowledge graph.**\n\n"
+            "No entities found in the knowledge graph.\n\n"
             "The ontology graph requires data in the database before it can be "
             "displayed. You can:\n"
-            "- Extract knowledge from a text in the **📝 Text Extraction** tab\n"
+            "- Extract knowledge from a text in the **Text Extraction** tab\n"
             "- Seed the graph with example data using the button below"
         )
         if st.button("🌱 Seed Example Data", key="btn_seed_onto", type="primary"):
@@ -524,7 +519,7 @@ with tab_onto:
     # LEFT: Search + Ontology Class Filter + Confidence Slider
     # ------------------------------------------------------------------
     with og_left:
-        st.markdown("#### 🔍 Search & Filter")
+        st.markdown("#### Search & Filter")
 
         og_search = st.text_input(
             "Entity search",
@@ -747,7 +742,7 @@ with tab_onto:
 # Tab 4 – Hierarchical Graph
 # ===========================================================================
 with tab_hierarchy:
-    st.subheader("🎚️ Hierarchical Knowledge Graph")
+    st.subheader("Hierarchical Knowledge Graph")
     st.caption("Adjust node visibility using the degree filter. Click a node to view its Order Narrative.")
 
     # ── Session state initialisation ─────────────────────────────────────
@@ -762,7 +757,7 @@ with tab_hierarchy:
 
     with col_graph:
         # ── Hierarchy filter controls ─────────────────────────────────────
-        st.markdown("#### 🎚️ Hierarchy Filter")
+        st.markdown("#### Hierarchy Filter")
 
         filter_col1, filter_col2 = st.columns(2)
         with filter_col1:
@@ -825,8 +820,8 @@ with tab_hierarchy:
                 total_nodes = hg_data.get("total_nodes", 0)
                 if total_nodes == 0 and st.session_state.hg_min_degree == 0:
                     st.info(
-                        "📭 **The knowledge graph is empty.**\n\n"
-                        "Add data by extracting knowledge in the **📝 Text Extraction** tab "
+                        "The knowledge graph is empty.\n\n"
+                        "Add data by extracting knowledge in the **Text Extraction** tab "
                         "or seed the graph with example triples:"
                     )
                     if st.button("🌱 Seed Example Data", key="btn_seed_hg", type="primary"):
@@ -898,7 +893,7 @@ with tab_hierarchy:
                         collapsible=False,
                     )
 
-                    st.markdown("#### 📊 Graph Visualization")
+                    st.markdown("#### Graph Visualisation")
                     try:
                         clicked_node = agraph(
                             nodes=hg_ag_nodes,
@@ -932,7 +927,7 @@ with tab_hierarchy:
 
     # ── Right panel: Order Narrative ──────────────────────────────────────
     with col_narrative:
-        st.markdown("#### 📖 Order Narrative")
+        st.markdown("#### Order Narrative")
 
         if st.session_state.hg_selected_node:
             selected_id: str = st.session_state.hg_selected_node
@@ -943,7 +938,7 @@ with tab_hierarchy:
             if "error" in narrative:
                 st.error(f"❌ {narrative['error']}")
             else:
-                st.subheader(f"🔹 {narrative.get('node_name', selected_id)}")
+                st.subheader(f"{narrative.get('node_name', selected_id)}")
                 st.write(f"**Type:** {narrative.get('node_type', '—')}")
                 st.write(f"**Degree:** {narrative.get('degree', 0)}")
                 st.write(f"**Tier:** {narrative.get('importance_tier', '—')}")
@@ -969,7 +964,7 @@ with tab_hierarchy:
                         else:
                             st.write(f"← **{conn['source']}** ({conn.get('relation', '')})")
         else:
-            st.info("💡 Click a node on the graph to view its Order Narrative.")
+            st.info("Click a node on the graph to view its Order Narrative.")
 
         # ── Visual legend ─────────────────────────────────────────────────
         st.markdown("---")
@@ -985,7 +980,7 @@ with tab_hierarchy:
 # Tab 5 – Cypher Query
 # ===========================================================================
 with tab_query:
-    st.subheader("💬 Cypher Query")
+    st.subheader("Advanced Query")
     st.caption("Cypher queries are supported with KuzuDB backend (`GRAPH_BACKEND=kuzu`).")
 
     default_cypher = "MATCH (e:Entity) RETURN e.name, e.type LIMIT 10"

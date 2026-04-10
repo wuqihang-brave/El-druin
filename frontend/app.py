@@ -3,9 +3,9 @@ EL'druin Intelligence Platform – Streamlit Frontend v2
 =======================================================
 
 v2 features:
-  1. Home: highlights causal chain + deduction results, Tab-based layout
-  2. Intelligence Feed: each article has a "Run Ontological Analysis" shortcut button
-  3. KG Tools: includes Cartesian Pattern Diagnostic tab
+  1. Dashboard: highlights causal chain + deduction results, Tab-based layout
+  2. Evidence Streams: each article has a quick assessment shortcut button
+  3. Knowledge Graph: includes Cartesian Pattern Diagnostic tab
 """
 
 import logging
@@ -1261,7 +1261,7 @@ if page == "Dashboard":
 
                 # ── C. Tab structure ──────────────────────────────────────
                 _tab_causal, _tab_scenarios, _tab_evidence, _tab_debug = st.tabs([
-                    "⛓ Causal Chain", "🔮 Scenario Forecast", "🕸 Graph Evidence", "🛠 Debug"
+                    "Causal Chain", "Scenario Forecast", "Graph Evidence", "Debug"
                 ])
 
                 # Tab 1: Causal chain
@@ -2890,7 +2890,7 @@ elif page == "Assessments":
     st.title("Assessments")
 
     _assess_tab_compose, _assess_tab_forecast, _assess_tab_stack = st.tabs([
-        "Compose", "Forecast", "Scenario Stack"
+        "Compose Assessment", "Forecast", "Scenario Stack"
     ])
 
     # ── Compose ──────────────────────────────────────────────────────────────
@@ -3165,11 +3165,11 @@ elif page == "Assessments":
         st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
 
         _fc_tab_scenarios, _fc_tab_relationship, _fc_tab_custom, _fc_tab_attractors = st.tabs([
-            "Preset Scenarios", "Relationship Forecast", "Custom Forecast", "Attractors"
+            "Scenario Templates", "Relationship Forecast", "Custom Forecast", "Attractors"
         ])
 
         with _fc_tab_scenarios:
-            st.markdown("#### Preset Scenarios")
+            st.markdown("#### Scenario Templates")
             st.caption("Select a pre-defined scenario to run a forward simulation.")
             _fc_scenarios_resp = _api._get("/analysis/forecast/scenarios")
             if "error" in _fc_scenarios_resp:
@@ -3453,7 +3453,7 @@ elif page == "Knowledge":
 
     with col_graph:
         st.subheader("Entity Network")
-        if st.button("Refresh Graph", type="primary", key="kg_update"):
+        if st.button("Refresh Knowledge Graph", type="primary", key="kg_update"):
             with st.spinner("Ingesting graph data…"):
                 _resp = _api.ingest_news()
                 st.success("✅ Done" if "error" not in _resp else f"❌ {_resp['error']}")
@@ -3522,7 +3522,7 @@ elif page == "Knowledge":
 
     # Detail tabs
     tab_entities, tab_relations, tab_neighbours, tab_diagnostic = st.tabs([
-        "📋 Entity List", "🔗 Relation List", "🔍 Neighbour Query", "🧮 Cartesian Diagnostic"
+        "Entity List", "Relation List", "Neighbour Query", "Structural Diagnostic"
     ])
 
     with tab_entities:
@@ -3539,7 +3539,7 @@ elif page == "Knowledge":
                     for e in entities_list:
                         st.write(f"**{e.get('name')}** ({e.get('type','?')})")
             else:
-                st.info("📭 No entities in the graph. Click **Update Graph** to ingest data first.")
+                st.info("No entities in the graph. Click **Refresh Knowledge Graph** to ingest data first.")
 
     with tab_relations:
         relations_resp = _api.get_kg_relations(limit=300)
@@ -3576,7 +3576,7 @@ elif page == "Knowledge":
 
     # ── Cartesian Diagnostic Tab ────────────────────────────────────────────
     with tab_diagnostic:
-        st.markdown("### 🧮 Cartesian Dynamic Pattern Diagnostic")
+        st.markdown("### Evaluate Structural Impact")
         st.caption(
             "Enter a triple (source entity type, relation type, target entity type) "
             "to query the pattern library for matching dynamic patterns, typical outcomes, and prior confidence."
@@ -3620,7 +3620,7 @@ elif page == "Knowledge":
                     key="diag_tgt",
                 )
 
-            if st.button("🧮 Run Cartesian Diagnostic", type="primary", key="run_diag"):
+            if st.button("Evaluate Structural Impact", type="primary", key="run_diag"):
                 _report = generate_diagnostic_report(_d_src, _d_rel, _d_tgt)
                 st.session_state["diag_report"] = _report
 
@@ -3709,3 +3709,56 @@ elif page == "Knowledge":
                 """)
 
 
+
+# ===========================================================================
+# Page: Audit  (Model Audit – visible when FEATURE_EXPERIMENTAL=true)
+# ===========================================================================
+elif page == "Audit":
+    _experimental_enabled = os.environ.get("FEATURE_EXPERIMENTAL", "").lower() in ("1", "true", "yes")
+
+    st.title("Audit")
+    st.caption(
+        "Model Audit — inspect reasoning chain integrity, credibility scores, "
+        "and attractor-state consistency across recent assessments."
+    )
+
+    if not _experimental_enabled:
+        st.info(
+            "The Audit workspace is currently restricted. "
+            "Set the `FEATURE_EXPERIMENTAL=true` environment variable to enable full audit capabilities."
+        )
+        st.markdown("---")
+        st.markdown("**Available audit summaries**")
+
+    # ── Recent assessments audit log ──────────────────────────────────────
+    _audit_resp = _api._get("/intelligence/audit/recent") if hasattr(_api, "_get") else {"error": "unavailable"}
+    if "error" not in _audit_resp:
+        _audit_entries = _audit_resp.get("entries", [])
+        if _audit_entries:
+            try:
+                import pandas as pd
+                st.dataframe(pd.DataFrame(_audit_entries), use_container_width=True, height=400)
+            except ImportError:
+                for _entry in _audit_entries:
+                    st.write(_entry)
+        else:
+            st.info("No audit entries found. Run assessments from the Dashboard to populate the audit log.")
+    else:
+        st.info(
+            "Audit log requires a running backend. "
+            "Start the backend and run assessments to populate this view.\n\n"
+            "To run locally: `cd backend && uvicorn app.main:app --port 8000`"
+        )
+
+    if _experimental_enabled:
+        st.markdown("---")
+        st.markdown("### Structural Integrity Checks")
+        st.caption("Advanced diagnostic tools for model validation — experimental.")
+
+        _int_col1, _int_col2 = st.columns(2)
+        with _int_col1:
+            st.markdown("**Credibility Score Distribution**")
+            st.caption("Verifiability, KG consistency, and overall credibility across recent assessments.")
+        with _int_col2:
+            st.markdown("**Hypothesis Ratio Trend**")
+            st.caption("Tracks the ratio of supported vs. unsupported hypotheses over time.")

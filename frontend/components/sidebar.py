@@ -43,6 +43,7 @@ _INLINE_LABELS: list[str] = [
     "Assessments",
     "Streams",
     "Knowledge",
+    "Audit",
 ]
 
 _ALL_LABELS: list[str] = _INLINE_LABELS
@@ -75,7 +76,7 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         st.markdown(
             """
             <div style="text-align:center;padding:10px 0 4px 0;">
-                <h2 style="color:#0047AB;margin:0 0 2px 0;">EL&#39;DRUIN</h2>
+                <h2 style="color:#4A8FD4;margin:0 0 2px 0;">EL&#39;DRUIN</h2>
                 <p style="color:#606060;font-size:0.78rem;margin:0;">
                     Intelligence Platform
                 </p>
@@ -137,7 +138,7 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         # ── Analysis Depth section ─────────────────────────────────────────
         st.markdown(
-            "<p style='font-weight:700;font-size:0.82rem;color:#0047AB;"
+            "<p style='font-weight:700;font-size:0.82rem;color:#4A8FD4;"
             "text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>"
             "ANALYSIS DEPTH</p>",
             unsafe_allow_html=True,

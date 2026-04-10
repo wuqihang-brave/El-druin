@@ -1,8 +1,8 @@
 """
-Object Explorer – EL-DRUIN Intelligence Platform
-=================================================
+Knowledge – EL-DRUIN Intelligence Platform
+==========================================
 
-Palantir Maven-style 3-column Object Explorer:
+3-column Knowledge Graph explorer:
 
   Left  (1): Faceted Search Panel – entity type, confidence, date, risk, source filters
   Middle (3): Knowledge Graph Visualisation – dark-themed, Agraph or Plotly fallback
@@ -50,8 +50,8 @@ except ImportError:
 # Page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Object Explorer – EL-DRUIN",
-    page_icon="🔍",
+    page_title="Knowledge – EL-DRUIN",
+    page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -102,7 +102,7 @@ if "oe_show_proof" not in st.session_state:
 # Page title + onboarding
 # ---------------------------------------------------------------------------
 st.markdown(
-    '<h2 style="color:#0047AB; font-weight:600; letter-spacing:1px;">🔍 OBJECT EXPLORER</h2>',
+    '<h2 style="color:#4A8FD4; font-weight:600; letter-spacing:1px;">KNOWLEDGE</h2>',
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -167,7 +167,7 @@ with left_col:
 # MIDDLE COLUMN – Knowledge Graph
 # ===========================================================================
 with mid_col:
-    st.markdown("##### 🕸️ Knowledge Graph")
+    st.markdown("##### Knowledge Graph")
 
     # Build node degree map for sizing.
     degree_map: Dict[str, int] = {}
@@ -356,7 +356,7 @@ with right_col:
 
     if st.session_state.oe_show_proof and st.session_state.oe_proof_rel_id:
         # Proof panel mode
-        st.markdown("#### 📄 Proof Panel")
+        st.markdown("#### Proof Panel")
         if st.button("← Back to Object View", key="oe_back"):
             st.session_state.oe_show_proof = False
             st.rerun()
