@@ -10,7 +10,7 @@ Endpoints:
   GET  /assessments/{assessment_id}/triggers     – trigger amplification output (real engine, PR-5)
   GET  /assessments/{assessment_id}/attractors   – attractor output (real engine, PR-6)
   GET  /assessments/{assessment_id}/propagation  – propagation sequence output
-  GET  /assessments/{assessment_id}/delta        – update delta output
+  GET  /assessments/{assessment_id}/delta        – update delta output (real engine, PR-8)
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
 The regime endpoint now calls the real RegimeEngine adapter (PR-4).
@@ -534,9 +534,43 @@ def get_propagation(assessment_id: str) -> PropagationOutput:
 
 
 @router.get("/{assessment_id}/delta", response_model=DeltaOutput)
-def get_delta(assessment_id: str) -> DeltaOutput:
-    """Return the update delta output for an assessment."""
+async def get_delta(assessment_id: str) -> DeltaOutput:
+    """Return the update delta output for an assessment (live engine with stub fallback)."""
     _stub_or_404(assessment_id)
+    try:
+        from app.services.delta_engine import AssessmentSnapshot, DeltaEngine  # noqa: PLC0415
+
+        engine = DeltaEngine()
+        context = _build_assessment_context(assessment_id)
+        snapshot = AssessmentSnapshot(
+            assessment_id=assessment_id,
+            regime=_DEMO_REGIME.current_regime,
+            threshold_distance=_DEMO_REGIME.threshold_distance,
+            damping_capacity=_DEMO_REGIME.damping_capacity,
+            confidence=0.72,
+            trigger_rankings=[
+                {
+                    "name": t.name,
+                    "rank": i + 1,
+                    "amplification_factor": t.amplification_factor,
+                }
+                for i, t in enumerate(_DEMO_TRIGGERS.triggers)
+            ],
+            attractor_rankings=[
+                {
+                    "name": a.name,
+                    "rank": i + 1,
+                    "pull_strength": a.pull_strength,
+                }
+                for i, a in enumerate(_DEMO_ATTRACTORS.attractors)
+            ],
+            evidence_count=len(_DEMO_EVIDENCE.evidence),
+        )
+        return await engine.compute_delta(assessment_id, snapshot)
+    except Exception:
+        logger.warning(
+            "get_delta: engine unavailable for %s, returning stub", assessment_id
+        )
     return _DEMO_DELTA
 
 
