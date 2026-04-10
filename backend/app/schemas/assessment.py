@@ -55,3 +55,23 @@ class Assessment(BaseModel):
 class AssessmentListResponse(BaseModel):
     assessments: list[Assessment]
     total: int
+
+
+class AssessmentCreate(BaseModel):
+    title: str
+    assessment_type: AssessmentType = AssessmentType.structural_watch
+    status: AssessmentStatus = AssessmentStatus.draft
+    region_tags: list[str] = []
+    domain_tags: list[str] = []
+    analyst_notes: str | None = None
+
+
+class AssessmentUpdate(BaseModel):
+    title: str | None = None
+    status: AssessmentStatus | None = None
+    region_tags: list[str] | None = None
+    domain_tags: list[str] | None = None
+    last_regime: str | None = None
+    last_confidence: str | None = None
+    alert_count: int | None = None
+    analyst_notes: str | None = None
