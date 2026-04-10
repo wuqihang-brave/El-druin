@@ -160,11 +160,17 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         # Ingest status
         try:
             from utils.api_client import get_scheduler_status as _get_status
+            from datetime import datetime as _datetime
             _status = _get_status()
             if "error" in _status:
                 _sync_label = "Signal Feed: connection error"
             elif _status.get("last_run_at"):
-                _sync_label = f"Last sync: {_status['last_run_at'][:16].replace('T', ' ')} UTC"
+                _last_raw = _status["last_run_at"]
+                try:
+                    _last_dt = _datetime.fromisoformat(_last_raw.replace("Z", "+00:00"))
+                    _sync_label = "Last sync: " + _last_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
+                except Exception:
+                    _sync_label = "Last sync: " + str(_last_raw)
             else:
                 _sync_label = "Signal Feed: never synced"
         except Exception:

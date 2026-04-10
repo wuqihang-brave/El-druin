@@ -5,9 +5,8 @@ and Assessment auto-generation.
 from __future__ import annotations
 
 import asyncio
-import datetime as _dt
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,7 @@ async def run_ingest_cycle(interval: int) -> None:
             logger.error("Ingest cycle failed: %s", exc, exc_info=True)
 
         next_run_at = (
-            datetime.now(timezone.utc) + _dt.timedelta(minutes=interval_minutes)
+            datetime.now(timezone.utc) + timedelta(minutes=interval_minutes)
         ).replace(microsecond=0)
         await asyncio.sleep(interval_minutes * 60)
 

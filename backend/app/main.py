@@ -90,8 +90,9 @@ async def startup_event() -> None:
 
     # Start background ingest scheduler
     try:
+        from app.core.config import get_settings
         from app.services.ingest_scheduler import run_ingest_cycle
-        interval = int(os.getenv("NEWS_INGEST_INTERVAL_MINUTES", "30"))
+        interval = get_settings().news_ingest_interval_minutes
         asyncio.create_task(run_ingest_cycle(interval))
         logger.info("Ingest scheduler started (interval=%d min)", interval)
     except Exception as exc:
