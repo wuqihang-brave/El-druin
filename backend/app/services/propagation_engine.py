@@ -165,7 +165,7 @@ _BOTTLENECK_TEMPLATES: dict[str, str] = {
     "finance":   "Correspondent banking withdrawal rate exceeds liquidity injection capacity",
     "trade":     "Re-routing volume exceeds alternative transit infrastructure threshold",
     "sanctions": "Secondary sanctions designation speed exceeds diplomatic damping window",
-    "diplomatic":"Attribution timeline constrains diplomatic channel throughput",
+    "diplomatic": "Attribution timeline constrains diplomatic channel throughput",
     "political": "Domestic political cost accumulation rate limits policy response bandwidth",
     "logistics": "Alternative logistics capacity insufficient to absorb re-routing demand within lag",
     "market":    "Market liquidity depth insufficient to absorb rapid propagation without repricing",

@@ -255,7 +255,7 @@ _FORBIDDEN = [
     re.compile(r"\bsigma\b"),
     re.compile(r"\bp\s*=\s*0\.\d+"),
     re.compile(r"\bmanifold\b"),
-    re.compile(r"\bgenerator\b"),
+    re.compile(r"\bgenerator\b(?!\s+function)"),  # mathematical "generator" notation in assessment text
     re.compile(r"\bcommutator\b"),
     re.compile(r"\bposterior\b"),
 ]
