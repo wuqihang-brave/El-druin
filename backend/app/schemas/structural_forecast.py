@@ -10,7 +10,7 @@ operating system.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,7 @@ class TriggerOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     watch_signals: list[str]
     damping_opportunities: list[str]
+    lie_algebra_coupling_score: Optional[float] = None
 
 
 class TriggersOutput(BaseModel):
@@ -191,4 +192,22 @@ class StructuralForecastMetrics(BaseModel):
     nonlinear_confidence: float
     structural_novelty: float
     update_delta: dict[str, Any]
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Coupling Detector (PR-14)
+# ---------------------------------------------------------------------------
+
+class CouplingPair(BaseModel):
+    domain_a: str
+    domain_b: str
+    coupling_strength: float
+    is_amplifying: bool
+    amplification_label: str
+
+
+class CouplingOutput(BaseModel):
+    assessment_id: str
+    pairs: list[CouplingPair]
     updated_at: datetime

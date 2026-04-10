@@ -46,6 +46,8 @@ from app.schemas.structural_forecast import (
     AttractorOutput,
     AttractorsOutput,
     BriefOutput,
+    CouplingOutput,
+    CouplingPair,
     DeltaField,
     DeltaOutput,
     EvidenceItem,
@@ -610,3 +612,71 @@ def get_evidence(assessment_id: str) -> EvidenceOutput:
     """Return the evidence items for an assessment."""
     _stub_or_404(assessment_id)
     return _DEMO_EVIDENCE
+
+
+# ---------------------------------------------------------------------------
+# Coupling endpoint (PR-14)
+# ---------------------------------------------------------------------------
+
+_DEMO_COUPLING = CouplingOutput(
+    assessment_id=_DEMO_ID,
+    pairs=[
+        CouplingPair(
+            domain_a="military",
+            domain_b="energy",
+            coupling_strength=2.14,
+            is_amplifying=True,
+            amplification_label="High amplification",
+        ),
+        CouplingPair(
+            domain_a="finance",
+            domain_b="sanctions",
+            coupling_strength=1.87,
+            is_amplifying=True,
+            amplification_label="High amplification",
+        ),
+        CouplingPair(
+            domain_a="energy",
+            domain_b="trade",
+            coupling_strength=1.12,
+            is_amplifying=False,
+            amplification_label="Moderate coupling",
+        ),
+    ],
+    updated_at=_NOW,
+)
+
+
+@router.get("/{assessment_id}/coupling", response_model=CouplingOutput)
+def get_coupling(assessment_id: str) -> CouplingOutput:
+    """
+    Return the top structural coupling pairs for an assessment.
+
+    Surfaces domain pairs with highest nonlinear coupling pressure derived
+    from the Lie algebra commutator.  Falls back to stub data when the
+    coupling engine is unavailable.
+    """
+    _stub_or_404(assessment_id)
+    try:
+        from app.services.coupling_detector import CouplingDetector  # noqa: PLC0415
+
+        # For the demo assessment, supply representative active pattern pairs
+        if assessment_id == _DEMO_ID:
+            active_pairs = [
+                ("Naval Coercion Pattern", "Hegemonic Sanctions Pattern"),
+                ("Financial Isolation Pattern", "Energy Disruption Pattern"),
+            ]
+        else:
+            active_pairs = []
+
+        detector = CouplingDetector()
+        result = detector.compute_coupling(assessment_id, active_pairs)
+        if result.pairs:
+            return result
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "get_coupling: engine error for %s (%s); falling back to stub",
+            assessment_id,
+            exc,
+        )
+    return _DEMO_COUPLING

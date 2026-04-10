@@ -719,6 +719,13 @@ class APIClient:
             return _EVIDENCE_STUB
         return result
 
+    def get_coupling(self, assessment_id: str) -> Dict[str, Any]:
+        """Return the structural coupling pairs for an assessment."""
+        result = self._get(f"/api/v1/assessments/{assessment_id}/coupling")
+        if "error" in result:
+            return _COUPLING_STUB
+        return result
+
 
 # ---------------------------------------------------------------------------
 # Offline fallback stubs – returned when backend is unreachable
@@ -956,6 +963,35 @@ _EVIDENCE_STUB: Dict[str, Any] = {
 }
 
 
+_COUPLING_STUB: Dict[str, Any] = {
+    "assessment_id": "ae-204",
+    "pairs": [
+        {
+            "domain_a": "military",
+            "domain_b": "energy",
+            "coupling_strength": 2.14,
+            "is_amplifying": True,
+            "amplification_label": "High amplification",
+        },
+        {
+            "domain_a": "finance",
+            "domain_b": "sanctions",
+            "coupling_strength": 1.87,
+            "is_amplifying": True,
+            "amplification_label": "High amplification",
+        },
+        {
+            "domain_a": "energy",
+            "domain_b": "trade",
+            "coupling_strength": 1.12,
+            "is_amplifying": False,
+            "amplification_label": "Moderate coupling",
+        },
+    ],
+    "updated_at": "2026-04-09T18:00:00Z",
+}
+
+
 # ---------------------------------------------------------------------------
 # Module-level convenience functions (functional-style API)
 # ---------------------------------------------------------------------------
@@ -1003,6 +1039,11 @@ def get_delta(assessment_id: str) -> Dict[str, Any]:
 def get_evidence(assessment_id: str) -> Dict[str, Any]:
     """Return the evidence items for an assessment."""
     return api_client.get_evidence(assessment_id)
+
+
+def get_coupling(assessment_id: str) -> Dict[str, Any]:
+    """Return the structural coupling pairs for an assessment."""
+    return api_client.get_coupling(assessment_id)
 
 
 # Module-level singleton – import and use directly in Streamlit pages.

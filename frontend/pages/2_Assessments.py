@@ -38,6 +38,7 @@ from utils.api_client import (  # noqa: E402
     get_propagation,
     get_delta,
     get_evidence,
+    get_coupling,
 )
 from components.forecast_brief import render_forecast_brief  # noqa: E402
 from components.regime_view import render_regime_view  # noqa: E402
@@ -91,9 +92,8 @@ _TYPE_LABELS: Dict[str, str] = {
 }
 
 # Amplification factor display: amplification_factor ∈ [0,1] is mapped to a
-# ×multiplier for analyst readability. The factor 4.0 maps the normalised range
-# [0,1] to a ×1–×4 display scale that mirrors typical structural leverage values.
-_AMP_DISPLAY_SCALE: float = 4.0
+# ×multiplier for analyst readability. Scale 5.0 maps factor=0.64 → ×3.2.
+_AMP_DISPLAY_SCALE: float = 5.0
 
 # Maximum number of characters shown for a propagation event in the inline
 # Propagation Sequence panel (keeps each row to a single readable line).
@@ -583,6 +583,7 @@ _delta_data = get_delta(_assessment_id)
 _triggers_data = get_triggers(_assessment_id)
 _attract_data = get_attractors(_assessment_id)
 _prop_data = get_propagation(_assessment_id)
+_coupling_data = get_coupling(_assessment_id)
 
 
 # ===========================================================================
@@ -629,48 +630,96 @@ with _center_col:
     # -----------------------------------------------------------------------
     # Panel 2 — DELTA SINCE PRIOR UPDATE
     # -----------------------------------------------------------------------
-    _reg_changed = _delta_data.get("regime_changed", False) if isinstance(_delta_data, dict) else False
-    _thresh_dir = _delta_data.get("threshold_direction", "stable") if isinstance(_delta_data, dict) else "stable"
-    _trigger_changes = _delta_data.get("trigger_ranking_changes", []) if isinstance(_delta_data, dict) else []
-    _new_ev_count = _delta_data.get("new_evidence_count", 0) if isinstance(_delta_data, dict) else 0
+    _delta_summary = _delta_data.get("summary", "") if isinstance(_delta_data, dict) else ""
+    _is_first_run = "First assessment run" in _delta_summary or "No prior state" in _delta_summary
 
-    _reg_delta_color = "#9a3412" if _reg_changed else "#14532d"
-    _reg_delta_label = "Regime shifted" if _reg_changed else "Regime stable"
-    _thresh_delta_color = {
-        "narrowing": "#9a3412", "widening": "#14532d", "stable": "#6b7280"
-    }.get(_thresh_dir, "#6b7280")
-    _thresh_delta_arrow = {"narrowing": "▼", "widening": "▲", "stable": "→"}.get(_thresh_dir, "→")
-    _top_trigger_shift = ""
-    if _trigger_changes:
-        _tc = _trigger_changes[0]
-        if isinstance(_tc, dict):
-            _prev = _tc.get("previous", "")
-            _curr = _tc.get("current", "")
-            if _prev != _curr:
-                _top_trigger_shift = f"Top trigger rank: #{_prev} → #{_curr}"
+    if _is_first_run:
+        st.markdown(
+            '<div class="aw-section-title">DELTA SINCE PRIOR UPDATE</div>'
+            '<div class="aw-card-compact">'
+            '<div class="aw-callout" style="margin:0;font-size:12px;color:#7A8FA6">'
+            'No baseline — first assessment'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        _reg_changed = _delta_data.get("regime_changed", False) if isinstance(_delta_data, dict) else False
+        _thresh_dir = _delta_data.get("threshold_direction", "stable") if isinstance(_delta_data, dict) else "stable"
+        _trigger_changes = _delta_data.get("trigger_ranking_changes", []) if isinstance(_delta_data, dict) else []
+        _attract_changes = _delta_data.get("attractor_pull_changes", []) if isinstance(_delta_data, dict) else []
+        _new_ev_count = _delta_data.get("new_evidence_count", 0) if isinstance(_delta_data, dict) else 0
 
-    _trigger_shift_html = (
-        f'<span style="font-size:11px;color:#7A8FA6">{_top_trigger_shift}</span>'
-        if _top_trigger_shift else ""
-    )
+        _reg_delta_color = "#9a3412" if _reg_changed else "#14532d"
+        _reg_delta_label = "Regime shifted" if _reg_changed else "Regime stable"
 
-    st.markdown(
-        f'<div class="aw-section-title">DELTA SINCE PRIOR UPDATE</div>'
-        f'<div class="aw-card-compact">'
-        f'<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">'
-        f'<span class="aw-badge" style="background:{_reg_delta_color}22;color:{_reg_delta_color};'
-        f'border:1px solid {_reg_delta_color}44">{_reg_delta_label}</span>'
-        f'<span style="font-size:11px;color:#7A8FA6">Threshold: '
-        f'<span style="color:{_thresh_delta_color};font-weight:600">{_thresh_delta_arrow} {_thresh_dir}</span>'
-        f'</span>'
-        f'{_trigger_shift_html}'
-        f'<span style="font-size:11px;color:#7A8FA6">New evidence: '
-        f'<span style="color:#D4DDE6;font-weight:600">{_new_ev_count}</span>'
-        f'</span>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+        _thresh_delta_color = {
+            "narrowing": "#9a3412", "widening": "#14532d", "stable": "#6b7280"
+        }.get(_thresh_dir, "#6b7280")
+        _thresh_delta_arrow = {"narrowing": "▼", "widening": "▲", "stable": "→"}.get(_thresh_dir, "→")
+        _thresh_pct_delta = abs(
+            float(_delta_data.get("damping_capacity_delta", 0)) if isinstance(_delta_data, dict) else 0
+        )
+        _thresh_dir_label = (
+            f'{_thresh_delta_arrow} {int(_thresh_pct_delta * 100)}% {_thresh_dir}'
+            if _thresh_pct_delta > 0
+            else f'{_thresh_delta_arrow} {_thresh_dir}'
+        )
+
+        # Top trigger rank shift
+        _trigger_shift_html = ""
+        if _trigger_changes:
+            _tc = _trigger_changes[0]
+            if isinstance(_tc, dict):
+                _prev = _tc.get("previous", "")
+                _curr = _tc.get("current", "")
+                _tname = _tc.get("field", "Top trigger")
+                if _prev != _curr and _prev != "" and _curr != "":
+                    _trigger_shift_html = (
+                        f'<span style="font-size:11px;color:#7A8FA6">'
+                        f'{_tname}: <span style="color:#D4DDE6;font-weight:600">#{_prev} → #{_curr}</span>'
+                        f'</span>'
+                    )
+
+        # Top attractor pull delta
+        _attractor_shift_html = ""
+        if _attract_changes:
+            _ac = _attract_changes[0]
+            if isinstance(_ac, dict):
+                _a_prev = float(_ac.get("previous", 0))
+                _a_curr = float(_ac.get("current", 0))
+                _a_delta = _a_curr - _a_prev
+                _a_name = _ac.get("field", "Top attractor")
+                _a_color = "#9a3412" if _a_delta > 0 else "#14532d" if _a_delta < 0 else "#6b7280"
+                _a_delta_str = f"{_a_delta:+.2f}"  # :+ already includes sign
+                _attractor_shift_html = (
+                    f'<span style="font-size:11px;color:#7A8FA6">'
+                    f'Pull strength: <span style="color:{_a_color};font-weight:600">{_a_delta_str}</span>'
+                    f'</span>'
+                )
+
+        _new_ev_html = (
+            f'<span class="aw-badge" style="background:#1e2d3d;color:#7A8FA6;border:1px solid #2D3F52">'
+            f'New evidence: {_new_ev_count}'
+            f'</span>'
+        ) if _new_ev_count else ""
+
+        st.markdown(
+            f'<div class="aw-section-title">DELTA SINCE PRIOR UPDATE</div>'
+            f'<div class="aw-card-compact">'
+            f'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">'
+            f'<span class="aw-badge" style="background:{_reg_delta_color}22;color:{_reg_delta_color};'
+            f'border:1px solid {_reg_delta_color}44">{_reg_delta_label}</span>'
+            f'<span style="font-size:11px;color:#7A8FA6">Threshold: '
+            f'<span style="color:{_thresh_delta_color};font-weight:600">{_thresh_dir_label}</span>'
+            f'</span>'
+            f'{_trigger_shift_html}'
+            f'{_attractor_shift_html}'
+            f'{_new_ev_html}'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     # -----------------------------------------------------------------------
     # Panel 3 — TRIGGER AMPLIFICATION BOARD (top 3–5)
@@ -682,41 +731,65 @@ with _center_col:
         reverse=True,
     )[:5]
 
-    _trig_rows = ""
-    for _ti, _t in enumerate(_sorted_triggers_inline, 1):
-        _amp = float(_t.get("amplification_factor", 0))
-        _jump = _t.get("jump_potential", "Low")
-        _jcolor = _jump_color(_jump)
-        _amp_x = f"×{_amp * _AMP_DISPLAY_SCALE:.1f}"
-        _trend_arrow = "↑" if _amp >= 0.7 else ("→" if _amp >= 0.4 else "↓")
-        _trig_rows += (
-            f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;'
-            f'border-bottom:1px solid #2D3F52">'
-            f'<span style="font-size:10px;color:#7A8FA6;min-width:14px">{_ti}.</span>'
-            f'<span style="font-size:12px;color:#D4DDE6;flex:1">{_t.get("name", "—")}</span>'
-            f'<span style="font-size:12px;font-weight:700;color:#C8A84B;min-width:42px;text-align:right">{_amp_x}</span>'
-            f'<span style="font-size:12px;color:{_jcolor}">{_trend_arrow}</span>'
-            f'</div>'
+    if not _sorted_triggers_inline:
+        _trig_board_html = (
+            '<div class="aw-callout aw-callout-warn" style="font-size:12px">'
+            'Insufficient structural data — no triggers computed for this assessment.'
+            '</div>'
         )
+    else:
+        _trig_rows = ""
+        for _ti, _t in enumerate(_sorted_triggers_inline, 1):
+            _amp = float(_t.get("amplification_factor", 0))
+            _domains = _t.get("impacted_domains", [])
+            _amp_x = f"×{_amp * _AMP_DISPLAY_SCALE:.1f}"
+            _trend_arrow = "↑" if _amp >= 0.7 else ("→" if _amp >= 0.4 else "↓")
+            _trend_color = "#9a3412" if _amp >= 0.7 else ("#92400e" if _amp >= 0.4 else "#6b7280")
+            # Coupling label from top-2 impacted domains
+            if len(_domains) >= 2:
+                _coupling_label = f"{_domains[0].title()} ↔ {_domains[1].title()}"
+            elif len(_domains) == 1:
+                _coupling_label = f"{_domains[0].title()} coupling"
+            else:
+                _coupling_label = ""
+            _coupling_html = (
+                f'<span style="font-size:9px;color:#4A6FA5;margin-left:4px">{_coupling_label}</span>'
+                if _coupling_label else ""
+            )
+            _trig_rows += (
+                f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;'
+                f'border-bottom:1px solid #2D3F52">'
+                f'<span style="font-size:10px;color:#7A8FA6;min-width:14px">{_ti}.</span>'
+                f'<span style="font-size:12px;color:#D4DDE6;flex:1">'
+                f'{_t.get("name", "—")}'
+                f'{_coupling_html}'
+                f'</span>'
+                f'<span style="font-size:13px;font-weight:700;color:#C8A84B;min-width:42px;text-align:right">{_amp_x}</span>'
+                f'<span style="font-size:12px;color:{_trend_color}">{_trend_arrow}</span>'
+                f'</div>'
+            )
+        _trig_board_html = _trig_rows
 
-    _trig_rows_empty = '<div style="font-size:11px;color:#7A8FA6;font-style:italic">No triggers available</div>'
     st.markdown(
         f'<div class="aw-section-title">TRIGGER AMPLIFICATION</div>'
         f'<div class="aw-card-compact">'
-        f'{_trig_rows if _trig_rows else _trig_rows_empty}'
+        f'{_trig_board_html}'
         f'</div>',
         unsafe_allow_html=True,
     )
 
     # -----------------------------------------------------------------------
-    # Panel 4 — ATTRACTOR MAP
+    # Panel 4 — ATTRACTOR MAP (top 2, relative pull bars)
     # -----------------------------------------------------------------------
     _attract_list = _attract_data.get("attractors", []) if isinstance(_attract_data, dict) else []
     _ranked_attract_inline = sorted(
         _attract_list,
         key=lambda x: float(x.get("pull_strength", 0)),
         reverse=True,
-    )[:3]
+    )[:2]
+
+    _max_pull = max((float(a.get("pull_strength", 0)) for a in _ranked_attract_inline), default=1.0)
+    _max_pull = _max_pull if _max_pull > 0 else 1.0
 
     _attr_rows = ""
     for _ai, _attr in enumerate(_ranked_attract_inline, 1):
@@ -724,18 +797,18 @@ with _center_col:
         _trend = _attr.get("trend", "stable")
         _trend_arrow = {"up": "↑", "down": "↓", "stable": "→"}.get(_trend, "→")
         _trend_color = {"up": "#9a3412", "down": "#14532d", "stable": "#6b7280"}.get(_trend, "#6b7280")
-        _bar_pct = int(round(_pull * 100))
+        _bar_fill_pct = int(round((_pull / _max_pull) * 100))
         _attr_rows += (
-            f'<div style="margin-bottom:6px">'
-            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+            f'<div style="margin-bottom:8px">'
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">'
             f'<span style="font-size:10px;color:#7A8FA6;min-width:14px">{_ai}.</span>'
             f'<span style="font-size:12px;color:#D4DDE6;flex:1">{_attr.get("name", "—")}</span>'
-            f'<span style="font-size:11px;font-weight:700;color:#D4DDE6;min-width:36px;text-align:right">{_pull:.2f}</span>'
             f'<span style="font-size:12px;color:{_trend_color}">{_trend_arrow}</span>'
             f'</div>'
-            f'<div style="background:#2D3F52;border-radius:2px;height:3px;overflow:hidden;margin-left:20px">'
-            f'<div style="width:{_bar_pct}%;background:#4A6FA5;height:100%"></div>'
+            f'<div style="background:#2D3F52;border-radius:2px;height:5px;overflow:hidden;margin-left:20px;max-width:160px">'
+            f'<div style="width:{_bar_fill_pct}%;background:#4A9FD4;height:100%"></div>'
             f'</div>'
+            f'<div style="font-size:9px;color:#7A8FA6;margin-left:20px;margin-top:2px">Pull Strength</div>'
             f'</div>'
         )
 
@@ -749,39 +822,31 @@ with _center_col:
     )
 
     # -----------------------------------------------------------------------
-    # Panel 5 — PROPAGATION SEQUENCE
+    # Panel 5 — PROPAGATION SEQUENCE (compact 3-step preview)
     # -----------------------------------------------------------------------
     _sequence = _prop_data.get("sequence", []) if isinstance(_prop_data, dict) else []
-    _time_buckets_inline: Dict[str, list] = {}
-    for _step in sorted(_sequence, key=lambda x: x.get("step", 0)):
-        _tb = _step.get("time_bucket", "T+?")
-        _time_buckets_inline.setdefault(_tb, []).append(_step)
+    _sorted_seq = sorted(_sequence, key=lambda x: x.get("step", 0))[:3]
 
-    _prop_html = ""
-    _bucket_order = ["T+0", "T+24h", "T+72h", "T+7d", "T+2-6w"]
-    for _bk in _bucket_order:
-        _bk_steps = _time_buckets_inline.get(_bk, [])
-        _step_labels = "; ".join(
-            f'<span class="aw-step-domain">{s.get("domain", "")}</span> {s.get("event", "")[:_MAX_EVENT_PREVIEW_LENGTH]}'
-            for s in _bk_steps
-        )
-        if _step_labels:
-            _step_content = f'<div style="font-size:11px;color:#D4DDE6;margin-top:2px;line-height:1.4">{_step_labels}</div>'
-        else:
-            _step_content = '<span style="font-size:10px;color:#7A8FA6;margin-left:6px">—</span>'
-        _prop_html += (
-            f'<div style="margin-bottom:6px">'
-            f'<span style="font-size:9px;font-weight:700;color:#4A6FA5;'
-            f'text-transform:uppercase;letter-spacing:0.4px">{_bk}</span>'
-            f'{_step_content}'
-            f'</div>'
+    _prop_preview_html = ""
+    for _si, _step in enumerate(_sorted_seq):
+        _domain = _step.get("domain", "—")
+        _tbucket = _step.get("time_bucket", "T+?")
+        _arrow = ' <span style="font-size:11px;color:#4A6FA5">→</span> ' if _si < len(_sorted_seq) - 1 else ""
+        _prop_preview_html += (
+            f'<span style="display:inline-block;margin-right:2px">'
+            f'<span style="font-size:8px;color:#4A6FA5;display:block;text-align:center">{_tbucket}</span>'
+            f'<span class="aw-step-domain">{_domain}</span>'
+            f'</span>'
+            f'{_arrow}'
         )
 
     _prop_html_empty = '<div style="font-size:11px;color:#7A8FA6;font-style:italic">No propagation data</div>'
     st.markdown(
         f'<div class="aw-section-title">PROPAGATION SEQUENCE</div>'
         f'<div class="aw-card-compact">'
-        f'{_prop_html if _prop_html else _prop_html_empty}'
+        f'<div style="display:flex;align-items:flex-end;gap:2px;flex-wrap:wrap">'
+        f'{_prop_preview_html if _prop_preview_html else _prop_html_empty}'
+        f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -791,7 +856,7 @@ with _center_col:
     # -----------------------------------------------------------------------
     # Tabbed detail view
     # -----------------------------------------------------------------------
-    _tabs = st.tabs(["Brief", "Regime", "Triggers", "Attractors", "Propagation", "Evidence", "Trace"])
+    _tabs = st.tabs(["Brief", "Regime", "Triggers", "Attractors", "Propagation", "Coupling", "Evidence", "Trace"])
 
     # -----------------------------------------------------------------------
     # Tab: Brief
@@ -833,86 +898,110 @@ with _center_col:
         _triggers_list_tab = _triggers_data.get("triggers", []) if isinstance(_triggers_data, dict) else []
 
         st.markdown(
-            '<div class="aw-section-title">Trigger Amplification Table</div>'
+            '<div class="aw-section-title">Trigger Amplification Board</div>'
             '<div style="font-size:10px;color:#7A8FA6;margin-bottom:8px">'
             'Sorted by amplification factor (highest first)'
             '</div>',
             unsafe_allow_html=True,
         )
 
-        _sorted_triggers = sorted(
-            _triggers_list_tab,
-            key=lambda x: float(x.get("amplification_factor", 0)),
-            reverse=True,
-        )
-
-        for _t in _sorted_triggers:
-            _tname = _t.get("name", "—")
-            _amp = float(_t.get("amplification_factor", 0))
-            _jump = _t.get("jump_potential", "Low")
-            _domains = _t.get("impacted_domains", [])
-            _lag = _t.get("expected_lag_hours", 0)
-            _tconf = float(_t.get("confidence", 0))
-            _signals = _t.get("watch_signals", [])
-            _tdamping = _t.get("damping_opportunities", [])
-
-            _jcolor = _jump_color(_jump)
-            _domains_html = " ".join(
-                f'<span class="aw-domain-badge">{d}</span>' for d in _domains
+        if not _triggers_list_tab:
+            st.markdown(
+                '<div class="aw-callout aw-callout-warn">'
+                'Insufficient structural data — no triggers computed for this assessment.'
+                '</div>',
+                unsafe_allow_html=True,
             )
-            _jump_html = (
-                f'<span class="aw-badge" style="background:{_jcolor}22;'
-                f'color:{_jcolor};border:1px solid {_jcolor}44">{_jump}</span>'
+        else:
+            _sorted_triggers = sorted(
+                _triggers_list_tab,
+                key=lambda x: float(x.get("amplification_factor", 0)),
+                reverse=True,
             )
 
-            with st.expander(f"{_tname}", expanded=False):
-                _t1, _t2, _t3 = st.columns([2, 1, 1])
-                with _t1:
-                    st.markdown(
-                        f'<div class="aw-metric-label">Impacted Domains</div>'
-                        f'<div style="margin-top:4px">{_domains_html}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _t2:
-                    st.markdown(
-                        f'<div class="aw-metric-label">Amplification</div>'
-                        f'<div style="font-size:18px;font-weight:700;color:#D4DDE6">{_amp:.2f}</div>'
-                        f'<div class="aw-metric-label" style="margin-top:6px">Jump Potential</div>'
-                        f'{_jump_html}',
-                        unsafe_allow_html=True,
-                    )
-                with _t3:
-                    st.markdown(
-                        f'<div class="aw-metric-label">Expected Lag</div>'
-                        f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_lag}h</div>'
-                        f'<div class="aw-metric-label" style="margin-top:6px">Confidence</div>'
-                        f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_tconf:.0%}</div>',
-                        unsafe_allow_html=True,
-                    )
+            for _t in _sorted_triggers:
+                _tname = _t.get("name", "—")
+                _amp = float(_t.get("amplification_factor", 0))
+                _amp_x = f"×{_amp * _AMP_DISPLAY_SCALE:.1f}"
+                _jump = _t.get("jump_potential", "Low")
+                _domains = _t.get("impacted_domains", [])
+                _lag = _t.get("expected_lag_hours", 0)
+                _tconf = float(_t.get("confidence", 0))
+                _signals = _t.get("watch_signals", [])
+                _tdamping = _t.get("damping_opportunities", [])
+                _trend_arrow = "↑" if _amp >= 0.7 else ("→" if _amp >= 0.4 else "↓")
 
-                st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
+                _jcolor = _jump_color(_jump)
+                _domains_html = " ".join(
+                    f'<span class="aw-domain-badge">{d}</span>' for d in _domains
+                )
+                _jump_html = (
+                    f'<span class="aw-badge" style="background:{_jcolor}22;'
+                    f'color:{_jcolor};border:1px solid {_jcolor}44">{_jump}</span>'
+                )
+                # Coupling score from top-2 domains
+                if len(_domains) >= 2:
+                    _coup_label = f"{_domains[0].title()} ↔ {_domains[1].title()}"
+                elif len(_domains) == 1:
+                    _coup_label = f"{_domains[0].title()} coupling"
+                else:
+                    _coup_label = ""
 
-                _s1, _s2 = st.columns(2)
-                with _s1:
-                    st.markdown('<div class="aw-metric-label">Watch Signals</div>', unsafe_allow_html=True)
-                    if _signals:
-                        _sig_html = "".join(
-                            f'<div class="aw-condition-item">'
-                            f'<span style="color:#7A8FA6;margin-right:5px">–</span>{s}'
-                            f'</div>'
-                            for s in _signals
+                with st.expander(
+                    f"{_tname}  {_amp_x}  {_trend_arrow}",
+                    expanded=False,
+                ):
+                    _t1, _t2, _t3 = st.columns([2, 1, 1])
+                    with _t1:
+                        st.markdown(
+                            f'<div class="aw-metric-label">Impacted Domains</div>'
+                            f'<div style="margin-top:4px">{_domains_html}</div>'
+                            + (
+                                f'<div style="font-size:10px;color:#4A6FA5;margin-top:4px">{_coup_label}</div>'
+                                if _coup_label else ""
+                            ),
+                            unsafe_allow_html=True,
                         )
-                        st.markdown(_sig_html, unsafe_allow_html=True)
-                with _s2:
-                    st.markdown('<div class="aw-metric-label">Damping Opportunities</div>', unsafe_allow_html=True)
-                    if _tdamping:
-                        _damp_html = "".join(
-                            f'<div class="aw-condition-item">'
-                            f'<span style="color:#4ade80;margin-right:5px">–</span>{d}'
-                            f'</div>'
-                            for d in _tdamping
+                    with _t2:
+                        st.markdown(
+                            f'<div class="aw-metric-label">Amplification</div>'
+                            f'<div style="font-size:20px;font-weight:700;color:#C8A84B">{_amp_x}</div>'
+                            f'<div class="aw-metric-label" style="margin-top:6px">Jump Potential</div>'
+                            f'{_jump_html}',
+                            unsafe_allow_html=True,
                         )
-                        st.markdown(_damp_html, unsafe_allow_html=True)
+                    with _t3:
+                        st.markdown(
+                            f'<div class="aw-metric-label">Expected Lag</div>'
+                            f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_lag}h</div>'
+                            f'<div class="aw-metric-label" style="margin-top:6px">Confidence</div>'
+                            f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_tconf:.0%}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
+
+                    _s1, _s2 = st.columns(2)
+                    with _s1:
+                        st.markdown('<div class="aw-metric-label">Watch Signals</div>', unsafe_allow_html=True)
+                        if _signals:
+                            _sig_html = "".join(
+                                f'<div class="aw-condition-item">'
+                                f'<span style="color:#7A8FA6;margin-right:5px">–</span>{s}'
+                                f'</div>'
+                                for s in _signals
+                            )
+                            st.markdown(_sig_html, unsafe_allow_html=True)
+                    with _s2:
+                        st.markdown('<div class="aw-metric-label">Damping Opportunities</div>', unsafe_allow_html=True)
+                        if _tdamping:
+                            _damp_html = "".join(
+                                f'<div class="aw-condition-item">'
+                                f'<span style="color:#4ade80;margin-right:5px">–</span>{d}'
+                                f'</div>'
+                                for d in _tdamping
+                            )
+                            st.markdown(_damp_html, unsafe_allow_html=True)
 
     # -----------------------------------------------------------------------
     # Tab: Attractors  (index 3)
@@ -928,6 +1017,9 @@ with _center_col:
             reverse=True,
         )
 
+        _max_pull_tab = max((float(a.get("pull_strength", 0)) for a in _ranked_attract), default=1.0)
+        _max_pull_tab = _max_pull_tab if _max_pull_tab > 0 else 1.0
+
         for _i, _attr in enumerate(_ranked_attract, 1):
             _aname = _attr.get("name", "—")
             _pull = float(_attr.get("pull_strength", 0))
@@ -936,21 +1028,28 @@ with _center_col:
             _ev_count = _attr.get("supporting_evidence_count", 0)
             _counterforces = _attr.get("counterforces", [])
             _inv_cond = _attr.get("invalidation_conditions", [])
-
-            _trend_label = {"up": "rising", "down": "falling", "stable": "stable"}.get(_trend, _trend)
+            _trend_arrow = {"up": "↑", "down": "↓", "stable": "→"}.get(_trend, "→")
             _trend_color = {"up": "#9a3412", "down": "#14532d", "stable": "#6b7280"}.get(_trend, "#6b7280")
+            _bar_fill = int(round((_pull / _max_pull_tab) * 100))
 
-            with st.expander(f"{_i}. {_aname}", expanded=False):
+            with st.expander(f"{_i}. {_aname}  {_trend_arrow}", expanded=False):
                 _a1, _a2 = st.columns([3, 1])
                 with _a1:
-                    st.markdown('<div class="aw-metric-label">Pull Strength</div>', unsafe_allow_html=True)
-                    st.progress(_pull, text=f"{_pull:.0%}")
+                    st.markdown(
+                        f'<div class="aw-metric-label">Pull Strength</div>'
+                        f'<div style="background:#2D3F52;border-radius:2px;height:8px;overflow:hidden;max-width:200px;margin-top:4px">'
+                        f'<div style="width:{_bar_fill}%;background:#4A9FD4;height:100%"></div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
                 with _a2:
                     st.markdown(
                         f'<div class="aw-metric-label">Horizon</div>'
                         f'<div style="font-size:14px;font-weight:700;color:#D4DDE6">{_ahorizon}</div>'
                         f'<div class="aw-metric-label" style="margin-top:6px">Trend</div>'
-                        f'<div style="font-size:12px;font-weight:600;color:{_trend_color}">{_trend_label}</div>'
+                        f'<div style="font-size:12px;font-weight:600;color:{_trend_color}">'
+                        f'{"Rising" if _trend == "up" else "Falling" if _trend == "down" else "Stable"}'
+                        f'</div>'
                         f'<div class="aw-metric-label" style="margin-top:6px">Evidence Items</div>'
                         f'<div style="font-size:14px;font-weight:700;color:#D4DDE6">{_ev_count}</div>',
                         unsafe_allow_html=True,
@@ -981,36 +1080,70 @@ with _center_col:
                         st.markdown(_ivc_html, unsafe_allow_html=True)
 
     # -----------------------------------------------------------------------
-    # Tab: Propagation  (index 4)
+    # Tab: Propagation  (index 4) — 5-bucket horizontal timeline
     # -----------------------------------------------------------------------
     with _tabs[4]:
         _sequence_tab = _prop_data.get("sequence", []) if isinstance(_prop_data, dict) else []
         _bottlenecks = _prop_data.get("bottlenecks", []) if isinstance(_prop_data, dict) else []
         _second_order = _prop_data.get("second_order_effects", []) if isinstance(_prop_data, dict) else []
 
-        st.markdown('<div class="aw-section-title">Propagation Sequence</div>', unsafe_allow_html=True)
+        st.markdown('<div class="aw-section-title">Propagation Timeline</div>', unsafe_allow_html=True)
 
-        _time_buckets: Dict[str, list] = {}
+        _bucket_order = ["T+0", "T+24h", "T+72h", "T+7d", "T+2-6w"]
+        _bucket_map: Dict[str, list] = {}
         for _step in sorted(_sequence_tab, key=lambda x: x.get("step", 0)):
             _tb = _step.get("time_bucket", "T+?")
-            _time_buckets.setdefault(_tb, []).append(_step)
+            _bucket_map.setdefault(_tb, []).append(_step)
 
-        for _bucket, _steps in _time_buckets.items():
-            st.markdown(
-                f'<div style="font-size:10px;font-weight:700;color:#4A6FA5;'
-                f'text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 4px 0">'
-                f'{_bucket}</div>',
-                unsafe_allow_html=True,
-            )
-            _step_html = ""
-            for _s in _steps:
-                _step_html += (
-                    f'<div class="aw-step">'
-                    f'<span class="aw-step-domain">{_s.get("domain", "—")}</span>'
-                    f'<span class="aw-step-event">{_s.get("event", "—")}</span>'
-                    f'</div>'
+        # Build 5-cell horizontal timeline HTML
+        _timeline_html = '<div style="display:flex;gap:0;overflow-x:auto;margin-bottom:12px">'
+        for _bi, _bk in enumerate(_bucket_order):
+            _bk_steps = _bucket_map.get(_bk, [])
+            _domain_cell = ""
+            if _bk_steps:
+                _domain_cell = " ".join(
+                    f'<span class="aw-step-domain">{s.get("domain", "—")}</span>'
+                    for s in _bk_steps
                 )
-            st.markdown(f'<div class="aw-card-compact">{_step_html}</div>', unsafe_allow_html=True)
+                _event_cell = _bk_steps[0].get("event", "")[:_MAX_EVENT_PREVIEW_LENGTH]
+            else:
+                _domain_cell = '<span style="font-size:10px;color:#3a4a5a;font-style:italic">—</span>'
+                _event_cell = ""
+
+            _arrow = '<span style="font-size:14px;color:#4A6FA5;padding:0 4px;align-self:center">→</span>' if _bi < len(_bucket_order) - 1 else ""
+            _cell_opacity = "1" if _bk_steps else "0.4"
+            _timeline_html += (
+                f'<div style="flex:1;min-width:80px;opacity:{_cell_opacity}">'
+                f'<div style="font-size:9px;font-weight:700;color:#4A6FA5;text-transform:uppercase;'
+                f'letter-spacing:0.5px;text-align:center;margin-bottom:4px">{_bk}</div>'
+                f'<div class="aw-card-compact" style="min-height:40px;text-align:center">'
+                f'{_domain_cell}'
+                f'</div>'
+                f'</div>'
+                f'{_arrow}'
+            )
+        _timeline_html += "</div>"
+        st.markdown(_timeline_html, unsafe_allow_html=True)
+
+        # Cross-domain transition labels
+        _sorted_seq_tab = sorted(_sequence_tab, key=lambda x: x.get("step", 0))
+        if len(_sorted_seq_tab) > 1:
+            _trans_html = ""
+            for _si in range(len(_sorted_seq_tab) - 1):
+                _d_from = _sorted_seq_tab[_si].get("domain", "—").title()
+                _d_to = _sorted_seq_tab[_si + 1].get("domain", "—").title()
+                _t_at = _sorted_seq_tab[_si + 1].get("time_bucket", "")
+                if _d_from != _d_to:
+                    _trans_html += (
+                        f'<span style="font-size:10px;color:#7A8FA6;margin-right:12px">'
+                        f'<span style="color:#D4DDE6">{_d_from} → {_d_to}</span> at {_t_at}'
+                        f'</span>'
+                    )
+            if _trans_html:
+                st.markdown(
+                    f'<div style="margin-bottom:10px">{_trans_html}</div>',
+                    unsafe_allow_html=True,
+                )
 
         if _bottlenecks:
             st.markdown('<div class="aw-section-title">Bottlenecks</div>', unsafe_allow_html=True)
@@ -1036,9 +1169,60 @@ with _center_col:
             st.markdown(f'<div class="aw-card-compact">{_so_html}</div>', unsafe_allow_html=True)
 
     # -----------------------------------------------------------------------
-    # Tab: Evidence
+    # Tab: Coupling  (index 5)
     # -----------------------------------------------------------------------
     with _tabs[5]:
+        _coupling_pairs = _coupling_data.get("pairs", []) if isinstance(_coupling_data, dict) else []
+
+        st.markdown('<div class="aw-section-title">Structural Coupling Detector</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size:10px;color:#7A8FA6;margin-bottom:10px">'
+            'Domain pairs ranked by nonlinear coupling pressure'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        if not _coupling_pairs:
+            st.markdown(
+                '<div class="aw-callout aw-callout-warn">'
+                'Coupling data unavailable — run assessment to compute structural coupling.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            _max_coupling = max((float(p.get("coupling_strength", 0)) for p in _coupling_pairs), default=1.0)
+            _max_coupling = _max_coupling if _max_coupling > 0 else 1.0
+
+            for _cp in _coupling_pairs:
+                _da = _cp.get("domain_a", "—").title()
+                _db = _cp.get("domain_b", "—").title()
+                _cs = float(_cp.get("coupling_strength", 0))
+                _is_amp = _cp.get("is_amplifying", False)
+                _amp_label = _cp.get("amplification_label", "")
+                _bar_w = int(round((_cs / _max_coupling) * 100))
+                _badge_html = (
+                    f'<span class="aw-badge" style="background:#92400e22;color:#f97316;'
+                    f'border:1px solid #92400e44;margin-left:6px">Amplifying</span>'
+                    if _is_amp else ""
+                )
+                st.markdown(
+                    f'<div class="aw-card-compact" style="margin-bottom:8px">'
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+                    f'<span style="font-size:13px;font-weight:600;color:#D4DDE6">{_da} ↔ {_db}</span>'
+                    f'{_badge_html}'
+                    f'</div>'
+                    f'<div style="background:#2D3F52;border-radius:2px;height:5px;overflow:hidden;max-width:200px">'
+                    f'<div style="width:{_bar_w}%;background:#4A9FD4;height:100%"></div>'
+                    f'</div>'
+                    f'<div style="font-size:10px;color:#7A8FA6;margin-top:3px">{_amp_label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # -----------------------------------------------------------------------
+    # Tab: Evidence  (index 6)
+    # -----------------------------------------------------------------------
+    with _tabs[6]:
         _ev_data = get_evidence(_assessment_id)
         _ev_list = _ev_data.get("evidence", [])
 
@@ -1096,9 +1280,9 @@ with _center_col:
             )
 
     # -----------------------------------------------------------------------
-    # Tab: Trace
+    # Tab: Trace  (index 7)
     # -----------------------------------------------------------------------
-    with _tabs[6]:
+    with _tabs[7]:
         st.markdown(
             '<div class="aw-card" style="text-align:center">'
             '<div style="font-size:13px;color:#7A8FA6;line-height:1.6">'

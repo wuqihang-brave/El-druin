@@ -27,7 +27,7 @@ _FRONTEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
-from utils.api_client import APIClient  # noqa: E402
+from utils.api_client import APIClient, get_assessments, get_propagation, get_triggers, get_attractors  # noqa: E402
 from components.faceted_search import render_faceted_search  # noqa: E402
 from components.object_view import render_object_view  # noqa: E402
 from components.proof_panel import render_proof_panel  # noqa: E402
@@ -97,12 +97,95 @@ if "oe_proof_rel_id" not in st.session_state:
     st.session_state.oe_proof_rel_id: Optional[str] = None
 if "oe_show_proof" not in st.session_state:
     st.session_state.oe_show_proof: bool = False
+if "active_assessment_id" not in st.session_state:
+    st.session_state.active_assessment_id = None
 
 # ---------------------------------------------------------------------------
-# Page title + onboarding
+# Active assessment context bar (PR-17)
+# ---------------------------------------------------------------------------
+
+_all_assessments = get_assessments()
+_assess_options: Dict[str, str] = {
+    a.get("assessment_id", ""): a.get("title", "—")
+    for a in _all_assessments
+    if a.get("assessment_id", "").strip()
+}
+
+_ctx_bar_l, _ctx_bar_r = st.columns([3, 1])
+with _ctx_bar_l:
+    if _assess_options:
+        _active_id_kg = st.selectbox(
+            "Active Assessment",
+            options=["—"] + list(_assess_options.keys()),
+            format_func=lambda x: "— No active assessment —" if x == "—" else _assess_options.get(x, x),
+            key="kg_active_assessment_selector",
+        )
+        st.session_state.active_assessment_id = _active_id_kg if _active_id_kg != "—" else None
+    else:
+        st.caption("No assessments available — connect backend to scope the graph")
+
+with _ctx_bar_r:
+    _show_full_graph = st.toggle(
+        "Show full graph",
+        value=st.session_state.active_assessment_id is None,
+        key="kg_show_full_graph",
+    )
+
+_active_assessment_id_kg = st.session_state.active_assessment_id
+
+# ---------------------------------------------------------------------------
+# Compute node relevance when an active assessment is selected
+# ---------------------------------------------------------------------------
+
+_relevant_domains: set = set()
+_path_domains: set = set()
+_relevant_entities: set = set()
+
+if _active_assessment_id_kg and not _show_full_graph:
+    try:
+        _prop_data_kg = get_propagation(_active_assessment_id_kg)
+        _seq = _prop_data_kg.get("sequence", []) if isinstance(_prop_data_kg, dict) else []
+        for _s in _seq:
+            _d = _s.get("domain", "")
+            if _d:
+                _path_domains.add(_d.lower())
+                _relevant_domains.add(_d.lower())
+    except Exception:
+        pass
+
+    try:
+        _trig_data_kg = get_triggers(_active_assessment_id_kg)
+        _trigs = _trig_data_kg.get("triggers", []) if isinstance(_trig_data_kg, dict) else []
+        for _t in _trigs:
+            for _d in _t.get("impacted_domains", []):
+                _relevant_domains.add(_d.lower())
+    except Exception:
+        pass
+
+    try:
+        _attr_data_kg = get_attractors(_active_assessment_id_kg)
+        _attrs = _attr_data_kg.get("attractors", []) if isinstance(_attr_data_kg, dict) else []
+        for _a in _attrs:
+            _aname = _a.get("name", "").lower()
+            if _aname:
+                _relevant_entities.add(_aname)
+    except Exception:
+        pass
+
+# ---------------------------------------------------------------------------
+# Graph title context
+# ---------------------------------------------------------------------------
+
+_graph_title = "Knowledge Graph"
+if _active_assessment_id_kg and not _show_full_graph:
+    _assess_title = _assess_options.get(_active_assessment_id_kg, "Selected Assessment")
+    _graph_title = f"Knowledge Graph — scoped to: {_assess_title}"
+
+# ---------------------------------------------------------------------------
+# Page title + description
 # ---------------------------------------------------------------------------
 st.markdown(
-    '<h2 style="color:#4A8FD4; font-weight:600; letter-spacing:1px;">KNOWLEDGE</h2>',
+    f'<h2 style="color:#4A8FD4; font-weight:600; letter-spacing:1px;">{_graph_title}</h2>',
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -111,12 +194,18 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True,
 )
-st.info(
-    "**What this page does:** Browse the Knowledge Graph as a set of typed objects "
-    "(entities extracted from news and reports). Use the **left panel** to filter by "
-    "entity type, confidence, or date range. Click a node in the **centre graph** to "
-    "inspect its full profile, relationships, and source articles in the **right panel**."
-)
+if _active_assessment_id_kg and not _show_full_graph:
+    st.info(
+        "Graph is scoped to domains and entities relevant to the active assessment. "
+        "Use the 'Show full graph' toggle to view all nodes."
+    )
+else:
+    st.info(
+        "**What this page does:** Browse the Knowledge Graph as a set of typed objects "
+        "(entities extracted from news and reports). Use the **left panel** to filter by "
+        "entity type, confidence, or date range. Click a node in the **centre graph** to "
+        "inspect its full profile, relationships, and source articles in the **right panel**."
+    )
 st.divider()
 
 # ---------------------------------------------------------------------------
@@ -167,7 +256,7 @@ with left_col:
 # MIDDLE COLUMN – Knowledge Graph
 # ===========================================================================
 with mid_col:
-    st.markdown("##### Knowledge Graph")
+    st.markdown(f'##### {_graph_title}')
 
     # Build node degree map for sizing.
     degree_map: Dict[str, int] = {}
@@ -187,28 +276,71 @@ with mid_col:
         else ""
     )
 
-    if _AGRAPH and entities:
+    def _node_relevance(entity_name: str) -> str:
+        """Return 'path', 'relevant', or 'normal'."""
+        if not _active_assessment_id_kg or _show_full_graph:
+            return "normal"
+        name_lower = entity_name.lower()
+        if name_lower in _path_domains:
+            return "path"
+        if name_lower in _relevant_domains or name_lower in _relevant_entities:
+            return "relevant"
+        return "normal"
+
+    def _node_opacity(relevance: str) -> float:
+        if not _active_assessment_id_kg or _show_full_graph:
+            return 1.0
+        return {"path": 1.0, "relevant": 1.0, "normal": 0.25}.get(relevance, 1.0)
+
+    # When an active assessment is set, filter to path/relevant nodes + 1-hop neighbors
+    _display_entities = entities
+    if _active_assessment_id_kg and not _show_full_graph and (
+        _path_domains or _relevant_domains or _relevant_entities
+    ):
+        _relevant_names = {
+            e.get("name", "") for e in entities
+            if _node_relevance(e.get("name", "")) in ("path", "relevant")
+        }
+        # 1-hop neighbors
+        _neighbor_names: set = set()
+        for r in relations:
+            src = r.get("from", r.get("from_entity", ""))
+            tgt = r.get("to", r.get("to_entity", ""))
+            if src in _relevant_names:
+                _neighbor_names.add(tgt)
+            if tgt in _relevant_names:
+                _neighbor_names.add(src)
+        _included_names = _relevant_names | _neighbor_names
+        _display_entities = [e for e in entities if e.get("name", "") in _included_names]
+
+    if _AGRAPH and _display_entities:
         # ---- agraph visualisation ----
         agraph_nodes: List[Node] = []
         agraph_edges: List[Edge] = []
 
-        for ent in entities[:120]:
+        for ent in _display_entities[:120]:
             name = ent.get("name", "?")
             degree = degree_map.get(name, 0)
             size = max(10, min(40, 10 + degree * 3))
+            relevance = _node_relevance(name)
 
             if name == selected_name:
                 color = "#003580"
                 border_width = 3
-            elif degree >= 5:
-                color = "#0047AB"
+                border_color = "#4A9FD4"
+            elif relevance == "path":
+                color = "#4A9FD4"
+                border_width = 3
+                border_color = "#4A9FD4"
+                size = max(size, 18)
+            elif relevance == "relevant":
+                color = "#0047AB" if degree >= 5 else "#A0C4E8"
                 border_width = 2
-            elif degree >= 2:
-                color = "#A0C4E8"
-                border_width = 1
+                border_color = "#4A9FD4"
             else:
                 color = "#E0E0E0"
                 border_width = 1
+                border_color = "#C0C0C0"
 
             agraph_nodes.append(
                 Node(
@@ -261,10 +393,10 @@ with mid_col:
                     st.session_state.oe_show_proof = False
                     st.rerun()
 
-    elif _PLOTLY and entities:
+    elif _PLOTLY and _display_entities:
         # ---- Plotly network fallback ----
         G = nx.DiGraph()
-        for ent in entities[:80]:
+        for ent in _display_entities[:80]:
             G.add_node(ent.get("name", "?"))
         for rel in relations[:200]:
             src = rel.get("from", rel.get("from_entity", ""))
@@ -284,12 +416,17 @@ with mid_col:
         node_x = [pos[n][0] for n in G.nodes()]
         node_y = [pos[n][1] for n in G.nodes()]
         node_text = list(G.nodes())
-        node_colors = [
-            "#003580" if n == selected_name or degree_map.get(n, 0) >= 5
-            else "#A0C4E8" if degree_map.get(n, 0) >= 2
-            else "#E0E0E0"
-            for n in G.nodes()
-        ]
+        node_colors = []
+        for n in G.nodes():
+            rel_n = _node_relevance(n)
+            if n == selected_name or rel_n == "path":
+                node_colors.append("#003580" if n == selected_name else "#4A9FD4")
+            elif rel_n == "relevant" or degree_map.get(n, 0) >= 5:
+                node_colors.append("#0047AB")
+            elif degree_map.get(n, 0) >= 2:
+                node_colors.append("#A0C4E8")
+            else:
+                node_colors.append("#E0E0E0")
 
         fig = go.Figure(
             data=[
@@ -316,8 +453,8 @@ with mid_col:
         st.info(
             "Install `streamlit-agraph` or `plotly` + `networkx` for interactive graph visualisation."
         )
-        if entities:
-            st.caption(f"Loaded {len(entities)} entities, {len(relations)} relationships")
+        if _display_entities:
+            st.caption(f"Loaded {len(_display_entities)} entities, {len(relations)} relationships")
 
     # Relationship click / proof toggle
     if st.session_state.oe_selected_entity:
