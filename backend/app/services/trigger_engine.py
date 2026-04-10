@@ -416,12 +416,12 @@ class TriggerAmplificationEngine:
         )
 
         _NEAR_THRESHOLD = 0.65
-        near_threshold = sorted(
+        activated_patterns = sorted(
             ((pat, score) for pat, score in ontology_activations.items() if score >= _NEAR_THRESHOLD),
             key=lambda x: x[1],
             reverse=True,
         )
-        for pat, _ in near_threshold[:2]:
+        for pat, _ in activated_patterns[:2]:
             signal = (
                 f"Escalation attractor approaching regime threshold: "
                 f"coupling propagation via {pat} activation pathway"

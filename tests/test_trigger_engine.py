@@ -213,7 +213,7 @@ class TestComputeTriggers:
 _FORBIDDEN_PATTERNS = [
     re.compile(r"[Bb]ayesian\s+p\s*="),
     re.compile(r"\bsigma\b"),
-    re.compile(r"\bp\s*=\s*0\.\d+"),      # raw probability "p=0.xx"
+    re.compile(r"\bp\s*=\s*0\.\d+"),
     re.compile(r"\bposterior\b"),
     re.compile(r"\blambda\s*="),           # lambda = 0.x notation
 ]
