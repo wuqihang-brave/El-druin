@@ -24,7 +24,7 @@ from app.schemas.structural_forecast import DeltaField, DeltaOutput
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Materialility thresholds
+# Materiality thresholds
 # ---------------------------------------------------------------------------
 
 # Trigger rank / amplification_factor change threshold (>0.05 = material)
