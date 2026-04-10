@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _pull_strength_history: Dict[str, float] = {}
 
+# ---------------------------------------------------------------------------
+# Engine constants
+# ---------------------------------------------------------------------------
+
+# Canonical matching
+_KEYWORD_MATCH_SCORE: int = 2      # score increment per matching keyword
+_MIN_MATCH_THRESHOLD: int = 2      # minimum score required to accept a canonical match
+
+# Pull strength formula: pull = base_prob × (BASE_FACTOR + ALIGNMENT_WEIGHT × alignment)
+_BASE_FACTOR: float = 0.5
+_ALIGNMENT_WEIGHT: float = 0.5
+
+# Velocity normalization: mirrors _PHASE_THRESHOLD = 0.25 from ontology_forecaster.py
+_VELOCITY_NORMALIZATION_THRESHOLD: float = 0.25
+
+# Trend change detection sensitivity
+_TREND_CHANGE_THRESHOLD: float = 0.05
+
 
 # ---------------------------------------------------------------------------
 # Canonical attractor taxonomy
@@ -129,12 +147,12 @@ def _match_canonical(name: str, domain: str) -> Optional[Dict[str, Any]]:
     best_score = 0
 
     for canonical in _CANONICAL_ATTRACTORS:
-        score = sum(2 for kw in canonical["keywords"] if kw in name_lower or kw in domain_lower)
+        score = sum(_KEYWORD_MATCH_SCORE for kw in canonical["keywords"] if kw in name_lower or kw in domain_lower)
         if score > best_score:
             best_score = score
             best_match = canonical
 
-    return best_match if best_score >= 2 else None
+    return best_match if best_score >= _MIN_MATCH_THRESHOLD else None
 
 
 def _domain_counterforces(domain: str) -> List[str]:
@@ -394,18 +412,18 @@ class AttractorEngine:
             return 0.5
         delta_norms = [float(s.get("delta_norm", 0.0)) for s in steps]
         mean_delta = sum(delta_norms) / len(delta_norms)
-        # _PHASE_THRESHOLD = 0.25 in ontology_forecaster; normalize against it
-        return min(1.0, mean_delta / 0.25)
+        # _VELOCITY_NORMALIZATION_THRESHOLD = 0.25 in ontology_forecaster; normalize against it
+        return min(1.0, mean_delta / _VELOCITY_NORMALIZATION_THRESHOLD)
 
     def _compute_pull_strength(self, scenario: dict, structural_alignment: float) -> float:
         """
         Derive pull_strength from scenario probability × structural alignment.
 
-        pull = base_prob × (0.5 + 0.5 × alignment)
+        pull = base_prob × (BASE_FACTOR + ALIGNMENT_WEIGHT × alignment)
         Bounded to [0.05, 0.95] to avoid degenerate extremes.
         """
         base_prob = float(scenario.get("final_probability", scenario.get("probability", 0.5)))
-        factor = 0.5 + 0.5 * max(0.0, min(1.0, structural_alignment))
+        factor = _BASE_FACTOR + _ALIGNMENT_WEIGHT * max(0.0, min(1.0, structural_alignment))
         return max(0.05, min(0.95, base_prob * factor))
 
     def _estimate_horizon(self, scenario: dict, velocity: float) -> str:
@@ -453,9 +471,9 @@ class AttractorEngine:
         if prior is None:
             return "stable"
         diff = current_pull - prior
-        if diff > 0.05:
+        if diff > _TREND_CHANGE_THRESHOLD:
             return "up"
-        if diff < -0.05:
+        if diff < -_TREND_CHANGE_THRESHOLD:
             return "down"
         return "stable"
 
