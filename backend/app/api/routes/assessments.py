@@ -7,13 +7,14 @@ Endpoints:
   GET  /assessments/{assessment_id}              – single assessment detail
   GET  /assessments/{assessment_id}/brief        – executive brief
   GET  /assessments/{assessment_id}/regime       – regime state output (real engine, PR-4)
-  GET  /assessments/{assessment_id}/triggers     – trigger amplification output
-  GET  /assessments/{assessment_id}/attractors   – attractor output
+  GET  /assessments/{assessment_id}/triggers     – trigger amplification output (real engine, PR-5)
+  GET  /assessments/{assessment_id}/attractors   – attractor output (real engine, PR-6)
   GET  /assessments/{assessment_id}/propagation  – propagation sequence output
   GET  /assessments/{assessment_id}/delta        – update delta output
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
 The regime endpoint now calls the real RegimeEngine adapter (PR-4).
+Live engine endpoints fall back to stub data when context is unavailable.
 All other endpoints remain as stubs keyed to assessment_id "ae-204".
 """
 
@@ -36,6 +37,7 @@ except Exception as _te_exc:  # noqa: BLE001
     logger.warning("TriggerAmplificationEngine not available: %s", _te_exc)
     _TriggerEngine = None  # type: ignore[assignment,misc]
     _TRIGGER_ENGINE_AVAILABLE = False
+
 from app.schemas.structural_forecast import (
     AttractorOutput,
     AttractorsOutput,
@@ -50,8 +52,6 @@ from app.schemas.structural_forecast import (
     TriggerOutput,
     TriggersOutput,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
 
@@ -407,6 +407,19 @@ async def _fetch_assessment_context(assessment_id: str) -> dict[str, Any]:
     }
 
 
+def _build_assessment_context(assessment_id: str) -> dict:
+    """Build context dict for the AttractorEngine from available assessment data."""
+    if assessment_id == _DEMO_ID:
+        return {
+            "assessment_id": assessment_id,
+            "title": _DEMO_ASSESSMENT.title,
+            "domain_tags": list(_DEMO_ASSESSMENT.domain_tags),
+            "region_tags": list(_DEMO_ASSESSMENT.region_tags),
+            "evidence_count": len(_DEMO_EVIDENCE.evidence),
+        }
+    return {}
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -497,9 +510,19 @@ async def get_triggers(assessment_id: str) -> TriggersOutput:
 
 
 @router.get("/{assessment_id}/attractors", response_model=AttractorsOutput)
-def get_attractors(assessment_id: str) -> AttractorsOutput:
-    """Return the attractor output for an assessment."""
+async def get_attractors(assessment_id: str) -> AttractorsOutput:
+    """Return the attractor output for an assessment (live engine with stub fallback)."""
     _stub_or_404(assessment_id)
+    context = _build_assessment_context(assessment_id)
+    if context:
+        try:
+            from app.services.attractor_engine import AttractorEngine
+            engine = AttractorEngine()
+            return await engine.compute_attractors(assessment_id, context)
+        except Exception:
+            logger.warning(
+                "get_attractors: engine unavailable for %s, returning stub", assessment_id
+            )
     return _DEMO_ATTRACTORS
 
 
