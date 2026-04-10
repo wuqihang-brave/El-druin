@@ -19,11 +19,23 @@ Actual engine wiring will follow in PR-4 through PR-8.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
+
+logger = logging.getLogger(__name__)
+
+try:
+    from app.services.trigger_engine import TriggerAmplificationEngine as _TriggerEngine
+    _TRIGGER_ENGINE_AVAILABLE = True
+except Exception as _te_exc:  # noqa: BLE001
+    logger.warning("TriggerAmplificationEngine not available: %s", _te_exc)
+    _TriggerEngine = None  # type: ignore[assignment,misc]
+    _TRIGGER_ENGINE_AVAILABLE = False
 from app.schemas.structural_forecast import (
     AttractorOutput,
     AttractorsOutput,
@@ -304,6 +316,95 @@ def _stub_or_404(assessment_id: str) -> None:
         )
 
 
+async def _fetch_assessment_context(assessment_id: str) -> dict[str, Any]:
+    """
+    Fetch the assessment context required by ``TriggerAmplificationEngine``.
+
+    Currently returns a pre-built context for the demo assessment ``ae-204``
+    (Black Sea Energy Corridor – Structural Watch).  Returns an empty dict for
+    any other assessment ID, which causes the route to fall back to the stub.
+    """
+    if assessment_id != _DEMO_ID:
+        return {}
+
+    return {
+        "events": [
+            {
+                "name": "Naval incident in contested strait",
+                "title": "Naval incident in contested strait",
+                "text": (
+                    "Naval forces have deployed additional assets that block tanker transit "
+                    "through the contested strait, triggering insurance withdrawal and causing "
+                    "energy spot-price escalation across the corridor."
+                ),
+                "domains": ["military", "energy", "insurance", "finance"],
+                "entities": ["Naval Forces", "Contested Strait", "Transit Route"],
+                "source_reliability": 0.88,
+                "causal_weight": 0.82,
+                "confidence": 0.81,
+            },
+            {
+                "name": "Secondary sanctions package announced",
+                "title": "Secondary sanctions package announced",
+                "text": (
+                    "The administration announces a secondary sanctions package targeting "
+                    "financial institutions that facilitate corridor transit payments, "
+                    "affecting energy trade financing and driving correspondent banking withdrawal."
+                ),
+                "domains": ["sanctions", "finance", "energy", "trade"],
+                "entities": ["Administration", "Financial Institutions", "Trade Finance"],
+                "source_reliability": 0.78,
+                "causal_weight": 0.65,
+                "confidence": 0.68,
+            },
+        ],
+        "kg_paths": [
+            {
+                "from_entity": "Naval Forces",
+                "to_entity": "Energy Corridor",
+                "relation": "BLOCKS",
+                "domain": "energy",
+                "strength": 0.85,
+            },
+            {
+                "from_entity": "Energy Corridor",
+                "to_entity": "Insurance Markets",
+                "relation": "AFFECTS",
+                "domain": "insurance",
+                "strength": 0.72,
+            },
+            {
+                "from_entity": "Sanctions Package",
+                "to_entity": "Banking Sector",
+                "relation": "AFFECTS",
+                "domain": "finance",
+                "strength": 0.68,
+            },
+        ],
+        "causal_weights": {
+            "Naval incident in contested strait": 0.82,
+            "Secondary sanctions package announced": 0.65,
+        },
+        "velocity_data": {
+            "military": 0.85,
+            "energy": 0.60,
+            "sanctions": 0.45,
+            "finance": 0.35,
+        },
+        "ontology_activations": {
+            "Hegemonic Sanctions Pattern": 0.71,
+            "Naval Coercion Pattern": 0.68,
+            "Financial Isolation Pattern": 0.64,
+        },
+        "regime_state": {
+            "regime": "Nonlinear Escalation",
+            "damping_capacity": 0.29,
+            "reversibility_index": 0.31,
+            "threshold_distance": 0.18,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -336,9 +437,31 @@ def get_regime(assessment_id: str) -> RegimeOutput:
 
 
 @router.get("/{assessment_id}/triggers", response_model=TriggersOutput)
-def get_triggers(assessment_id: str) -> TriggersOutput:
-    """Return the trigger amplification output for an assessment."""
+async def get_triggers(assessment_id: str) -> TriggersOutput:
+    """Return the trigger amplification output for an assessment.
+
+    When assessment context is available the response is computed by
+    ``TriggerAmplificationEngine``, ranked by structural ``amplification_factor``
+    (causal / nonlinear consequence weight), not by media salience or source count.
+
+    Falls back to the stub response if the engine is unavailable or the
+    context cannot be fetched.
+    """
     _stub_or_404(assessment_id)
+
+    if _TRIGGER_ENGINE_AVAILABLE and _TriggerEngine is not None:
+        try:
+            context = await _fetch_assessment_context(assessment_id)
+            if context.get("events"):
+                engine = _TriggerEngine()
+                return await engine.compute_triggers(assessment_id, context)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "TriggerAmplificationEngine failed for %s, falling back to stub: %s",
+                assessment_id,
+                exc,
+            )
+
     return _DEMO_TRIGGERS
 
 
