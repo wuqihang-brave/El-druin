@@ -2296,14 +2296,18 @@ border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:
 
                     _sigma1_val = _regime_data["sigma1"]
                     _mat_norm_val = _regime_data["mat_norm"]
+                    # sigma1 typically saturates around 10 for extreme regimes;
+                    # mat_norm saturates around 3 — use these as normalisation ceilings.
+                    _s1_ceil = 10.0
+                    _mn_ceil = 3.0
                     _regime_view_data = {
                         "current_regime": _regime_data["regime"],
-                        "threshold_distance": max(0.0, min(1.0, 1.0 - _sigma1_val / 10.0)),
-                        "transition_volatility": max(0.0, min(1.0, _sigma1_val / 10.0)),
-                        "reversibility_index": max(0.0, min(1.0, 1.0 - _mat_norm_val / 3.0)),
+                        "threshold_distance": max(0.0, min(1.0, 1.0 - _sigma1_val / _s1_ceil)),
+                        "transition_volatility": max(0.0, min(1.0, _sigma1_val / _s1_ceil)),
+                        "reversibility_index": max(0.0, min(1.0, 1.0 - _mat_norm_val / _mn_ceil)),
                         "dominant_axis": _regime_data["coupling_axis"],
-                        "coupling_asymmetry": max(0.0, min(1.0, _mat_norm_val / 3.0)),
-                        "damping_capacity": max(0.0, min(1.0, 1.0 - _sigma1_val / 10.0)),
+                        "coupling_asymmetry": max(0.0, min(1.0, _mat_norm_val / _mn_ceil)),
+                        "damping_capacity": max(0.0, min(1.0, 1.0 - _sigma1_val / _s1_ceil)),
                         "forecast_implication": _regime_data["forecast_implication"],
                     }
                     render_regime_view(_regime_view_data)
