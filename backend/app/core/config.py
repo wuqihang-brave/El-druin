@@ -48,6 +48,7 @@ class Settings:
     # ── News / feeds ──────────────────────────────────────────────────────────
     newsapi_key: Optional[str] = os.getenv("NEWSAPI_KEY")
     news_fetch_timeout: int = int(os.getenv("NEWS_FETCH_TIMEOUT", "15"))
+    news_ingest_interval_minutes: int = int(os.getenv("NEWS_INGEST_INTERVAL_MINUTES", "30"))
 
     # ── FastAPI ───────────────────────────────────────────────────────────────
     api_host: str = os.getenv("API_HOST", "0.0.0.0")
