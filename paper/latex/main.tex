@@ -1,0 +1,128 @@
+% paper/latex/main.tex
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath,amssymb}
+\usepackage[T1]{fontenc}
+
+\title{Ontological Trajectory Forecasting via Finite Semigroup Iteration\\
+and Lie Algebra Approximation in Geopolitical Knowledge Graphs}
+\author{Qihang Wu\\
+Department of Industrial and Systems Engineering, The Hong Kong Polytechnic University\\
+\texttt{qihang.wu@connect.polyu.hk}\\
+\url{https://github.com/wuqihang-brave/El-druin}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% TODO: paste your abstract here (no markdown formatting).
+\end{abstract}
+
+\textbf{Keywords:} ontology engineering; finite semigroup; Lie algebra; Bayesian inference; geopolitical forecasting; knowledge graphs; knowledge representation
+
+\section{Introduction}
+% TODO: paste section 1 here.
+
+\section{Background}
+% TODO: paste section 2 here.
+
+\section{System Architecture}
+% TODO: paste section 3 here.
+
+\section{Ontology Schema and Pattern Registry}
+% TODO: paste section 4 here.
+
+\section{Mathematical Formalisation}
+% TODO: paste section 5 here.
+
+\section{The Five-Stage Reasoning Pipeline}
+% TODO: paste section 6 here.
+
+\section{Forecasting Experiments}
+% TODO: paste section 7 here.
+
+\subsection{Results}
+% --- Table 2 (from your markdown) ---
+\begin{table}[h]
+\centering
+\caption{Forecasting results across six geopolitical scenarios. $P(\alpha)$ is the primary attractor's normalised Bayesian posterior. $c_{\mathrm{final}} = c_0 \cdot \lambda^T$ is the calibrated final confidence.}
+\label{tab:results}
+\begin{tabular}{@{}llllll@{}}
+\toprule
+Scenario & Primary Attractor & $P(\alpha)$ & Secondary Attractor & Bifurcation? & $c_{\mathrm{final}}$ \\
+\midrule
+US-China tech decoupling & Technology Standards Leadership & 0.51 & Tech Decoupling / Technology Iron Curtain & Step 2 & 0.34 \\
+US-China trade war & Hegemonic Sanctions & 0.58 & Trade War / Decoupling & No & 0.37 \\
+US-China financial isolation & Hegemonic Sanctions & 0.62 & Financial Reintegration & No & 0.39 \\
+China-Taiwan military coercion & Multilateral Alliance Sanctions & 0.54 & Non-State Armed Proxy Conflict & Step 3 & 0.31 \\
+China-Taiwan invasion & Multilateral Alliance Sanctions & 0.66 & Non-State Armed Proxy Conflict & No & 0.29 \\
+Russia-Ukraine war trajectory & Multilateral Alliance Sanctions & 0.61 & Resource Dependency / Energy Weaponisation & Step 4 & 0.30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Pattern Glossary}
+% --- Table: Pattern glossary ---
+\begin{longtable}{@{}p{0.36\linewidth}p{0.42\linewidth}p{0.18\linewidth}@{}}
+\caption{Pattern glossary. Internal keys are used in the codebase; English display names are used in all user-facing outputs and in this paper.}
+\label{tab:pattern-glossary}\\
+\toprule
+Internal key (code) & English display name & Domain \\
+\midrule
+\endfirsthead
+\toprule
+Internal key (code) & English display name & Domain \\
+\midrule
+\endhead
+Hegemonic Sanctions & Hegemonic Sanctions & geopolitics \\
+Entity-List Technology Blockade & Entity-List Technology Blockade & technology \\
+Interstate Military Conflict & Interstate Military Conflict & military \\
+Great-Power Coercion/Deterrence & Great-Power Coercion/Deterrence & geopolitics \\
+Multilateral Alliance Sanctions & Multilateral Alliance Sanctions & geopolitics \\
+Tech Decoupling / Technology Iron Curtain & Tech Decoupling / Technology Iron Curtain & technology \\
+Financial Isolation / SWIFT Cut-Off & Financial Isolation / SWIFT Cut-Off & economics \\
+Bilateral Trade Dependency & Bilateral Trade Dependency & economics \\
+Technology Standards Leadership & Technology Standards Leadership & technology \\
+Information Warfare / Narrative Control & Information Warfare / Narrative Control & information \\
+\bottomrule
+\end{longtable}
+
+\subsection{Baseline Comparison}
+% --- Table 3 ---
+\begin{table}[h]
+\centering
+\caption{Baseline comparison metrics. EL-DRUIN vs GPT-4 ($N=5$). $\sigma$ denotes standard deviation across runs.}
+\label{tab:baseline}
+\begin{tabular}{@{}p{0.35\linewidth}p{0.28\linewidth}p{0.31\linewidth}@{}}
+\toprule
+Metric & EL-DRUIN & GPT-4 ($N=5$) \\
+\midrule
+Confidence source & Ontology priors $\times$ Bayesian posterior (deterministic) & Self-reported by LLM (no auditable derivation) \\
+Confidence verifiable & Yes --- compute trace anchors every value & No --- free-text assertion \\
+Stability ($\sigma$) & 0.000 (deterministic) & $>0$ (stochastic variance) \\
+Traceability & Full compute trace (prior $\times$ similarity $\times$ decay) & None (no computable trace) \\
+Entity invention guard & Enforced (invented proper nouns trigger fallback) & Not enforced by default \\
+Numeric consistency & Locked by deterministic pipeline & Self-reported; may vary \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Related Work}
+% TODO: paste section 8 here.
+
+\section{Limitations and Future Work}
+% TODO: paste section 9 here.
+
+\section{Conclusion}
+% TODO: paste section 10 here.
+
+\section*{References}
+% TODO: convert to BibTeX later; for now you can paste your numbered references here as plain text.
+
+\end{document}
