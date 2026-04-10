@@ -457,7 +457,7 @@ class RegimeEngine:
         else:
             addendum = ""
 
-        return base.rstrip(".") + ("." if addendum else ".") + addendum
+        return base.rstrip(".") + "." + addendum
 
 
 # ---------------------------------------------------------------------------

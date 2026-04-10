@@ -336,8 +336,8 @@ class TestComputeRegime:
         assert isinstance(result.forecast_implication, str)
         assert len(result.forecast_implication) > 10
 
-    def test_empty_context_raises(self) -> None:
-        """compute_regime should propagate exceptions so the caller can fall back."""
+    def test_empty_context_succeeds(self) -> None:
+        """compute_regime handles an empty context without raising."""
         engine = RegimeEngine()
         # An empty context still has defaults; it should succeed (not raise)
         result = _run(engine.compute_regime("test-empty", {}))

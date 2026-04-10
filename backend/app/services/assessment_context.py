@@ -220,7 +220,7 @@ _DOMAIN_TO_PATTERNS: Dict[str, List[str]] = {
     "military":     ["正式軍事同盟模式", "大國脅迫/威懾模式"],
     "economics":    ["金融孤立/SWIFT切斷模式", "霸權制裁模式"],
     "technology":   ["實體清單技術封鎖模式"],
-    "humanitarian": ["人道主義干預模式"] if False else [],   # not in default table
+    "humanitarian": [],
     "legal":        [],
     "sports":       [],
     "business":     [],
