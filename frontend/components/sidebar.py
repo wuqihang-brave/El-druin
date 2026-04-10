@@ -41,6 +41,8 @@ _ALL_LABELS: list[str] = ["Dashboard", "Assessments", "Streams", "Knowledge"]
 # Labels that navigate to a dedicated pages/ file instead of rendering inline
 _PAGE_FILE_LABELS: dict[str, str] = {
     "Assessments": "pages/2_Assessments.py",
+    "Streams": "pages/4_Streams.py",
+    "Knowledge": "pages/3_Knowledge.py",
 }
 
 # Labels rendered inline inside app.py (derived; do not edit directly)
