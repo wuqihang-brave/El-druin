@@ -24,6 +24,8 @@ if _FRONTEND_DIR not in sys.path:
 
 from utils.api_client import APIClient  # noqa: E402
 from components.sidebar import render_sidebar_navigation  # noqa: E402
+from components.forecast_brief import render_forecast_brief  # noqa: E402
+from components.regime_view import render_regime_view  # noqa: E402
 
 try:
     from streamlit_agraph import agraph, Config, Edge, Node
@@ -1041,70 +1043,24 @@ if page == "Dashboard":
         _last_dom = (_last_sv.get("mean_vector") or {}).get("dominant_dim", "") if isinstance(_last_sv.get("mean_vector"), dict) else _last_sv.get("dominant_dim", "")
 
         if _last_er:
-            _dual_list = _last_er.get("dual_inference", [])
-            _top_dual = _dual_list[0] if _dual_list else {}
-            _sigma1 = _top_dual.get("lie_algebra", {}).get("sigma1", 0) or 0
-            if _sigma1 > 5:
-                _regime_label, _regime_class = "Nonlinear Escalation", "regime-nonlinear"
-            elif _sigma1 > 2:
-                _regime_label, _regime_class = "Stress Accumulation", "regime-stress"
-            elif _sigma1 > 0.5:
-                _regime_label, _regime_class = "Cascade Risk", "regime-cascade"
-            else:
-                _regime_label, _regime_class = "Linear", "regime-linear"
-
-            _conf_dir = "High" if _last_conf >= 0.7 else "Moderate" if _last_conf >= 0.5 else "Low"
+            _conf_dir = "High" if _last_conf >= 0.7 else "Medium" if _last_conf >= 0.5 else "Low"
             _horizon = "3–7 days"
             _driver_label = _last_dom.title() if _last_dom else "Multi-domain"
-
-            st.markdown(f"""
-            <div style="background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);
-            border-left:3px solid #4A8FD4;border-radius:3px;padding:14px 16px;margin-bottom:14px;">
-                <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-                color:var(--muted,#7A8FA6);margin-bottom:8px">Forecast Posture</div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Confidence</div>
-                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_conf_dir}</div></div>
-                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Horizon</div>
-                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_horizon}</div></div>
-                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Dominant Driver</div>
-                    <div style="font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)">{_driver_label}</div></div>
-                    <div><div style="font-size:9px;color:var(--muted,#7A8FA6);text-transform:uppercase;letter-spacing:0.6px">Regime</div>
-                    <span class="regime-badge {_regime_class}">{_regime_label}</span></div>
-                </div>
-                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.6;border-top:1px solid var(--border,#2D3F52);padding-top:8px">
-                    {_last_exec_j[:280] + "…" if len(_last_exec_j) > 280 else _last_exec_j or
-                    "Run an assessment to generate a forecast brief."}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Scenario Stack — Alpha/Beta cards from last result
-            _sc_alpha = _last_concl.get("alpha_path") or {}
-            _sc_beta  = _last_concl.get("beta_path") or {}
             _sc_alpha_desc = (_last_concl.get("evidence_path") or {}).get("summary", "")
             _sc_beta_desc  = (_last_concl.get("hypothesis_path") or {}).get("summary", "")
-            _sc_alpha_prob = _sc_alpha.get("probability", 0)
-            _sc_beta_prob  = _sc_beta.get("probability", 0)
 
-            st.markdown("""
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;
-            color:var(--muted,#7A8FA6);margin-bottom:8px">Scenario Stack</div>
-            """, unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class="scenario-alpha">
-                <div class="scenario-alpha-hdr">Base Case — Evidence Path &nbsp; p={_sc_alpha_prob:.0%}</div>
-                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.5">
-                    {_sc_alpha_desc[:200] + "…" if len(_sc_alpha_desc) > 200 else _sc_alpha_desc or "(Run assessment to populate)"}
-                </div>
-            </div>
-            <div class="scenario-beta">
-                <div class="scenario-beta-hdr">Escalation Case — Hypothesis Path &nbsp; p={_sc_beta_prob:.0%}</div>
-                <div style="font-size:13px;color:var(--text,#D4DDE6);line-height:1.5">
-                    {_sc_beta_desc[:200] + "…" if len(_sc_beta_desc) > 200 else _sc_beta_desc or "(Run assessment to populate)"}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            _brief_data = {
+                "forecast_posture": (
+                    _last_exec_j[:280] + "…" if len(_last_exec_j) > 280 else _last_exec_j
+                ) or "Run an assessment to generate a forecast brief.",
+                "time_horizon": _horizon,
+                "confidence": _conf_dir,
+                "dominant_driver": _driver_label,
+                "strengthening_conditions": [_sc_alpha_desc] if _sc_alpha_desc else [],
+                "weakening_conditions": [_sc_beta_desc] if _sc_beta_desc else [],
+                "invalidation_conditions": [],
+            }
+            render_forecast_brief(_brief_data)
             st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
         else:
             st.markdown("""
@@ -2338,64 +2294,19 @@ border-left:3px solid #4A8FD4;border-radius:3px;padding:16px 18px;margin-bottom:
 
                     _regime_data = _classify_regime(_er.get("lie_algebra", {}), _er.get("state_vector", {}))
 
-                    _ra_col1, _ra_col2 = st.columns(2)
-                    with _ra_col1:
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin-bottom:4px'>Current Regime</div>"
-                            f"<span class='regime-badge {_regime_data['regime_css']}'>{_regime_data['regime']}</span>",
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Dominant Coupling Axis</div>"
-                            f"<div style='font-size:12px;color:var(--text,#D4DDE6)'>{_regime_data['coupling_axis']}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Trigger Sensitivity</div>"
-                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
-                            f"{_regime_data['trigger_sensitivity']}</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                    with _ra_col2:
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin-bottom:4px'>Attractor Direction</div>"
-                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
-                            f"{_regime_data['attractor_direction']}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        _phase_count = _regime_data["phase_transitions_count"]
-                        _phase_color = "#E05050" if _phase_count > 0 else "var(--muted,#7A8FA6)"
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Phase Transitions</div>"
-                            f"<div style='font-size:13px;font-weight:700;color:{_phase_color}'>"
-                            f"{'None detected' if _phase_count == 0 else f'{_phase_count} detected'}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        _sigma1_disp = _regime_data['sigma1']
-                        st.markdown(
-                            f"<div style='font-size:10px;color:var(--muted,#7A8FA6);text-transform:uppercase;"
-                            f"letter-spacing:0.8px;margin:10px 0 4px 0'>Structural Intensity (σ₁)</div>"
-                            f"<div style='font-size:13px;font-weight:700;color:var(--text-strong,#EDF2F7)'>"
-                            f"{_sigma1_disp:.3f}</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                    st.markdown(
-                        f"<div style='background:var(--surface,#162030);border:1px solid var(--border,#2D3F52);"
-                        f"border-left:3px solid #4A8FD4;border-radius:3px;padding:10px 14px;margin-top:10px;"
-                        f"font-size:12px;color:var(--text,#D4DDE6);line-height:1.6'>"
-                        f"<span style='font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;"
-                        f"color:var(--muted,#7A8FA6)'>FORECAST IMPLICATION</span><br>"
-                        f"{_regime_data['forecast_implication']}"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
+                    _sigma1_val = _regime_data["sigma1"]
+                    _mat_norm_val = _regime_data["mat_norm"]
+                    _regime_view_data = {
+                        "current_regime": _regime_data["regime"],
+                        "threshold_distance": max(0.0, min(1.0, 1.0 - _sigma1_val / 10.0)),
+                        "transition_volatility": max(0.0, min(1.0, _sigma1_val / 10.0)),
+                        "reversibility_index": max(0.0, min(1.0, 1.0 - _mat_norm_val / 3.0)),
+                        "dominant_axis": _regime_data["coupling_axis"],
+                        "coupling_asymmetry": max(0.0, min(1.0, _mat_norm_val / 3.0)),
+                        "damping_capacity": max(0.0, min(1.0, 1.0 - _sigma1_val / 10.0)),
+                        "forecast_implication": _regime_data["forecast_implication"],
+                    }
+                    render_regime_view(_regime_view_data)
 
                     # ── Trigger Sensitivity Analysis ─────────────────────────────────────────
                     st.markdown('<div class="elite-divider"></div>', unsafe_allow_html=True)
