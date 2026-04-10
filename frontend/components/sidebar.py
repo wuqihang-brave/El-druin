@@ -35,15 +35,16 @@ import streamlit as st
 # Navigation configuration
 # ---------------------------------------------------------------------------
 
-# Labels for pages rendered inline inside app.py
-_INLINE_LABELS: list[str] = [
-    "Dashboard",
-    "Assessments",
-    "Streams",
-    "Knowledge",
-]
+# All nav items in display order
+_ALL_LABELS: list[str] = ["Dashboard", "Assessments", "Streams", "Knowledge"]
 
-_ALL_LABELS: list[str] = _INLINE_LABELS
+# Labels that navigate to a dedicated pages/ file instead of rendering inline
+_PAGE_FILE_LABELS: dict[str, str] = {
+    "Assessments": "pages/2_Assessments.py",
+}
+
+# Labels rendered inline inside app.py (derived; do not edit directly)
+_INLINE_LABELS: list[str] = [l for l in _ALL_LABELS if l not in _PAGE_FILE_LABELS]
 
 
 def render_sidebar_navigation(is_subpage: bool = False) -> str:
@@ -125,6 +126,11 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             key="sidebar_nav_radio",
             label_visibility="collapsed",
         )
+
+        # ── Route dedicated pages (always, regardless of is_subpage) ───────
+        if selected in _PAGE_FILE_LABELS:
+            st.session_state.current_page = selected
+            st.switch_page(_PAGE_FILE_LABELS[selected])
 
         # ── Route inline pages when called from a sub-page ─────────────────
         if is_subpage and selected in _INLINE_LABELS:
