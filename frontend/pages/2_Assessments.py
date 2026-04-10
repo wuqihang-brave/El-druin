@@ -40,6 +40,7 @@ from utils.api_client import (  # noqa: E402
     get_evidence,
 )
 from components.forecast_brief import render_forecast_brief  # noqa: E402
+from components.regime_view import render_regime_view  # noqa: E402
 
 try:
     from components.sidebar import render_sidebar_navigation  # noqa: E402
@@ -593,67 +594,15 @@ with _center_col:
     # -----------------------------------------------------------------------
     with _tabs[1]:
         _regime_data = get_regime(_assessment_id)
-
-        _cur_regime = _regime_data.get("current_regime", "—")
-        _threshold_dist = float(_regime_data.get("threshold_distance", 0))
-        _trans_vol = float(_regime_data.get("transition_volatility", 0))
-        _rev_idx = float(_regime_data.get("reversibility_index", 0))
-        _coupling_asym = float(_regime_data.get("coupling_asymmetry", 0))
-        _damping = float(_regime_data.get("damping_capacity", 0))
-        _dom_axis = _regime_data.get("dominant_axis", "—")
-        _forecast_impl = _regime_data.get("forecast_implication", "")
-
-        _rcolor = _REGIME_COLORS.get(_cur_regime, "#6b7280")
-        st.markdown(
-            f'<div class="aw-section-title">Current Regime</div>'
-            f'<div style="margin-bottom:12px">'
-            f'<span class="aw-regime-badge" style="background:{_rcolor}22;color:{_rcolor};'
-            f'border:1px solid {_rcolor}44;font-size:16px">{_cur_regime}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="aw-section-title">Threshold Distance</div>'
-            '<div style="font-size:10px;color:#7A8FA6;margin-bottom:4px">'
-            'Distance to next regime threshold (0 = safe, 1 = threshold crossed)'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        st.progress(_threshold_dist, text=f"{_threshold_dist:.0%}")
-
-        st.markdown('<div class="aw-section-title">System Metrics</div>', unsafe_allow_html=True)
-        _mc1, _mc2, _mc3, _mc4 = st.columns(4)
-        for _col_obj, _lbl, _val in [
-            (_mc1, "Transition Volatility", _trans_vol),
-            (_mc2, "Reversibility Index", _rev_idx),
-            (_mc3, "Coupling Asymmetry", _coupling_asym),
-            (_mc4, "Damping Capacity", _damping),
-        ]:
-            with _col_obj:
-                st.markdown(
-                    f'<div class="aw-metric-card">'
-                    f'<div class="aw-metric-label">{_lbl}</div>'
-                    f'<div class="aw-metric-value">{_val:.2f}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown('<div class="aw-section-title">Dominant Axis</div>', unsafe_allow_html=True)
-        _axis_parts = [p.strip() for p in _dom_axis.replace("->", " -> ").split(" -> ")]
-        _axis_html = " <span style='color:#4A6FA5;font-weight:700'>&rarr;</span> ".join(
-            f'<span class="aw-domain-badge" style="font-size:11px;padding:2px 8px">{p}</span>'
-            for p in _axis_parts
-        )
-        st.markdown(
-            f'<div class="aw-card-compact" style="text-align:center">{_axis_html}</div>',
-            unsafe_allow_html=True,
-        )
-
-        if _forecast_impl:
+        if isinstance(_regime_data, dict) and "error" in _regime_data:
+            st.error(f"Could not load regime data: {_regime_data['error']}")
+        elif _regime_data:
+            render_regime_view(_regime_data)
+        else:
             st.markdown(
-                f'<div class="aw-section-title">Forecast Implication</div>'
-                f'<div class="aw-callout aw-callout-warn">{_forecast_impl}</div>',
+                '<div style="font-size:12px;color:#7A8FA6;font-style:italic;margin-top:20px">'
+                "Regime data unavailable for this assessment."
+                "</div>",
                 unsafe_allow_html=True,
             )
 
