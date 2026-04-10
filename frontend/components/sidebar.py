@@ -38,12 +38,21 @@ import streamlit as st
 # Labels for pages rendered inline inside app.py
 _INLINE_LABELS: list[str] = [
     "Dashboard",
-    "Assessments",
     "Streams",
     "Knowledge",
 ]
 
-_ALL_LABELS: list[str] = _INLINE_LABELS
+# Pages that live in their own pages/ file – key = label, value = relative path
+_SUBPAGE_ROUTES: dict[str, str] = {
+    "Assessments": "pages/2_Assessments.py",
+}
+
+_ALL_LABELS: list[str] = [
+    "Dashboard",
+    "Assessments",
+    "Streams",
+    "Knowledge",
+]
 
 
 def render_sidebar_navigation(is_subpage: bool = False) -> str:
@@ -126,10 +135,21 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             label_visibility="collapsed",
         )
 
-        # ── Route inline pages when called from a sub-page ─────────────────
-        if is_subpage and selected in _INLINE_LABELS:
-            st.session_state.current_page = selected
-            st.switch_page("app.py")
+        # ── Route pages ───────────────────────────────────────────────────────
+        if is_subpage:
+            # On a sub-page: inline selections return to app.py; subpage
+            # selections switch to the correct page (or stay if already there).
+            if selected in _INLINE_LABELS:
+                st.session_state.current_page = selected
+                st.switch_page("app.py")
+            elif selected in _SUBPAGE_ROUTES and selected != st.session_state.get("current_page"):
+                st.session_state.current_page = selected
+                st.switch_page(_SUBPAGE_ROUTES[selected])
+        else:
+            # From app.py: subpage selections switch out of app.py immediately.
+            if selected in _SUBPAGE_ROUTES:
+                st.session_state.current_page = selected
+                st.switch_page(_SUBPAGE_ROUTES[selected])
 
         st.markdown("---")
 
