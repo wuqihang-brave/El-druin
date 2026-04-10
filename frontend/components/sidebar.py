@@ -2,9 +2,7 @@
 EL'druin Intelligence Platform – Sidebar Navigation Component
 =============================================================
 
-Provides a unified, English-first navigation sidebar with:
-  1. Page navigation (inline pages handled by app.py + external pages/ files)
-  2. Analysis depth configuration (Standard / Deep, Hypothesis toggle)
+Provides a unified, English-first navigation sidebar with page navigation.
 
 Usage
 -----
@@ -43,7 +41,6 @@ _INLINE_LABELS: list[str] = [
     "Assessments",
     "Streams",
     "Knowledge",
-    "Audit",
 ]
 
 _ALL_LABELS: list[str] = _INLINE_LABELS
@@ -133,41 +130,6 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
         if is_subpage and selected in _INLINE_LABELS:
             st.session_state.current_page = selected
             st.switch_page("app.py")
-
-        st.markdown("---")
-
-        # ── Analysis Depth section ─────────────────────────────────────────
-        st.markdown(
-            "<p style='font-weight:700;font-size:0.82rem;color:#4A8FD4;"
-            "text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>"
-            "ANALYSIS DEPTH</p>",
-            unsafe_allow_html=True,
-        )
-        _depth_choice = st.radio(
-            "Analysis depth",
-            options=["Standard", "Deep"],
-            index=0 if st.session_state.get("cfg_deep_level", 0) < 2 else 1,
-            horizontal=True,
-            key="cfg_depth_radio",
-            help=(
-                "**Standard** – normal analysis pipeline (fast).\n\n"
-                "**Deep** – fetches source URLs for richer context (slower)."
-            ),
-            label_visibility="collapsed",
-        )
-        # Map back to numeric level for downstream compatibility
-        st.session_state["cfg_deep_level"] = 0 if _depth_choice == "Standard" else 2
-        st.caption(
-            "Standard: fast analysis" if _depth_choice == "Standard"
-            else "Deep: fetch source URLs"
-        )
-
-        st.toggle(
-            "Show hypothesis path (hidden variables)",
-            value=True,
-            key="cfg_show_hidden",
-            help="Display the T1 hypothesis path in the Evented conclusion panel.",
-        )
 
         st.markdown("---")
 
