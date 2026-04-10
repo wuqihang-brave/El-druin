@@ -774,6 +774,7 @@ _BRIEF_STUB: Dict[str, Any] = {
         "Full corridor reopening confirmed by all transit operators",
         "Regional security guarantee treaty ratified",
     ],
+    "reasoning_path_id": None,  # set to a real UUID when backend is live
     "updated_at": "2026-04-09T18:00:00Z",
 }
 

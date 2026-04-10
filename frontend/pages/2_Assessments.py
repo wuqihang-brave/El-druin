@@ -790,6 +790,63 @@ with _center_col:
     st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
 
     # =======================================================================
+    # SECTION 5 - STRUCTURAL COUPLING
+    # =======================================================================
+    st.markdown(
+        '<div class="aw-section-title">STRUCTURAL COUPLING</div>'
+        '<div style="font-size:10px;color:#7A8FA6;margin-bottom:6px">'
+        'Domain-pair coupling strength \u2014 amplifying pairs highlighted'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    _coupling_pairs = _coupling_data.get("pairs", []) if isinstance(_coupling_data, dict) else []
+    _sorted_pairs = sorted(_coupling_pairs, key=lambda x: float(x.get("coupling_strength", 0)), reverse=True)
+
+    if not _sorted_pairs:
+        st.markdown(
+            '<div class="aw-callout">No coupling data for this assessment.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        for _pair in _sorted_pairs:
+            _da = _pair.get("domain_a", "\u2014")
+            _db = _pair.get("domain_b", "\u2014")
+            _cs = float(_pair.get("coupling_strength", 0))
+            _is_amp = _pair.get("is_amplifying", False)
+            _amp_label = _pair.get("amplification_label", "")
+
+            _pair_color = "#9a3412" if _is_amp else "#4A6FA5"
+            _pair_border = "#9a341244" if _is_amp else "#4A6FA544"
+            _pair_bg = "#9a341211" if _is_amp else "#4A6FA511"
+
+            _bar_pct = min(int(round((_cs / 3.0) * 100)), 100)
+            _bar_color = "#f87171" if _is_amp else "#60a5fa"
+
+            st.markdown(
+                f'<div class="aw-card-compact" style="border-left:3px solid {_pair_color};margin-bottom:6px">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between">'
+                f'<div style="display:flex;align-items:center;gap:8px">'
+                f'<span class="aw-step-domain">{_da}</span>'
+                f'<span style="color:#4A6FA5;font-size:12px">&#8596;</span>'
+                f'<span class="aw-step-domain">{_db}</span>'
+                f'</div>'
+                f'<div style="display:flex;align-items:center;gap:8px">'
+                f'<div style="width:80px;background:#2D3F52;border-radius:2px;height:4px;overflow:hidden">'
+                f'<div style="width:{_bar_pct}%;background:{_bar_color};height:100%"></div>'
+                f'</div>'
+                f'<span style="font-size:12px;font-weight:700;color:#D4DDE6;min-width:32px;text-align:right">{_cs:.2f}</span>'
+                f'<span class="aw-badge" style="background:{_pair_bg};color:{_pair_color};border:1px solid {_pair_border}">'
+                f'{_amp_label or ("Amplifying" if _is_amp else "Moderate")}</span>'
+                f'</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
+
+    # =======================================================================
     # CHANGE AND EXPLANATION LAYER
     # =======================================================================
 
@@ -990,25 +1047,42 @@ with _center_col:
     # TRACE (collapsed)
     # -----------------------------------------------------------------------
     with st.expander("Trace", expanded=False):
-        st.json({
-            "trace_version": "1.0",
-            "assessment_id": _assessment_id,
-            "path_ranking": [
-                {"path_id": "p-001", "rank": 1, "score": 0.87},
-                {"path_id": "p-002", "rank": 2, "score": 0.71},
-            ],
-            "ontology_activation": {
-                "military_pressure": 0.92,
-                "energy_disruption": 0.85,
-                "financial_contagion": 0.63,
-            },
-            "confidence_decomposition": {
-                "base_confidence": 0.55,
-                "evidence_uplift": 0.19,
-                "structural_penalty": -0.07,
-                "final_confidence": 0.67,
-            },
-        })
+        _path_id = _brief_data.get("reasoning_path_id") if isinstance(_brief_data, dict) else None
+
+        if _path_id:
+            from utils.api_client import api_client as _api_client_inst
+            _trace_data = _api_client_inst.get_reasoning_path(_path_id)
+            if "error" in _trace_data:
+                st.markdown(
+                    f'<div style="font-size:11px;color:#7A8FA6;font-style:italic">'
+                    f'Reasoning path not available: {_trace_data["error"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.json({
+                    "trace_version": "1.0",
+                    "assessment_id": _assessment_id,
+                    "note": "Live trace unavailable \u2014 showing structural stub",
+                    "path_id_attempted": _path_id,
+                })
+            else:
+                st.json(_trace_data)
+        else:
+            _conf_float = {"High": 0.81, "Medium": 0.62, "Low": 0.41}.get(str(_confidence), 0.55)
+            _damping_penalty = round(
+                -(1.0 - float(_regime_data.get("damping_capacity", 0.5) if isinstance(_regime_data, dict) else 0.5)) * 0.15,
+                3,
+            ) if _regime_data else -0.07
+            st.json({
+                "trace_version": "1.1",
+                "assessment_id": _assessment_id,
+                "confidence_decomposition": {
+                    "final_confidence": _conf_float,
+                    "damping_penalty": _damping_penalty,
+                    "regime": _regime_name,
+                    "threshold_distance": _regime_thresh,
+                },
+                "note": "No reasoning_path_id in brief \u2014 structural decomposition only",
+            })
 
 
 # ===========================================================================
@@ -1036,6 +1110,25 @@ with _right_col:
         f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_damping:.2f}</div>'
         f'<div class="aw-metric-label" style="margin-top:6px">Reversibility</div>'
         f'<div style="font-size:16px;font-weight:700;color:#D4DDE6">{_rev_index:.2f}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    _cp_pairs = _coupling_data.get("pairs", []) if isinstance(_coupling_data, dict) else []
+    _amp_count = sum(1 for p in _cp_pairs if p.get("is_amplifying", False))
+    _max_cs_pair = max(_cp_pairs, key=lambda x: float(x.get("coupling_strength", 0)), default=None)
+    _max_cs_label = (
+        f'{_max_cs_pair.get("domain_a", "\u2014")} \u2194 {_max_cs_pair.get("domain_b", "\u2014")}'
+        if _max_cs_pair else "\u2014"
+    )
+    _max_cs_val = float(_max_cs_pair.get("coupling_strength", 0)) if _max_cs_pair else 0.0
+    st.markdown(
+        f'<div class="aw-metric-card">'
+        f'<div class="aw-metric-label">Amplifying Pairs</div>'
+        f'<div class="aw-metric-value" style="color:#f87171">{_amp_count}</div>'
+        f'<div class="aw-metric-label" style="margin-top:6px">Strongest Coupling</div>'
+        f'<div style="font-size:10px;font-weight:600;color:#D4DDE6;margin-top:2px">{_max_cs_label}</div>'
+        f'<div style="font-size:13px;font-weight:700;color:#C8A84B">{_max_cs_val:.2f}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
