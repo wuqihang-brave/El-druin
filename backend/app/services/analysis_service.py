@@ -418,6 +418,13 @@ async def perform_deduction(
             "Deduction completed. Confidence: %.2f | mechanisms: %d",
             boosted_conf, len(mechanisms),
         )
+
+        # ── PR-4: emit regime metrics as a side-effect ─────────────────
+        deduction["regime_metrics"] = _compute_regime_side_effect(
+            mechanisms=mechanisms,
+            deduction=deduction,
+        )
+
         return deduction
 
     except Exception as e:
@@ -432,3 +439,47 @@ async def perform_deduction(
             "graph_evidence":    "",
             "mechanism_count":   0,
         }
+
+
+# ---------------------------------------------------------------------------
+# PR-4: Regime side-effect helper
+# ---------------------------------------------------------------------------
+
+def _compute_regime_side_effect(
+    mechanisms: List[Any],
+    deduction: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Compute a lightweight regime metrics dict as a side-effect of the main
+    deduction pipeline.
+
+    This keeps regime output co-located with deduction output so callers
+    (e.g. analysis endpoints) can access both without a second round-trip.
+    The heavy per-request computation is handled by RegimeEngine; this helper
+    provides a fast synchronous summary.
+    """
+    try:
+        from app.services.regime_engine import RegimeEngine  # type: ignore
+
+        engine = RegimeEngine()
+        context = {
+            "mechanisms": mechanisms,
+            "deduction":  deduction,
+        }
+        raw = engine._extract_raw_metrics(context)
+        score = engine._compute_structural_score(raw)
+        regime = engine._map_structural_score_to_regime(score)
+
+        return {
+            "structural_score":    round(score, 4),
+            "current_regime":      regime,
+            "threshold_distance":  round(engine._compute_threshold_distance(score), 4),
+            "transition_volatility": round(engine._compute_transition_volatility(raw), 4),
+            "reversibility_index": round(engine._compute_reversibility_index(raw), 4),
+            "coupling_asymmetry":  round(engine._compute_coupling_asymmetry(raw), 4),
+            "damping_capacity":    round(engine._compute_damping_capacity(raw), 4),
+            "dominant_axis":       engine._derive_dominant_axis(mechanisms),
+        }
+    except Exception as exc:
+        logger.warning("_compute_regime_side_effect failed: %s", exc)
+        return {}

@@ -6,19 +6,20 @@ Endpoints:
   GET  /assessments                              – list all assessments
   GET  /assessments/{assessment_id}              – single assessment detail
   GET  /assessments/{assessment_id}/brief        – executive brief
-  GET  /assessments/{assessment_id}/regime       – regime state output
+  GET  /assessments/{assessment_id}/regime       – regime state output (real engine, PR-4)
   GET  /assessments/{assessment_id}/triggers     – trigger amplification output
   GET  /assessments/{assessment_id}/attractors   – attractor output
   GET  /assessments/{assessment_id}/propagation  – propagation sequence output
   GET  /assessments/{assessment_id}/delta        – update delta output
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
-Stubs return realistic placeholder data keyed to assessment_id "ae-204".
-Actual engine wiring will follow in PR-4 through PR-8.
+The regime endpoint now calls the real RegimeEngine adapter (PR-4).
+All other endpoints remain as stubs keyed to assessment_id "ae-204".
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -38,6 +39,8 @@ from app.schemas.structural_forecast import (
     TriggerOutput,
     TriggersOutput,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
 
@@ -329,10 +332,39 @@ def get_brief(assessment_id: str) -> BriefOutput:
 
 
 @router.get("/{assessment_id}/regime", response_model=RegimeOutput)
-def get_regime(assessment_id: str) -> RegimeOutput:
-    """Return the current regime state for an assessment."""
+async def get_regime(assessment_id: str) -> RegimeOutput:
+    """
+    Return the current regime state for an assessment.
+
+    Calls the RegimeEngine adapter to compute real structural metrics from
+    the backend intelligence engines.  Falls back to the demo stub when the
+    assessment is not found or when context fetching fails.
+    """
     _stub_or_404(assessment_id)
-    return _DEMO_REGIME
+
+    try:
+        from app.services.regime_engine import RegimeEngine  # noqa: PLC0415
+        from app.services.assessment_context import fetch_assessment_context  # noqa: PLC0415
+
+        context = await fetch_assessment_context(assessment_id)
+        if not context:
+            # Empty context – use stub data so the endpoint still returns a
+            # valid response rather than an error.
+            logger.info(
+                "get_regime: empty context for %s; returning stub", assessment_id
+            )
+            return _DEMO_REGIME
+
+        engine = RegimeEngine()
+        return await engine.compute_regime(assessment_id, context)
+
+    except Exception as exc:
+        logger.warning(
+            "get_regime: engine error for %s (%s); falling back to stub",
+            assessment_id,
+            exc,
+        )
+        return _DEMO_REGIME
 
 
 @router.get("/{assessment_id}/triggers", response_model=TriggersOutput)
