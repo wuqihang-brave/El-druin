@@ -49,6 +49,21 @@ CREATE TABLE IF NOT EXISTS assessments (
 );
 """
 
+_UPDATABLE_COLUMNS = frozenset(
+    {
+        "title",
+        "assessment_type",
+        "status",
+        "region_tags",
+        "domain_tags",
+        "updated_at",
+        "last_regime",
+        "last_confidence",
+        "alert_count",
+        "analyst_notes",
+    }
+)
+
 _SEED_ASSESSMENT = Assessment(
     assessment_id="ae-204",
     title="Black Sea Energy Corridor \u2013 Structural Watch",
@@ -223,8 +238,11 @@ class AssessmentStore:
         if data.analyst_notes is not None:
             updates["analyst_notes"] = data.analyst_notes
 
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [assessment_id]
+        set_clause = ", ".join(
+            f"{k} = ?" for k in updates if k in _UPDATABLE_COLUMNS
+        )
+        filtered_values = [v for k, v in updates.items() if k in _UPDATABLE_COLUMNS]
+        values = filtered_values + [assessment_id]
 
         with self._connect() as conn:
             conn.execute(

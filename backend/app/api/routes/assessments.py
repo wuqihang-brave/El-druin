@@ -467,7 +467,7 @@ def generate_assessments_from_news(
         return {"status": "ok", **result}
     except Exception as exc:  # noqa: BLE001
         logger.error("generate_assessments_from_news failed: %s", exc)
-        return {"status": "error", "message": str(exc)}
+        return {"status": "error", "message": "Assessment generation failed. See server logs for details."}
 
 
 @router.get("", response_model=AssessmentListResponse)
