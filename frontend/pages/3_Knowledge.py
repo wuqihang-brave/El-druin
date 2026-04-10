@@ -108,7 +108,7 @@ _all_assessments = get_assessments()
 _assess_options: Dict[str, str] = {
     a.get("assessment_id", ""): a.get("title", "—")
     for a in _all_assessments
-    if a.get("assessment_id")
+    if a.get("assessment_id", "").strip()
 }
 
 _ctx_bar_l, _ctx_bar_r = st.columns([3, 1])

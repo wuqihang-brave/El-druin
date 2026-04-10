@@ -690,11 +690,11 @@ with _center_col:
                 _a_curr = float(_ac.get("current", 0))
                 _a_delta = _a_curr - _a_prev
                 _a_name = _ac.get("field", "Top attractor")
-                _a_sign = "+" if _a_delta >= 0 else ""
                 _a_color = "#9a3412" if _a_delta > 0 else "#14532d" if _a_delta < 0 else "#6b7280"
+                _a_delta_str = f"{_a_delta:+.2f}"  # :+ already includes sign
                 _attractor_shift_html = (
                     f'<span style="font-size:11px;color:#7A8FA6">'
-                    f'Pull strength: <span style="color:{_a_color};font-weight:600">{_a_sign}{_a_delta:+.2f}</span>'
+                    f'Pull strength: <span style="color:{_a_color};font-weight:600">{_a_delta_str}</span>'
                     f'</span>'
                 )
 
