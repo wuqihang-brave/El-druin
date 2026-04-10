@@ -378,13 +378,8 @@ def load_knowledge_graph() -> Dict[str, Any]:
 page = render_sidebar_navigation()
 
 # ── Page routing ──────────────────────────────────────────────────────────────
-if page == "Dashboard":
-    st.markdown("## ⚔️ EL'DRUIN Intelligence Platform")
-    st.info(
-        "**Dashboard** (PR-C) — Structural regime monitoring, trigger amplification, "
-        "attractor forecasting, and change feed will be available here once 1_Dashboard.py "
-        "is implemented."
-    )
-
-elif page in PAGE_FILE_LABELS:
+# All pages (including Dashboard) are now dedicated pages/ files.
+# The sidebar's st.switch_page handles navigation; this block is a safety net
+# for direct app.py loads before session state is established.
+if page in PAGE_FILE_LABELS:
     st.switch_page(PAGE_FILE_LABELS[page])

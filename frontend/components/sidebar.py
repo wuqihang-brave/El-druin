@@ -40,6 +40,7 @@ _ALL_LABELS: list[str] = ["Dashboard", "Assessments", "Streams", "Knowledge"]
 
 # Labels that navigate to a dedicated pages/ file instead of rendering inline
 _PAGE_FILE_LABELS: dict[str, str] = {
+    "Dashboard": "pages/1_Dashboard.py",
     "Assessments": "pages/2_Assessments.py",
     "Streams": "pages/4_Streams.py",
     "Knowledge": "pages/3_Knowledge.py",
@@ -133,13 +134,15 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         # ── Route dedicated pages (always, regardless of is_subpage) ───────
         if selected in _PAGE_FILE_LABELS:
-            st.session_state.current_page = selected
-            st.switch_page(_PAGE_FILE_LABELS[selected])
+            if selected != st.session_state.get("current_page"):
+                st.session_state.current_page = selected
+                st.switch_page(_PAGE_FILE_LABELS[selected])
 
         # ── Route inline pages when called from a sub-page ─────────────────
         if is_subpage and selected in _INLINE_LABELS:
-            st.session_state.current_page = selected
-            st.switch_page("app.py")
+            if selected != st.session_state.get("current_page"):
+                st.session_state.current_page = selected
+                st.switch_page("app.py")
 
         st.markdown("---")
 
