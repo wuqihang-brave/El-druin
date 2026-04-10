@@ -257,11 +257,18 @@ _THRESH_BAR_COLOR: Dict[str, str] = {
     "Attractor Lock-in": "#9B72CF",
 }
 
+# Scaling factor: raw amplification_factor [0–1] → display multiplier (×N)
+_AMP_DISPLAY_MULTIPLIER: float = 5.0
+# Maximum chars for short assessment title display
+_TITLE_SHORT_LEN: int = 28
+# Cache TTL in seconds (5 minutes)
+_CACHE_TTL_SECONDS: int = 300
+
 # ---------------------------------------------------------------------------
 # Data loading (cached 5 min)
 # ---------------------------------------------------------------------------
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def _load_assessment_data(assessment_id: str) -> Dict[str, Any]:
     """Load all structural data for one assessment, cached 5 min."""
     return {
@@ -454,12 +461,12 @@ active_count = sum(
     1 for e in enriched if e["assessment"].get("status") == "active"
 )
 near_names = ", ".join(
-    e["assessment"].get("title", "—")[:28] for e in near_threshold_items[:3]
+    e["assessment"].get("title", "—")[:_TITLE_SHORT_LEN] for e in near_threshold_items[:3]
 ) or "—"
 shifted_labels = ", ".join(
     e["regime"].get("current_regime", "")[:20] for e in regime_shifted_items[:3]
 ) or "—"
-top_amp_display = f"×{top_amp_factor * 5:.1f}" if top_amp_factor > 0 else "—"
+top_amp_display = f"×{top_amp_factor * _AMP_DISPLAY_MULTIPLIER:.1f}" if top_amp_factor > 0 else "—"
 
 card_col1, card_col2, card_col3, card_col4 = st.columns([1, 1, 1, 1])
 
@@ -551,7 +558,7 @@ else:
             t_amp = top_trig.get("amplification_factor", 0)
             t_arrow = _amp_arrow(t_amp)
             t_name = top_trig.get("name", "—")[:26]
-            trig_cell = f"{t_name} ×{t_amp * 5:.1f} {t_arrow}"
+            trig_cell = f"{t_name} ×{t_amp * _AMP_DISPLAY_MULTIPLIER:.1f} {t_arrow}"
         else:
             trig_cell = "—"
 
@@ -679,7 +686,7 @@ with col_trig:
             domains = " · ".join(t.get("impacted_domains", []))
             jump = t.get("jump_potential", "—")
             lag = t.get("expected_lag_hours", "—")
-            amp_display = amp * 5
+            amp_display = amp * _AMP_DISPLAY_MULTIPLIER
             jump_html = _jump_label(jump)
             st.markdown(
                 f"""
@@ -743,12 +750,13 @@ for e in enriched:
     asm = e["assessment"]
     delta = e["delta"]
     updated_at = e.get("updated_at", "")
-    short_title = asm.get("title", "—")[:28]
+    short_title = asm.get("title", "—")[:_TITLE_SHORT_LEN]
 
     if delta.get("regime_changed"):
         summary = delta.get("summary", "Regime changed")
-        # Truncate long summary to first sentence
-        first_sentence = summary.split(".")[0][:80] if summary else "Regime shifted"
+        # Split on first period, then apply char limit to avoid mid-word cuts
+        parts = summary.split(".") if summary else []
+        first_sentence = (parts[0][:80] if parts else "Regime shifted") if summary else "Regime shifted"
         feed_entries.append({
             "icon": "⚠",
             "css_extra": "feed-regime",
