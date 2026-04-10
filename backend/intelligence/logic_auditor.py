@@ -248,7 +248,7 @@ class ReasoningPathRecorder:
             path_id=raw["path_id"],
             timestamp=raw["timestamp"],
             source=SourceInfo(
-                type=raw["source"]["type"],
+                type=SourceType(raw["source"]["type"]),
                 url=raw["source"]["url"],
                 reliability=raw["source"]["reliability"],
             ),
@@ -256,7 +256,7 @@ class ReasoningPathRecorder:
             inference_steps=[InferenceStep(**s) for s in steps],
             graph_changes=[GraphChange(**c) for c in raw["graph_changes"]],
             final_confidence=round(final_confidence, 6),
-            audit_status=status,
+            audit_status=status.value,
         )
 
         self._completed[path_id] = path
