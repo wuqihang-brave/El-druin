@@ -39,6 +39,7 @@ from utils.api_client import (  # noqa: E402
     get_delta,
     get_evidence,
 )
+from components.forecast_brief import render_forecast_brief  # noqa: E402
 
 try:
     from components.sidebar import render_sidebar_navigation  # noqa: E402
@@ -273,6 +274,14 @@ st.markdown("""
     border-radius: 10px;
     border: 1px solid #991b1b;
 }
+/* Forecast Brief card styles */
+.brief-posture { font-size: 1.4rem; font-weight: 600; color: #e8e8e8; margin: 4px 0 10px 0; }
+.brief-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+.brief-value { font-size: 0.95rem; color: #c8c8c8; }
+.confidence-high { color: #4caf7d; font-weight: 600; }
+.confidence-medium { color: #e8a742; font-weight: 600; }
+.confidence-low { color: #e05c5c; font-weight: 600; }
+.condition-item { padding: 2px 0; color: #b0b0b0; font-size: 0.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -567,82 +576,17 @@ with _center_col:
     # -----------------------------------------------------------------------
     with _tabs[0]:
         _brief = get_brief(_assessment_id)
-
-        _posture = _brief.get("forecast_posture", "—")
-        _horizon = _brief.get("time_horizon", "—")
-        _conf = _brief.get("confidence", "—")
-        _why = _brief.get("why_it_matters", "")
-        _driver = _brief.get("dominant_driver", "—")
-        _strengthen = _brief.get("strengthening_conditions", [])
-        _weaken = _brief.get("weakening_conditions", [])
-        _invalidate = _brief.get("invalidation_conditions", [])
-
-        st.markdown(
-            f'<div class="aw-metric-label">Forecast Posture</div>'
-            f'<div style="font-size:22px;font-weight:700;color:#D4DDE6;margin-bottom:12px">'
-            f'{_posture}</div>',
-            unsafe_allow_html=True,
-        )
-
-        _m1, _m2 = st.columns(2)
-        with _m1:
+        if isinstance(_brief, dict) and "error" in _brief:
+            st.error(f"Could not load brief: {_brief['error']}")
+        elif _brief:
+            render_forecast_brief(_brief)
+        else:
             st.markdown(
-                f'<div class="aw-metric-card">'
-                f'<div class="aw-metric-label">Time Horizon</div>'
-                f'<div style="font-size:18px;font-weight:700;color:#D4DDE6">{_horizon}</div>'
-                f'</div>',
+                '<div style="font-size:12px;color:#7A8FA6;font-style:italic;margin-top:20px">'
+                "Brief data unavailable for this assessment."
+                "</div>",
                 unsafe_allow_html=True,
             )
-        with _m2:
-            st.markdown(
-                f'<div class="aw-metric-card">'
-                f'<div class="aw-metric-label">Confidence</div>'
-                f'<div style="font-size:18px;font-weight:700;color:#D4DDE6">{_conf}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-        if _why:
-            st.markdown(
-                f'<div class="aw-callout"><strong>Why it matters:</strong> {_why}</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown(
-            f'<div class="aw-section-title">Dominant Driver</div>'
-            f'<div class="aw-card-compact" style="font-size:13px;color:#D4DDE6">{_driver}</div>',
-            unsafe_allow_html=True,
-        )
-
-        if _strengthen:
-            st.markdown('<div class="aw-section-title">Strengthening Conditions</div>', unsafe_allow_html=True)
-            _sc_html = "".join(
-                f'<div class="aw-condition-item">'
-                f'<span style="color:#4ade80;font-size:9px;margin-right:6px">&#9658;</span>{c}'
-                f'</div>'
-                for c in _strengthen
-            )
-            st.markdown(f'<div class="aw-card-compact">{_sc_html}</div>', unsafe_allow_html=True)
-
-        if _weaken:
-            st.markdown('<div class="aw-section-title">Weakening Conditions</div>', unsafe_allow_html=True)
-            _wc_html = "".join(
-                f'<div class="aw-condition-item">'
-                f'<span style="color:#fbbf24;font-size:9px;margin-right:6px">&#9658;</span>{c}'
-                f'</div>'
-                for c in _weaken
-            )
-            st.markdown(f'<div class="aw-card-compact">{_wc_html}</div>', unsafe_allow_html=True)
-
-        if _invalidate:
-            st.markdown('<div class="aw-section-title">Invalidation Conditions</div>', unsafe_allow_html=True)
-            _ic_html = "".join(
-                f'<div class="aw-condition-item">'
-                f'<span style="color:#6b7280;font-size:9px;margin-right:6px">&#9658;</span>{c}'
-                f'</div>'
-                for c in _invalidate
-            )
-            st.markdown(f'<div class="aw-card-compact">{_ic_html}</div>', unsafe_allow_html=True)
 
     # -----------------------------------------------------------------------
     # Tab: Regime
