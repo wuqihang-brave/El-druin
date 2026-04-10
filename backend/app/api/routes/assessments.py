@@ -28,9 +28,17 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
-from app.schemas.assessment import Assessment, AssessmentListResponse, AssessmentStatus, AssessmentType
+from app.schemas.assessment import (
+    Assessment,
+    AssessmentCreate,
+    AssessmentListResponse,
+    AssessmentStatus,
+    AssessmentType,
+    AssessmentUpdate,
+)
+from app.core.assessment_store import assessment_store
 
 logger = logging.getLogger(__name__)
 
@@ -316,11 +324,11 @@ _DEMO_EVIDENCE = EvidenceOutput(
 # ---------------------------------------------------------------------------
 
 def _stub_or_404(assessment_id: str) -> None:
-    """Raise 404 for any assessment_id that is not the demo stub."""
-    if assessment_id != _DEMO_ID:
+    """Raise 404 for any assessment_id that is not present in the store."""
+    if assessment_store.get_assessment(assessment_id) is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Assessment '{assessment_id}' not found. Only '{_DEMO_ID}' is available in stub mode.",
+            detail=f"Assessment '{assessment_id}' not found.",
         )
 
 
@@ -430,17 +438,85 @@ def _build_assessment_context(assessment_id: str) -> dict:
 # Routes
 # ---------------------------------------------------------------------------
 
+@router.post("/generate-from-news", response_model=dict)
+def generate_assessments_from_news(
+    hours: int = 48,
+    min_events: int = 3,
+    max_assessments: int = 10,
+) -> dict:
+    """
+    Auto-generate Assessment records from the news event pipeline.
+
+    Reads recent articles via NewsAggregator, extracts events via
+    EventExtractor, clusters them by domain/region similarity, and
+    upserts new Assessment records for qualifying clusters.
+
+    Query params:
+    - ``hours``: look-back window for news articles (default 48).
+    - ``min_events``: minimum events to form a cluster (default 3).
+    - ``max_assessments``: cap on assessments generated per run (default 10).
+    """
+    try:
+        from app.services.assessment_generator import AssessmentGenerator  # noqa: PLC0415
+
+        result = AssessmentGenerator().generate_from_news(
+            hours=hours,
+            min_events_per_cluster=min_events,
+            max_assessments=max_assessments,
+        )
+        return {"status": "ok", **result}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("generate_assessments_from_news failed: %s", exc)
+        return {"status": "error", "message": "Assessment generation failed. See server logs for details."}
+
+
 @router.get("", response_model=AssessmentListResponse)
 def list_assessments() -> AssessmentListResponse:
-    """Return all available assessments."""
-    return AssessmentListResponse(assessments=[_DEMO_ASSESSMENT], total=1)
+    """Return all available assessments ordered by last updated."""
+    items = assessment_store.list_assessments()
+    return AssessmentListResponse(assessments=items, total=len(items))
 
 
 @router.get("/{assessment_id}", response_model=Assessment)
 def get_assessment(assessment_id: str) -> Assessment:
     """Return a single assessment by ID."""
-    _stub_or_404(assessment_id)
-    return _DEMO_ASSESSMENT
+    item = assessment_store.get_assessment(assessment_id)
+    if item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Assessment '{assessment_id}' not found",
+        )
+    return item
+
+
+@router.post("", response_model=Assessment, status_code=201)
+def create_assessment(data: AssessmentCreate) -> Assessment:
+    """Create a new assessment and return it with a generated ID."""
+    return assessment_store.create_assessment(data)
+
+
+@router.patch("/{assessment_id}", response_model=Assessment)
+def update_assessment(assessment_id: str, data: AssessmentUpdate) -> Assessment:
+    """Apply partial updates to an existing assessment."""
+    item = assessment_store.update_assessment(assessment_id, data)
+    if item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Assessment '{assessment_id}' not found",
+        )
+    return item
+
+
+@router.delete("/{assessment_id}", status_code=204)
+def delete_assessment(assessment_id: str) -> Response:
+    """Delete an assessment. Returns 204 No Content on success."""
+    deleted = assessment_store.delete_assessment(assessment_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Assessment '{assessment_id}' not found",
+        )
+    return Response(status_code=204)
 
 
 @router.get("/{assessment_id}/brief", response_model=BriefOutput)

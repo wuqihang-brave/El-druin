@@ -91,6 +91,7 @@ _STATUS_LABELS: Dict[str, str] = {
 
 _AMP_DISPLAY_SCALE: float = 5.0
 _MAX_EVENT_PREVIEW_LENGTH: int = 60
+_EM: str = "\u2014"  # em-dash literal; defined here to avoid backslash inside f-string {}
 
 # ---------------------------------------------------------------------------
 # Inline CSS
@@ -1118,8 +1119,8 @@ with _right_col:
     _amp_count = sum(1 for p in _cp_pairs if p.get("is_amplifying", False))
     _max_cs_pair = max(_cp_pairs, key=lambda x: float(x.get("coupling_strength", 0)), default=None)
     _max_cs_label = (
-        f'{_max_cs_pair.get("domain_a", "\u2014")} \u2194 {_max_cs_pair.get("domain_b", "\u2014")}'
-        if _max_cs_pair else "\u2014"
+        f'{_max_cs_pair.get("domain_a", _EM)} \u2194 {_max_cs_pair.get("domain_b", _EM)}'
+        if _max_cs_pair else _EM
     )
     _max_cs_val = float(_max_cs_pair.get("coupling_strength", 0)) if _max_cs_pair else 0.0
     st.markdown(

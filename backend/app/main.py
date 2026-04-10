@@ -81,6 +81,12 @@ async def startup_event() -> None:
         # reachable and operators can diagnose the problem without a full
         # service outage.
 
+    try:
+        from app.core.assessment_store import assessment_store  # noqa: F401 – triggers init
+        logger.info("✅ Assessment store initialised")
+    except Exception as exc:
+        logger.error("❌ Assessment store init failed: %s", exc)
+
     # Run ontology algebra validation (warn-only in all environments).
     # Set DEBUG=true to enable strict mode (raises on error).
     try:
