@@ -9,11 +9,12 @@ Endpoints:
   GET  /assessments/{assessment_id}/regime       – regime state output (real engine, PR-4)
   GET  /assessments/{assessment_id}/triggers     – trigger amplification output
   GET  /assessments/{assessment_id}/attractors   – attractor output
-  GET  /assessments/{assessment_id}/propagation  – propagation sequence output
+  GET  /assessments/{assessment_id}/propagation  – propagation sequence output (real engine, PR-7)
   GET  /assessments/{assessment_id}/delta        – update delta output
   GET  /assessments/{assessment_id}/evidence     – evidence output
 
-The regime endpoint now calls the real RegimeEngine adapter (PR-4).
+The regime endpoint calls the real RegimeEngine adapter (PR-4).
+The propagation endpoint calls the real PropagationEngine adapter (PR-7).
 All other endpoints remain as stubs keyed to assessment_id "ae-204".
 """
 
@@ -504,10 +505,37 @@ def get_attractors(assessment_id: str) -> AttractorsOutput:
 
 
 @router.get("/{assessment_id}/propagation", response_model=PropagationOutput)
-def get_propagation(assessment_id: str) -> PropagationOutput:
-    """Return the propagation sequence for an assessment."""
+async def get_propagation(assessment_id: str) -> PropagationOutput:
+    """
+    Return the cross-domain propagation sequence for an assessment.
+
+    Calls the PropagationEngine to compute a time-ordered domain transfer
+    sequence with bottleneck and second-order effect analysis.  Falls back
+    to the demo stub on any engine failure so the endpoint never returns a
+    500 error.
+    """
     _stub_or_404(assessment_id)
-    return _DEMO_PROPAGATION
+
+    try:
+        from app.services.propagation_engine import PropagationEngine  # noqa: PLC0415
+
+        context = await _fetch_assessment_context(assessment_id)
+        if not context:
+            logger.info(
+                "get_propagation: empty context for %s; returning stub", assessment_id
+            )
+            return _DEMO_PROPAGATION
+
+        engine = PropagationEngine()
+        return await engine.compute_propagation(assessment_id, context)
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "get_propagation: engine error for %s (%s); falling back to stub",
+            assessment_id,
+            exc,
+        )
+        return _DEMO_PROPAGATION
 
 
 @router.get("/{assessment_id}/delta", response_model=DeltaOutput)
