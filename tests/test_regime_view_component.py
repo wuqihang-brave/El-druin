@@ -43,7 +43,12 @@ def _columns_side_effect(arg):
     return tuple(mock_col for _ in range(n))
 
 _st_mock.columns.side_effect = _columns_side_effect
-sys.modules.setdefault("streamlit", _st_mock)
+# Force-install our mock so it takes precedence even if another test module
+# already registered a different streamlit stub via setdefault.
+sys.modules["streamlit"] = _st_mock
+# Remove any cached import of the component so it is re-imported against our
+# mock rather than a stale module that points to a different stub.
+sys.modules.pop("components.regime_view", None)
 
 from components.regime_view import (  # noqa: E402
     damping_color_class,
