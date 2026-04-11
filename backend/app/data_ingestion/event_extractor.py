@@ -345,6 +345,7 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
                 api_key=settings.openai_api_key,
+                max_retries=0,   # disable built-in retries; ThreadPoolExecutor timeout is the hard cap
             )
         elif settings.llm_provider == "groq":
             from langchain_groq import ChatGroq
@@ -352,6 +353,7 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
                 api_key=settings.groq_api_key,
+                max_retries=0,   # disable built-in retries; ThreadPoolExecutor timeout is the hard cap
             )
         else:
             return []

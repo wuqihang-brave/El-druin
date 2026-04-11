@@ -22,14 +22,26 @@ cycle_count: int = 0
 interval_minutes: int = _DEFAULT_INTERVAL_MINUTES
 
 
-async def run_ingest_cycle(interval: int) -> None:
-    """Infinite loop: ingest news → generate assessments → sleep."""
+async def run_ingest_cycle(interval: int, initial_delay_seconds: int = 60) -> None:
+    """Infinite loop: ingest news → generate assessments → sleep.
+
+    Waits *initial_delay_seconds* before the first cycle so that the
+    application has time to complete startup and pass Railway's health check.
+    """
     global interval_minutes, next_run_at  # noqa: PLW0603
 
     interval_minutes = interval
     logger.info(
-        "Ingest scheduler started — cycle every %d min", interval_minutes
+        "Ingest scheduler started — first cycle in %ds, then every %d min",
+        initial_delay_seconds, interval_minutes,
     )
+
+    # ── Initial delay: let uvicorn finish startup + Railway health check ──
+    next_run_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=initial_delay_seconds)
+    ).replace(microsecond=0)
+    await asyncio.sleep(initial_delay_seconds)
+
     while True:
         try:
             _run_once()
