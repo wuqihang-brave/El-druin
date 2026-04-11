@@ -60,7 +60,7 @@ class AssessmentListResponse(BaseModel):
 class AssessmentCreate(BaseModel):
     title: str
     assessment_type: AssessmentType = AssessmentType.structural_watch
-    status: AssessmentStatus = AssessmentStatus.draft
+    status: AssessmentStatus = AssessmentStatus.active
     region_tags: list[str] = []
     domain_tags: list[str] = []
     analyst_notes: str | None = None

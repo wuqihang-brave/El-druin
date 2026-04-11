@@ -65,7 +65,11 @@ def _run_once() -> dict:
     # Generate assessments from news clusters, reusing the articles already
     # fetched above so AssessmentGenerator does not issue a second large
     # NewsAggregator request that would trigger another 200-article LLM burst.
-    result = AssessmentGenerator().generate_from_news(hours=48, articles=articles)
+    result = AssessmentGenerator().generate_from_news(
+        hours=48,
+        articles=articles,   # reuse already-fetched articles; skip second aggregation
+        max_articles=30,     # limit EventExtractor to at most 30 articles
+    )
     elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
     logger.info(
         "Ingest cycle complete in %.1fs — generated=%d updated=%d",
