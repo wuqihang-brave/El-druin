@@ -154,16 +154,32 @@ eight semantic dimensions (coercion, cooperation, dependency,
 information, regulation, military, economic, technology). Pattern
 composition $A \oplus B$ is approximated by vector addition $v_A + v_B$,
 and the resulting target pattern is identified by maximising cosine
-similarity $\cos(v_A + v_B, v_C)$ over all known patterns $C$. The Lie
-bracket $[v_A, v_B] = v_A \odot v_B - v_B \odot v_A$ (element-wise
-antisymmetric product) captures non-commutativity: large
-$\|[v_A, v_B]\|$ indicates that the order of composition matters---i.e.,
-high-order interaction effects are present.
+similarity $\cos(v_A + v_B, v_C)$ over all known patterns $C$.
+
+Each named pattern $P$ is embedded as a skew-symmetric matrix
+$X_P \in \mathfrak{so}(8)$ via the \emph{hat map}
+\begin{equation}
+  \hat{v}[i,j] = v[i] - v[j], \quad \hat{v}[i,i] = 0,
+  \label{eq:hatmap}
+\end{equation}
+equivalently $X_P = v_P \mathbf{1}^\top - \mathbf{1} v_P^\top$, which is
+antisymmetric by construction ($X_P^\top = -X_P$)~\cite{hall2015}.
+The \textbf{Lie bracket} is the matrix commutator
+\begin{equation}
+  [X_A, X_B] = X_A X_B - X_B X_A \in \mathfrak{so}(8),
+  \label{eq:liebracket}
+\end{equation}
+which satisfies antisymmetry, bilinearity, and the Jacobi identity
+exactly~\cite{humphreys1972,hall2015}. The Frobenius norm
+$\|[X_A, X_B]\|_F$ measures non-commutativity: it equals zero if and
+only if $X_A$ and $X_B$ commute (i.e., pattern-activation order is
+immaterial), and is large when the two orderings produce structurally
+distinct outcomes.
 
 \textit{An important structural property}: while each pattern vector $v_P$
-maps into the 7-dimensional image of the hat map
+maps into the $(n-1)$-dimensional image of the hat map
 $\hat{\cdot} \colon \mathbb{R}^8 \to \mathfrak{so}(8)$, the commutator
-$[X_A, X_B] = X_A X_B - X_B X_A$ lives in the full 28-dimensional
+$[X_A, X_B] = X_A X_B - X_B X_A$ lives in the full $\binom{8}{2}=28$-dimensional
 $\mathfrak{so}(8)$, outside the hat-map image. This is not a
 defect---it is the feature that makes the Lie-algebra path genuinely
 independent of the Bayesian path: the bracket activates semantic
@@ -327,16 +343,14 @@ a semigroup (the semigroup of subsets under the induced operation).
 Each pattern $p_i$ is assigned a vector $\varphi(p_i) = v_i \in
 \mathbb{R}^8$ by manual annotation across eight semantic dimensions
 $d = (\text{coercion, cooperation, dependency, information, regulation,
-military, economic, technology})$, with $v_i[d] \in [-1, 1]$. The
-vector space $\mathbb{R}^8$ with the element-wise antisymmetric bracket
-\[
-  [v_A, v_B] = v_A \odot v_B - v_B \odot v_A
-\]
-(where $\odot$ denotes element-wise product) constitutes a
-finite-dimensional Lie algebra approximation. Note that this bracket is
-not the standard matrix commutator; rather it is an element-wise
-projection of the antisymmetric structure constants, chosen for
-computational tractability on a small discrete set.
+military, economic, technology})$, with $v_i[d] \in [-1, 1]$.
+The \textbf{Lie bracket} is the matrix commutator on $\mathfrak{so}(8)$:
+\begin{equation}
+  [X_A, X_B] = X_A X_B - X_B X_A,
+  \label{eq:commutator52}
+\end{equation}
+where $X_P = \hat{v}_P \in \mathfrak{so}(8)$ is the hat-map embedding
+of Equation~\eqref{eq:hatmap}~\cite{humphreys1972}.
 
 The \textbf{Lie similarity} of composition step $(A, B) \to C$ is defined as:
 \[
