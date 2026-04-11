@@ -119,3 +119,31 @@ def get_extracted_events(
         events = [e for e in events if e.get("severity") == severity]
 
     return {"events": events[:limit], "total": len(events)}
+
+
+# ---------------------------------------------------------------------------
+# Scheduler status / trigger endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/scheduler/status")
+def get_scheduler_status() -> Dict[str, Any]:
+    """Return the current ingest scheduler status."""
+    import app.services.ingest_scheduler as _sched
+
+    return {
+        "last_run_at": _sched.last_run_at.isoformat() if _sched.last_run_at else None,
+        "next_run_at": _sched.next_run_at.isoformat() if _sched.next_run_at else None,
+        "interval_minutes": _sched.interval_minutes,
+        "cycle_count": _sched.cycle_count,
+    }
+
+
+@router.post("/scheduler/trigger")
+async def trigger_ingest_cycle() -> Dict[str, Any]:
+    """Immediately trigger one ingest cycle (fire-and-forget)."""
+    import asyncio as _asyncio
+    import app.services.ingest_scheduler as _sched
+
+    loop = _asyncio.get_running_loop()
+    _asyncio.create_task(loop.run_in_executor(None, _sched._run_once))
+    return {"status": "dispatched", "message": "Ingest cycle triggered in background"}

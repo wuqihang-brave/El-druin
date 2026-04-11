@@ -146,5 +146,90 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         st.markdown("---")
 
+        # ── Intelligence Feed control panel ────────────────────────────────
+        st.markdown(
+            """
+            <div style="padding:8px 16px 4px 16px;font-size:0.65rem;text-transform:uppercase;
+                        letter-spacing:0.1em;color:#4A6A8A;font-weight:600;">
+              Intelligence Feed
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Ingest status
+        try:
+            from utils.api_client import get_scheduler_status as _get_status
+            from datetime import datetime as _datetime
+            _status = _get_status()
+            if "error" in _status:
+                _sync_label = "Signal Feed: connection error"
+            elif _status.get("last_run_at"):
+                _last_raw = _status["last_run_at"]
+                try:
+                    _last_dt = _datetime.fromisoformat(_last_raw.replace("Z", "+00:00"))
+                    _sync_label = "Last sync: " + _last_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
+                except Exception:
+                    _sync_label = "Last sync: " + str(_last_raw)
+            else:
+                _sync_label = "Signal Feed: never synced"
+        except Exception:
+            _sync_label = "Signal Feed: unavailable"
+
+        st.markdown(
+            f"""
+            <div style="padding:2px 16px 6px 16px;font-size:0.72rem;color:#5A7A9A;">
+              {_sync_label}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Button CSS for dark intelligence aesthetic
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stSidebar"] .stButton > button {
+                background: #0D1B2A;
+                color: #7B9EB8;
+                border: 1px solid #1E3050;
+                font-size: 0.72rem;
+                padding: 5px 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+            }
+            div[data-testid="stSidebar"] .stButton > button:hover {
+                background: #162030;
+                color: #C8D8E8;
+                border-color: #2E4060;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button("Force Ingest Cycle", use_container_width=True, key="sidebar_force_ingest"):
+            try:
+                from utils.api_client import trigger_ingest_cycle as _trigger
+                _result = _trigger()
+                if "error" in _result:
+                    st.sidebar.caption(f"Error: {_result['error']}")
+                else:
+                    st.sidebar.caption("Ingest cycle dispatched")
+            except Exception as _exc:
+                st.sidebar.caption(f"Error: {_exc}")
+
+        if st.button("Generate Assessments", use_container_width=True, key="sidebar_gen_assessments"):
+            try:
+                from utils.api_client import generate_assessments_from_news as _gen
+                _result = _gen()
+                if "error" in _result:
+                    st.sidebar.caption(f"Error: {_result['error']}")
+                else:
+                    _n = _result.get("generated", 0)
+                    st.sidebar.caption(f"Generated {_n} new assessments")
+            except Exception as _exc:
+                st.sidebar.caption(f"Error: {_exc}")
+
     st.session_state.current_page = selected
     return selected

@@ -12,6 +12,7 @@ API prefix: /api/v1
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -86,6 +87,16 @@ async def startup_event() -> None:
         logger.info("✅ Assessment store initialised")
     except Exception as exc:
         logger.error("❌ Assessment store init failed: %s", exc)
+
+    # Start background ingest scheduler
+    try:
+        from app.core.config import get_settings
+        from app.services.ingest_scheduler import run_ingest_cycle
+        interval = get_settings().news_ingest_interval_minutes
+        asyncio.create_task(run_ingest_cycle(interval))
+        logger.info("Ingest scheduler started (interval=%d min)", interval)
+    except Exception as exc:
+        logger.error("Ingest scheduler failed to start: %s", exc)
 
     # Run ontology algebra validation (warn-only in all environments).
     # Set DEBUG=true to enable strict mode (raises on error).

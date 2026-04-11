@@ -726,6 +726,30 @@ class APIClient:
             return _COUPLING_STUB
         return result
 
+    # ------------------------------------------------------------------
+    # Scheduler endpoints
+    # ------------------------------------------------------------------
+
+    def get_scheduler_status(self) -> Dict[str, Any]:
+        """Return the current ingest scheduler status."""
+        return self._get("/api/v1/news/scheduler/status")
+
+    def trigger_ingest_cycle(self) -> Dict[str, Any]:
+        """Immediately trigger one ingest cycle."""
+        return self._post("/api/v1/news/scheduler/trigger")
+
+    def generate_assessments_from_news(
+        self,
+        hours: int = 48,
+        min_events: int = 3,
+        max_assessments: int = 10,
+    ) -> Dict[str, Any]:
+        """Trigger Assessment auto-generation from recent news clusters."""
+        return self._post(
+            "/api/v1/assessments/generate-from-news",
+            params={"hours": hours, "min_events": min_events, "max_assessments": max_assessments},
+        )
+
 
 # ---------------------------------------------------------------------------
 # Offline fallback stubs – returned when backend is unreachable
@@ -1045,6 +1069,21 @@ def get_evidence(assessment_id: str) -> Dict[str, Any]:
 def get_coupling(assessment_id: str) -> Dict[str, Any]:
     """Return the structural coupling pairs for an assessment."""
     return api_client.get_coupling(assessment_id)
+
+
+def get_scheduler_status() -> Dict[str, Any]:
+    """Return the current ingest scheduler status."""
+    return api_client.get_scheduler_status()
+
+
+def trigger_ingest_cycle() -> Dict[str, Any]:
+    """Immediately trigger one ingest cycle."""
+    return api_client.trigger_ingest_cycle()
+
+
+def generate_assessments_from_news(**kwargs) -> Dict[str, Any]:
+    """Trigger Assessment auto-generation from recent news clusters."""
+    return api_client.generate_assessments_from_news(**kwargs)
 
 
 # Module-level singleton – import and use directly in Streamlit pages.
