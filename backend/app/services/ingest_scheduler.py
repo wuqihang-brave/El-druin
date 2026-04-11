@@ -44,7 +44,7 @@ async def run_ingest_cycle(interval: int, initial_delay_seconds: int = 60) -> No
 
     while True:
         try:
-            _run_once()
+            await asyncio.to_thread(_run_once)
         except Exception as exc:
             logger.error("Ingest cycle failed: %s", exc, exc_info=True)
 
@@ -52,6 +52,11 @@ async def run_ingest_cycle(interval: int, initial_delay_seconds: int = 60) -> No
             datetime.now(timezone.utc) + timedelta(minutes=interval_minutes)
         ).replace(microsecond=0)
         await asyncio.sleep(interval_minutes * 60)
+
+
+async def run_once_async() -> dict:
+    """Public async wrapper for _run_once, safe to use with create_task."""
+    return await asyncio.to_thread(_run_once)
 
 
 def _run_once() -> dict:

@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 _LLM_TIMEOUT_SECONDS = 30   # hard cap per LLM call – mirrors entity_extractor.py
 _LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM/TPM limits
 _LLM_BATCH_SLEEP     = 1.0  # seconds to sleep between batches
+# Prefix length used when building (event_type, title_prefix) dedup keys.
+# Short enough to collapse near-duplicates within the same article while
+# keeping events from different articles distinct.
+_DEDUP_TITLE_PREFIX_LENGTH = 60
 
 # ---------------------------------------------------------------------------
 # Event taxonomy
@@ -470,10 +474,12 @@ class EventExtractor:
                 if llm_call_count % _LLM_BATCH_SIZE == 0:
                     time.sleep(_LLM_BATCH_SLEEP)
 
-        # Deduplicate by event_type, keeping highest-confidence
-        best: Dict[str, Dict[str, Any]] = {}
+        # Deduplicate per-article by event_type (keep best confidence per article+type).
+        # Do NOT deduplicate globally by event_type — that would collapse 30 articles
+        # of military news into a single event, starving the cluster generator.
+        best: Dict[tuple, Dict[str, Any]] = {}
         for ev in all_events:
-            key = ev.get("event_type", "other")
+            key = (ev.get("event_type", "other"), ev.get("title", "")[:_DEDUP_TITLE_PREFIX_LENGTH])
             if key not in best or ev.get("confidence", 0) > best[key].get("confidence", 0):
                 best[key] = ev
         return list(best.values())

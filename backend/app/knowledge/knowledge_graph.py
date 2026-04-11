@@ -106,7 +106,10 @@ class KnowledgeGraph:
             new_count += 1
             llm_call_count += 1
 
-            # Batch-level rate-limit: pause between batches to stay under RPM
+            # Batch-level rate-limit: pause between batches to stay under RPM.
+            # time.sleep() is safe here because this function is always called
+            # inside asyncio.to_thread() (via _run_once), so it blocks the
+            # worker thread rather than the asyncio event loop.
             if llm_call_count > 0 and llm_call_count % llm_batch_size == 0:
                 time.sleep(1.0)
 
