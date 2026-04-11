@@ -21,6 +21,7 @@ Entity and Relation Extractor for the Knowledge Graph.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,6 +29,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_LLM_TIMEOUT_SECONDS = 30  # hard cap per LLM call to avoid infinite Groq retries
 
 # ---------------------------------------------------------------------------
 # Rule-based entity patterns
@@ -281,12 +284,20 @@ def _llm_extract(text: str) -> Dict[str, Any]:
         ])
         parser = JsonOutputParser()
         chain = prompt | llm | parser
-        result = chain.invoke({"text": text[:2000]})
-        if isinstance(result, dict):
-            return result
-        return {}
+
+        def _invoke() -> Dict[str, Any]:
+            result = chain.invoke({"text": text[:2000]})
+            return result if isinstance(result, dict) else {}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_invoke)
+            try:
+                return future.result(timeout=_LLM_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.warning("LLM extraction timed out after %ds", _LLM_TIMEOUT_SECONDS)
+                return {}
     except Exception as exc:
-        logger.debug
+        logger.debug("LLM extraction failed: %s", exc)
         return {}
 
 
@@ -350,10 +361,20 @@ def _llm_extract_constrained(text: str, system_prompt: str) -> Dict[str, Any]:
         ])
         parser = JsonOutputParser()
         chain = prompt | llm | parser
-        result = chain.invoke({"text": text[:2000]})
-        if isinstance(result, dict):
-            return result
-        return {}
+
+        def _invoke() -> Dict[str, Any]:
+            result = chain.invoke({"text": text[:2000]})
+            return result if isinstance(result, dict) else {}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_invoke)
+            try:
+                return future.result(timeout=_LLM_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "Constrained LLM extraction timed out after %ds", _LLM_TIMEOUT_SECONDS
+                )
+                return {}
     except Exception as exc:
         logger.warning("Constrained LLM extraction failed: %s", exc)
         return {}
