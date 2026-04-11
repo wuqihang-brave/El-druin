@@ -208,28 +208,40 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             unsafe_allow_html=True,
         )
 
+        # Initialise persistent status state
+        if "ingest_status" not in st.session_state:
+            st.session_state.ingest_status = None
+        if "gen_assess_status" not in st.session_state:
+            st.session_state.gen_assess_status = None
+
         if st.button("Force Ingest Cycle", use_container_width=True, key="sidebar_force_ingest"):
             try:
                 from utils.api_client import trigger_ingest_cycle as _trigger
                 _result = _trigger()
                 if "error" in _result:
-                    st.sidebar.caption(f"Error: {_result['error']}")
+                    st.session_state.ingest_status = f"❌ {_result['error']}"
                 else:
-                    st.sidebar.caption("Ingest cycle dispatched")
+                    st.session_state.ingest_status = "✅ Ingest cycle dispatched"
             except Exception as _exc:
-                st.sidebar.caption(f"Error: {_exc}")
+                st.session_state.ingest_status = f"❌ {_exc}"
+
+        if st.session_state.ingest_status:
+            st.sidebar.caption(st.session_state.ingest_status)
 
         if st.button("Generate Assessments", use_container_width=True, key="sidebar_gen_assessments"):
             try:
                 from utils.api_client import generate_assessments_from_news as _gen
-                _result = _gen()
+                _result = _gen(min_events=1)
                 if "error" in _result:
-                    st.sidebar.caption(f"Error: {_result['error']}")
+                    st.session_state.gen_assess_status = f"❌ {_result['error']}"
                 else:
                     _n = _result.get("generated", 0)
-                    st.sidebar.caption(f"Generated {_n} new assessments")
+                    st.session_state.gen_assess_status = f"✅ Generated {_n} new assessments"
             except Exception as _exc:
-                st.sidebar.caption(f"Error: {_exc}")
+                st.session_state.gen_assess_status = f"❌ {_exc}"
+
+        if st.session_state.gen_assess_status:
+            st.sidebar.caption(st.session_state.gen_assess_status)
 
     st.session_state.current_page = selected
     return selected
