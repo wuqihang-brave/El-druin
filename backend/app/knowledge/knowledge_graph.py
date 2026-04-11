@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +27,10 @@ from app.knowledge.entity_extractor import EntityRelationExtractor
 from app.knowledge.graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
+
+# Module-level deduplication set.  Persists for the lifetime of the process;
+# articles already processed in a previous ingest cycle skip LLM extraction.
+_seen_article_ids: set[str] = set()
 
 
 def _article_id(link: str, title: str) -> str:
@@ -43,11 +48,21 @@ class KnowledgeGraph:
     # Ingestion
     # ------------------------------------------------------------------
 
-    def ingest_articles(self, articles: List[Dict[str, Any]]) -> Dict[str, int]:
+    def ingest_articles(
+        self,
+        articles: List[Dict[str, Any]],
+        max_new: int = 25,
+        llm_batch_size: int = 5,
+    ) -> Dict[str, int]:
         """Extract entities/relations from *articles* and populate the graph.
 
         Args:
-            articles: List of article dicts (title, description, source, …).
+            articles:       List of article dicts (title, description, source, …).
+            max_new:        Maximum number of *new* (unseen) articles to run LLM
+                            extraction on in this call.  Already-seen articles
+                            are stored as nodes but skip LLM extraction.
+            llm_batch_size: After every *llm_batch_size* LLM calls, sleep 1 second
+                            to avoid Groq RPM limits.
 
         Returns:
             Dict with counts: entities_added, relations_added, articles_added.
@@ -55,6 +70,8 @@ class KnowledgeGraph:
         entities_added = 0
         relations_added = 0
         articles_added = 0
+        new_count = 0
+        llm_call_count = 0
 
         for article in articles:
             title = article.get("title", "")
@@ -63,7 +80,7 @@ class KnowledgeGraph:
             link = article.get("link", "")
             art_id = _article_id(link, title)
 
-            # Store article node
+            # Always store the article node (idempotent)
             self._store.add_article(
                 article_id=art_id,
                 title=title[:200],
@@ -74,8 +91,24 @@ class KnowledgeGraph:
             )
             articles_added += 1
 
+            # Skip LLM extraction for articles already processed this session
+            if art_id in _seen_article_ids:
+                continue
+            _seen_article_ids.add(art_id)
+
+            # Honour per-call new-article limit
+            if new_count >= max_new:
+                continue
+
             # Extract and store entities / relations
             result = self._extractor.extract(text)
+
+            new_count += 1
+            llm_call_count += 1
+
+            # Batch-level rate-limit: pause between batches to stay under RPM
+            if llm_call_count > 0 and llm_call_count % llm_batch_size == 0:
+                time.sleep(1.0)
 
             for entity in result.get("entities", []):
                 name = entity.get("name", "").strip()
@@ -104,8 +137,8 @@ class KnowledgeGraph:
                 relations_added += 1
 
         logger.info(
-            "Ingested %d articles → %d entities, %d relations",
-            articles_added, entities_added, relations_added,
+            "Ingested %d articles → %d entities, %d relations (new=%d, llm_calls=%d)",
+            articles_added, entities_added, relations_added, new_count, llm_call_count,
         )
         return {
             "entities_added": entities_added,

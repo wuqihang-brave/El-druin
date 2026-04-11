@@ -50,14 +50,14 @@ def _run_once() -> dict:
 
     t0 = datetime.now(timezone.utc)
     agg = NewsAggregator()
-    articles = agg.aggregate(limit=200, hours=48)
+    articles = agg.aggregate(limit=50, hours=48)
     logger.info("Ingest cycle: fetched %d articles", len(articles))
 
     # Optionally ingest into KuzuDB knowledge graph
     try:
         from app.knowledge.knowledge_graph import get_knowledge_graph
         kg = get_knowledge_graph()
-        kg.ingest_articles(articles)
+        kg.ingest_articles(articles, max_new=20, llm_batch_size=5)
         logger.info("Ingest cycle: KuzuDB updated")
     except Exception as exc:
         logger.warning("KuzuDB ingest skipped: %s", exc)
