@@ -439,7 +439,7 @@ def _build_assessment_context(assessment_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/generate-from-news", response_model=dict)
-def generate_assessments_from_news(
+async def generate_assessments_from_news(
     hours: int = 48,
     min_events: int = 3,
     max_assessments: int = 10,
@@ -456,18 +456,36 @@ def generate_assessments_from_news(
     - ``min_events``: minimum events to form a cluster (default 3).
     - ``max_assessments``: cap on assessments generated per run (default 10).
     """
+    import asyncio as _asyncio
+
     try:
         from app.services.assessment_generator import AssessmentGenerator  # noqa: PLC0415
 
-        result = AssessmentGenerator().generate_from_news(
-            hours=hours,
-            min_events_per_cluster=min_events,
-            max_assessments=max_assessments,
+        result = await _asyncio.wait_for(
+            _asyncio.to_thread(
+                AssessmentGenerator().generate_from_news,
+                hours=hours,
+                min_events_per_cluster=min_events,
+                max_assessments=max_assessments,
+            ),
+            timeout=55.0,  # 55s: Railway default HTTP timeout is 60s; 5s margin for response overhead
         )
         return {"status": "ok", **result}
+    except _asyncio.TimeoutError:
+        logger.warning("generate_assessments_from_news timed out after 55s")
+        return {
+            "status": "timeout",
+            "message": "Assessment generation timed out. Partial results may have been saved.",
+            "generated": 0,
+            "updated": 0,
+            "assessment_ids": [],
+        }
     except Exception as exc:  # noqa: BLE001
         logger.error("generate_assessments_from_news failed: %s", exc)
-        return {"status": "error", "message": "Assessment generation failed. See server logs for details."}
+        return {
+            "status": "error",
+            "message": "Assessment generation failed. See server logs for details.",
+        }
 
 
 @router.get("", response_model=AssessmentListResponse)
