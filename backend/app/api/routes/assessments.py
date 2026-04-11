@@ -443,6 +443,7 @@ async def generate_assessments_from_news(
     hours: int = 48,
     min_events: int = 3,
     max_assessments: int = 10,
+    max_articles: int = 30,
 ) -> dict:
     """
     Auto-generate Assessment records from the news event pipeline.
@@ -455,6 +456,7 @@ async def generate_assessments_from_news(
     - ``hours``: look-back window for news articles (default 48).
     - ``min_events``: minimum events to form a cluster (default 3).
     - ``max_assessments``: cap on assessments generated per run (default 10).
+    - ``max_articles``: cap on articles sent to LLM extraction (default 30).
     """
     import asyncio as _asyncio
 
@@ -467,6 +469,7 @@ async def generate_assessments_from_news(
                 hours=hours,
                 min_events_per_cluster=min_events,
                 max_assessments=max_assessments,
+                max_articles=max_articles,
             ),
             timeout=55.0,  # 55s: Railway default HTTP timeout is 60s; 5s margin for response overhead
         )

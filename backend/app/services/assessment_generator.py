@@ -10,7 +10,8 @@ clusters them by region/domain similarity, and synthesises new
 
 Algorithm
 ---------
-1. Fetch recent articles via NewsAggregator().aggregate(limit=200, hours=N).
+1. Fetch recent articles via NewsAggregator().aggregate(limit=50, hours=N)
+   (or accept a pre-fetched list to avoid a redundant HTTP round-trip).
 2. Extract events via EventExtractor().extract_from_articles(articles).
 3. Cluster events that share >=2 domain/region keywords.
 4. For each cluster with >= min_events_per_cluster events:
@@ -29,7 +30,7 @@ import hashlib
 import logging
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from app.schemas.assessment import Assessment, AssessmentStatus, AssessmentType
 
@@ -202,6 +203,8 @@ class AssessmentGenerator:
         hours: int = 48,
         min_events_per_cluster: int = 3,
         max_assessments: int = 10,
+        articles: Optional[list[dict[str, Any]]] = None,
+        max_articles: int = 30,
     ) -> dict[str, Any]:
         """
         Generate or update assessments from recent news events.
@@ -210,28 +213,38 @@ class AssessmentGenerator:
             hours: Look-back window in hours for news articles.
             min_events_per_cluster: Minimum events needed to form a cluster.
             max_assessments: Cap on newly generated assessments per run.
+            articles: Optional pre-fetched article list.  When provided the
+                NewsAggregator fetch is skipped (avoids a redundant round-trip
+                and a second large article batch hitting the LLM).
+            max_articles: Maximum articles passed to EventExtractor for LLM
+                extraction.  Caps Groq token consumption per cycle.
 
         Returns:
             Summary dict with keys ``generated``, ``updated``, ``assessment_ids``.
         """
         from app.core.assessment_store import assessment_store  # noqa: PLC0415
 
-        # --- Step 1: Fetch articles ---
-        articles: list[dict[str, Any]] = []
-        try:
-            from app.data_ingestion.news_aggregator import NewsAggregator  # noqa: PLC0415
+        # --- Step 1: Fetch articles (skip if caller provides them) ---
+        if articles is None:
+            articles = []
+            try:
+                from app.data_ingestion.news_aggregator import NewsAggregator  # noqa: PLC0415
 
-            articles = NewsAggregator().aggregate(limit=200, hours=hours)
-            logger.info("AssessmentGenerator: fetched %d articles", len(articles))
-        except Exception as exc:
-            logger.warning("AssessmentGenerator: news aggregation failed: %s", exc)
+                articles = NewsAggregator().aggregate(limit=50, hours=hours)
+                logger.info("AssessmentGenerator: fetched %d articles", len(articles))
+            except Exception as exc:
+                logger.warning("AssessmentGenerator: news aggregation failed: %s", exc)
+        else:
+            logger.info(
+                "AssessmentGenerator: using %d pre-fetched articles", len(articles)
+            )
 
         # --- Step 2: Extract events ---
         events: list[dict[str, Any]] = []
         try:
             from app.data_ingestion.event_extractor import EventExtractor  # noqa: PLC0415
 
-            events = EventExtractor().extract_from_articles(articles)
+            events = EventExtractor().extract_from_articles(articles, max_articles=max_articles)
             logger.info("AssessmentGenerator: extracted %d events", len(events))
         except Exception as exc:
             logger.warning("AssessmentGenerator: event extraction failed: %s", exc)

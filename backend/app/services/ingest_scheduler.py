@@ -62,8 +62,10 @@ def _run_once() -> dict:
     except Exception as exc:
         logger.warning("KuzuDB ingest skipped: %s", exc)
 
-    # Generate assessments from news clusters
-    result = AssessmentGenerator().generate_from_news(hours=48)
+    # Generate assessments from news clusters, reusing the articles already
+    # fetched above so AssessmentGenerator does not issue a second large
+    # NewsAggregator request that would trigger another 200-article LLM burst.
+    result = AssessmentGenerator().generate_from_news(hours=48, articles=articles)
     elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
     logger.info(
         "Ingest cycle complete in %.1fs — generated=%d updated=%d",

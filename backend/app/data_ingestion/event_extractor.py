@@ -26,13 +26,19 @@ Event Extractor – classifies news text into structured event records.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_LLM_TIMEOUT_SECONDS = 30   # hard cap per LLM call – mirrors entity_extractor.py
+_LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM
+_LLM_BATCH_SLEEP     = 1.0  # seconds to sleep between batches
 
 # ---------------------------------------------------------------------------
 # Event taxonomy
@@ -366,10 +372,20 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
         ])
         parser = JsonOutputParser()
         chain  = prompt | llm | parser
-        result = chain.invoke({"text": text[:2000]})
-        if isinstance(result, list):
-            return result
-        return []
+
+        def _invoke() -> List[Dict[str, Any]]:
+            result = chain.invoke({"text": text[:2000]})
+            return result if isinstance(result, list) else []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_invoke)
+            try:
+                return future.result(timeout=_LLM_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "Event LLM extraction timed out after %ds", _LLM_TIMEOUT_SECONDS
+                )
+                return []
     except Exception as exc:
         logger.warning("LLM extraction failed, falling back to rules: %s", exc)
         return []
@@ -413,11 +429,30 @@ class EventExtractor:
         return events if events else []
 
     def extract_from_articles(
-        self, articles: List[Dict[str, Any]]
+        self,
+        articles: List[Dict[str, Any]],
+        max_articles: int = 30,
     ) -> List[Dict[str, Any]]:
-        """Extract and deduplicate events across a list of articles."""
+        """Extract and deduplicate events across a list of articles.
+
+        Args:
+            articles:     List of article dicts (title, description, …).
+            max_articles: Maximum number of articles to run LLM extraction on.
+                          Articles beyond this cap are skipped to avoid burning
+                          the Groq free-tier token budget (6 000 TPM).
+        """
         all_events: List[Dict[str, Any]] = []
-        for article in articles:
+        llm_call_count = 0
+        capped = articles[:max_articles]
+
+        if len(articles) > max_articles:
+            logger.info(
+                "extract_from_articles: capping %d articles to %d (max_articles)",
+                len(articles),
+                max_articles,
+            )
+
+        for article in capped:
             combined = (
                 f"{article.get('title', '')} {article.get('description', '')}"
             ).strip()
@@ -425,6 +460,12 @@ class EventExtractor:
                 all_events.extend(self.extract_events(combined))
             except Exception as exc:
                 logger.warning("Event extraction failed for article: %s", exc)
+
+            if self._settings.llm_enabled:
+                llm_call_count += 1
+                # Batch-level rate-limit: pause between batches to stay under RPM
+                if llm_call_count > 0 and llm_call_count % _LLM_BATCH_SIZE == 0:
+                    time.sleep(_LLM_BATCH_SLEEP)
 
         # Deduplicate by event_type, keeping highest-confidence
         best: Dict[str, Dict[str, Any]] = {}
