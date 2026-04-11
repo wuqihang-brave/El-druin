@@ -37,7 +37,7 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 _LLM_TIMEOUT_SECONDS = 30   # hard cap per LLM call – mirrors entity_extractor.py
-_LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM
+_LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM/TPM limits
 _LLM_BATCH_SLEEP     = 1.0  # seconds to sleep between batches
 
 # ---------------------------------------------------------------------------
@@ -463,8 +463,9 @@ class EventExtractor:
 
             if self._settings.llm_enabled:
                 llm_call_count += 1
-                # Batch-level rate-limit: pause between batches to stay under RPM
-                if llm_call_count > 0 and llm_call_count % _LLM_BATCH_SIZE == 0:
+                # Batch-level rate-limit: pause between batches to stay within
+                # Groq free-tier TPM (6 000 tokens/min) and RPM limits.
+                if llm_call_count % _LLM_BATCH_SIZE == 0:
                     time.sleep(_LLM_BATCH_SLEEP)
 
         # Deduplicate by event_type, keeping highest-confidence
