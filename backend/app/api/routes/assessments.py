@@ -441,7 +441,7 @@ def _build_assessment_context(assessment_id: str) -> dict:
 @router.post("/generate-from-news", response_model=dict)
 async def generate_assessments_from_news(
     hours: int = 48,
-    min_events: int = 3,
+    min_events: int = 1,
     max_assessments: int = 10,
     max_articles: int = 30,
 ) -> dict:
@@ -454,7 +454,7 @@ async def generate_assessments_from_news(
 
     Query params:
     - ``hours``: look-back window for news articles (default 48).
-    - ``min_events``: minimum events to form a cluster (default 3).
+    - ``min_events``: minimum events to form a cluster (default 1).
     - ``max_assessments``: cap on assessments generated per run (default 10).
     - ``max_articles``: cap on articles sent to LLM extraction (default 30).
     """

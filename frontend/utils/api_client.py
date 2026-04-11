@@ -16,17 +16,15 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# --- 修改开始 ---
-# 优先级：环境变量 > 默认本地地址
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001").rstrip("/")
 
-# 核心修复：自动清理掉可能导致 404 的旧前缀
+# Normalise: strip any trailing /api/v1 so we can unconditionally append it once.
 if BACKEND_URL.endswith("/api/v1"):
-    BACKEND_URL = BACKEND_URL.replace("/api/v1", "")
+    BACKEND_URL = BACKEND_URL[: -len("/api/v1")]
 
-_DEFAULT_BASE_URL = BACKEND_URL.rstrip("/")
-_TIMEOUT = 40  # 增加一点超时时间，防止 502
-# --- 修改结束 ---
+# All paths in this client are relative to /api/v1.
+_DEFAULT_BASE_URL = BACKEND_URL + "/api/v1"
+_TIMEOUT = 40
 class APIClient:
     """Thin HTTP wrapper around the EL'druin FastAPI backend."""
 
@@ -654,7 +652,7 @@ class APIClient:
             List of assessment dicts.  Falls back to a minimal stub list when
             the backend is unreachable so the UI always renders.
         """
-        result = self._get("/api/v1/assessments")
+        result = self._get("/assessments")
         if "error" in result:
             return _ASSESSMENT_LIST_STUB
         return result.get("assessments", [])
@@ -665,63 +663,63 @@ class APIClient:
         Returns:
             Assessment dict or a stub fallback.
         """
-        result = self._get(f"/api/v1/assessments/{assessment_id}")
+        result = self._get(f"/assessments/{assessment_id}")
         if "error" in result:
             return _ASSESSMENT_STUB
         return result
 
     def get_brief(self, assessment_id: str) -> Dict[str, Any]:
         """Return the executive brief for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/brief")
+        result = self._get(f"/assessments/{assessment_id}/brief")
         if "error" in result:
             return _BRIEF_STUB
         return result
 
     def get_regime(self, assessment_id: str) -> Dict[str, Any]:
         """Return the current regime state for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/regime")
+        result = self._get(f"/assessments/{assessment_id}/regime")
         if "error" in result:
             return _REGIME_STUB
         return result
 
     def get_triggers(self, assessment_id: str) -> Dict[str, Any]:
         """Return the trigger amplification output for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/triggers")
+        result = self._get(f"/assessments/{assessment_id}/triggers")
         if "error" in result:
             return _TRIGGERS_STUB
         return result
 
     def get_attractors(self, assessment_id: str) -> Dict[str, Any]:
         """Return the attractor output for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/attractors")
+        result = self._get(f"/assessments/{assessment_id}/attractors")
         if "error" in result:
             return _ATTRACTORS_STUB
         return result
 
     def get_propagation(self, assessment_id: str) -> Dict[str, Any]:
         """Return the propagation sequence for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/propagation")
+        result = self._get(f"/assessments/{assessment_id}/propagation")
         if "error" in result:
             return _PROPAGATION_STUB
         return result
 
     def get_delta(self, assessment_id: str) -> Dict[str, Any]:
         """Return the update delta output for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/delta")
+        result = self._get(f"/assessments/{assessment_id}/delta")
         if "error" in result:
             return _DELTA_STUB
         return result
 
     def get_evidence(self, assessment_id: str) -> Dict[str, Any]:
         """Return the evidence items for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/evidence")
+        result = self._get(f"/assessments/{assessment_id}/evidence")
         if "error" in result:
             return _EVIDENCE_STUB
         return result
 
     def get_coupling(self, assessment_id: str) -> Dict[str, Any]:
         """Return the structural coupling pairs for an assessment."""
-        result = self._get(f"/api/v1/assessments/{assessment_id}/coupling")
+        result = self._get(f"/assessments/{assessment_id}/coupling")
         if "error" in result:
             return _COUPLING_STUB
         return result
@@ -732,21 +730,21 @@ class APIClient:
 
     def get_scheduler_status(self) -> Dict[str, Any]:
         """Return the current ingest scheduler status."""
-        return self._get("/api/v1/news/scheduler/status")
+        return self._get("/news/scheduler/status")
 
     def trigger_ingest_cycle(self) -> Dict[str, Any]:
         """Immediately trigger one ingest cycle."""
-        return self._post("/api/v1/news/scheduler/trigger")
+        return self._post("/news/scheduler/trigger")
 
     def generate_assessments_from_news(
         self,
         hours: int = 48,
-        min_events: int = 3,
+        min_events: int = 1,
         max_assessments: int = 10,
     ) -> Dict[str, Any]:
         """Trigger Assessment auto-generation from recent news clusters."""
         return self._post(
-            "/api/v1/assessments/generate-from-news",
+            "/assessments/generate-from-news",
             params={"hours": hours, "min_events": min_events, "max_assessments": max_assessments},
         )
 
