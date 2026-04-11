@@ -144,5 +144,5 @@ async def trigger_ingest_cycle() -> Dict[str, Any]:
     import asyncio as _asyncio
     import app.services.ingest_scheduler as _sched
 
-    _asyncio.create_task(_asyncio.to_thread(_sched._run_once))
+    _asyncio.create_task(_sched.run_once_async())
     return {"status": "dispatched", "message": "Ingest cycle triggered in background"}
