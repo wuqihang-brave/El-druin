@@ -117,14 +117,23 @@ def _extract_domains_from_event(event: dict[str, Any]) -> list[str]:
     if domains:
         return [d for d in domains if d in _KNOWN_DOMAINS]
 
-    # Keyword scan on text
-    text = (event.get("text", "") + " " + event.get("title", "")).lower()
+    # Keyword scan on text and description (rule extractor uses "description" field)
+    text = (
+        event.get("text", "")
+        + " " + event.get("description", "")
+        + " " + event.get("title", "")
+    ).lower()
     return [d for d in _KNOWN_DOMAINS if d in text]
 
 
 def _extract_regions_from_event(event: dict[str, Any]) -> list[str]:
     """Return region tags from an event dict via keyword mapping."""
-    text = (event.get("text", "") + " " + event.get("title", "")).lower()
+    # Also check 'description' field (rule extractor uses it instead of 'text')
+    text = (
+        event.get("text", "")
+        + " " + event.get("description", "")
+        + " " + event.get("title", "")
+    ).lower()
     found: set[str] = set()
     for kw, region in _REGION_KEYWORDS.items():
         if kw in text:
@@ -180,14 +189,26 @@ def _derive_title(cluster: list[dict[str, Any]], top_domains: list[str]) -> str:
     """Derive a human-readable title from entity mentions and domains."""
     entity_counter: Counter[str] = Counter()
     for ev in cluster:
-        for ent in ev.get("entities", []):
+        entities = ev.get("entities", [])
+        # entities may be dict {"ORG": [...], "GPE": [...]} or list of str/dict
+        if isinstance(entities, dict):
+            # Flatten dict structure: collect all string values from each list
+            candidates: list[Any] = []
+            for v in entities.values():
+                if isinstance(v, list):
+                    candidates.extend(v)
+        elif isinstance(entities, list):
+            candidates = entities
+        else:
+            candidates = []
+
+        for ent in candidates:
             if isinstance(ent, dict):
                 name = ent.get("name", "").strip()
             elif isinstance(ent, str):
                 name = ent.strip()
             else:
                 continue
-            # Filter out generic NER type labels and very short tokens
             if name and name not in ENTITY_STOPWORDS and len(name) > 2:
                 entity_counter[name] += 1
 
