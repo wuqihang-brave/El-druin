@@ -57,3 +57,12 @@ paper/latex/*.synctex.gz
 experiments/backtest_results.json
 experiments/backtest_report.md
 
+# Debug and one-off scripts
+check_*.py
+debug_*.py
+verify_*.py
+fix_*.py
+fill_*.py
+*.log
+extraction_debug.log
+
