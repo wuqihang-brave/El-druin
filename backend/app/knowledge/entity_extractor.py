@@ -33,6 +33,29 @@ logger = logging.getLogger(__name__)
 _LLM_TIMEOUT_SECONDS = 30  # hard cap per LLM call to avoid infinite Groq retries
 
 # ---------------------------------------------------------------------------
+# Circuit-breaker: if Groq returns 403 we open the circuit for the rest of the
+# current ingest cycle so we don't waste time on guaranteed-to-fail calls.
+# The flag is reset by reset_circuit() at the start of each new cycle.
+# ---------------------------------------------------------------------------
+_llm_circuit_open: bool = False
+
+
+def reset_circuit() -> None:
+    """Reset the LLM circuit-breaker flag.
+
+    Should be called at the start of each new ingest cycle so the LLM is
+    retried in case the API key was rotated or the 403 was transient.
+    """
+    global _llm_circuit_open  # noqa: PLW0603
+    _llm_circuit_open = False
+
+
+def _is_403_error(exc: Exception) -> bool:
+    """Return True if *exc* represents a 403 Forbidden HTTP error."""
+    msg = str(exc)
+    return "403" in msg or "Forbidden" in msg.lower()
+
+# ---------------------------------------------------------------------------
 # Rule-based entity patterns
 # ---------------------------------------------------------------------------
 
@@ -242,6 +265,7 @@ def _rule_based_relations(
 
 def _llm_extract(text: str) -> Dict[str, Any]:
     """LLM-based entity and relation extraction via LangChain."""
+    global _llm_circuit_open  # noqa: PLW0603
     settings = get_settings()
     try:
         from langchain_core.prompts import ChatPromptTemplate
@@ -299,6 +323,12 @@ def _llm_extract(text: str) -> Dict[str, Any]:
                 logger.warning("LLM extraction timed out after %ds", _LLM_TIMEOUT_SECONDS)
                 return {}
     except Exception as exc:
+        if _is_403_error(exc):
+            _llm_circuit_open = True
+            logger.warning(
+                "Groq 403 received — disabling LLM for this ingest cycle"
+            )
+            return {}
         logger.debug("LLM extraction failed: %s", exc)
         return {}
 
@@ -322,7 +352,7 @@ class EntityRelationExtractor:
         if not text or not text.strip():
             return {"entities": [], "relations": []}
 
-        if self._settings.llm_enabled:
+        if self._settings.llm_enabled and not _llm_circuit_open:
             result = _llm_extract(text)
             if result.get("entities"):
                 return result
@@ -335,6 +365,7 @@ class EntityRelationExtractor:
 
 def _llm_extract_constrained(text: str, system_prompt: str) -> Dict[str, Any]:
     """LLM-based extraction using a custom ontology-constraining system prompt."""
+    global _llm_circuit_open  # noqa: PLW0603
     settings = get_settings()
     try:
         from langchain_core.prompts import ChatPromptTemplate
@@ -380,6 +411,12 @@ def _llm_extract_constrained(text: str, system_prompt: str) -> Dict[str, Any]:
                 )
                 return {}
     except Exception as exc:
+        if _is_403_error(exc):
+            _llm_circuit_open = True
+            logger.warning(
+                "Groq 403 received — disabling LLM for this ingest cycle"
+            )
+            return {}
         logger.warning("Constrained LLM extraction failed: %s", exc)
         return {}
 
@@ -462,7 +499,7 @@ class OntologyConstrainedExtractor:
             }
 
         raw_result: Dict[str, Any] = {}
-        if self._settings.llm_enabled:
+        if self._settings.llm_enabled and not _llm_circuit_open:
             raw_result = _llm_extract_constrained(text, self._get_system_prompt())
 
         if not raw_result.get("entities"):

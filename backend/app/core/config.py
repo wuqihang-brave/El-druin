@@ -7,6 +7,7 @@ in the repo root via python-dotenv).  No hard-coded credentials.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from functools import lru_cache
@@ -31,6 +32,9 @@ class Settings:
     llm_provider: str = os.getenv("LLM_PROVIDER", "none")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+    # Explicit kill-switch: set LLM_ENABLED=false to skip all LLM calls and
+    # rely on rule-based extraction only (useful when the API key is invalid).
+    _llm_enabled_env: bool = os.getenv("LLM_ENABLED", "true").lower() not in ("false", "0", "no")
 
     # ── Graph database ────────────────────────────────────────────────────────
     # "kuzu" (default, embedded) | "neo4j" | "networkx" (in-memory fallback)
@@ -66,11 +70,36 @@ class Settings:
 
     @property
     def llm_enabled(self) -> bool:
-        """True when an LLM API key is configured and a provider is set."""
-        if self.llm_provider == "openai" and self.openai_api_key:
-            return True
-        if self.llm_provider == "groq" and self.groq_api_key:
-            return True
+        """True when LLM is enabled via env var AND a provider + API key are set.
+
+        If LLM_ENABLED=false is set explicitly, LLM is always disabled.
+        If LLM_ENABLED=true (default) but no API key is configured, a warning
+        is emitted and the setting is treated as False so rule-based extraction
+        is used instead.
+        """
+        _log = logging.getLogger(__name__)
+
+        if not self._llm_enabled_env:
+            return False
+
+        if self.llm_provider == "openai":
+            if self.openai_api_key:
+                return True
+            _log.warning(
+                "LLM_ENABLED=true but OPENAI_API_KEY is not set — "
+                "falling back to rule-based extraction"
+            )
+            return False
+
+        if self.llm_provider == "groq":
+            if self.groq_api_key:
+                return True
+            _log.warning(
+                "LLM_ENABLED=true but GROQ_API_KEY is not set — "
+                "falling back to rule-based extraction"
+            )
+            return False
+
         return False
 
 
