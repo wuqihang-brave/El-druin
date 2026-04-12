@@ -95,13 +95,60 @@ async def fetch_assessment_context(assessment_id: str) -> Dict[str, Any]:
         events = _DEMO_EVENTS
         graph_context = _DEMO_GRAPH_CONTEXT
     else:
-        # In a full implementation this would query the KG / event store.
-        # For now fall back to empty – the route will use the stub.
+        # Fetch real assessment from the store
+        from app.core.assessment_store import assessment_store  # noqa: PLC0415
+
+        assessment = assessment_store.get_assessment(assessment_id)
+        if assessment is None:
+            logger.info(
+                "fetch_assessment_context: assessment %s not found",
+                assessment_id,
+            )
+            return {}
+
+        # Synthesise seed events from assessment metadata
+        domain_tags = list(assessment.domain_tags or [])
+        region_tags = list(assessment.region_tags or [])
+        analyst_notes = assessment.analyst_notes or ""
+
+        events = []
+        if analyst_notes:
+            events.append(analyst_notes)
+        if domain_tags and region_tags:
+            events.append(
+                f"Structural activity detected across {', '.join(domain_tags)} domains "
+                f"in {', '.join(region_tags)} regions."
+            )
+
+        # Query KuzuDB for related entities and relations
+        graph_context: Dict[str, Any] = {"entities": [], "relations": []}
+        try:
+            from app.knowledge.knowledge_graph import get_knowledge_graph  # noqa: PLC0415
+
+            kg = get_knowledge_graph()
+            # Get entities related to assessment regions/domains
+            for region in region_tags[:3]:
+                neighbours = kg.get_neighbours(region, depth=1)
+                for n in neighbours[:5]:
+                    entity_name = n.get("name") or n.get("entity_name", "")
+                    if entity_name and entity_name not in graph_context["entities"]:
+                        graph_context["entities"].append(entity_name)
+            # Add domain tags as seed entities too
+            graph_context["entities"].extend(
+                [t for t in domain_tags if t not in graph_context["entities"]]
+            )
+            # Get relations from KG
+            relations = kg.get_relations(limit=20)
+            graph_context["relations"] = relations[:10]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not fetch KG context for %s: %s", assessment_id, exc)
+
         logger.info(
-            "fetch_assessment_context: no stored events for %s; returning empty context",
+            "fetch_assessment_context: built context for %s (%d events, %d entities)",
             assessment_id,
+            len(events),
+            len(graph_context["entities"]),
         )
-        return {}
 
     context["events"] = events
 
