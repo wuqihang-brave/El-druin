@@ -37,6 +37,25 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 _LLM_TIMEOUT_SECONDS = 30   # hard cap per LLM call – mirrors entity_extractor.py
+
+# ---------------------------------------------------------------------------
+# Circuit-breaker: if Groq returns 403 we open the circuit for the rest of the
+# current ingest cycle so we don't waste time on 30 guaranteed-to-fail calls.
+# The flag is reset by reset_circuit() at the start of each new cycle.
+# ---------------------------------------------------------------------------
+_llm_circuit_open: bool = False
+
+
+def reset_circuit() -> None:
+    """Reset the LLM circuit-breaker flag.
+
+    Should be called at the start of each new ingest cycle so the LLM is
+    retried in case the API key was rotated or the 403 was transient.
+    """
+    global _llm_circuit_open  # noqa: PLW0603
+    _llm_circuit_open = False
+
+
 _LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM/TPM limits
 _LLM_BATCH_SLEEP     = 1.0  # seconds to sleep between batches
 # Prefix length used when building (event_type, title_prefix) dedup keys.
@@ -337,7 +356,14 @@ def _rule_based_extract(text: str) -> List[Dict[str, Any]]:
 # LLM-based extraction (unchanged from v1)
 # ---------------------------------------------------------------------------
 
+def _is_403_error(exc: Exception) -> bool:
+    """Return True if *exc* represents a 403 Forbidden HTTP error."""
+    msg = str(exc)
+    return "403" in msg or "Forbidden" in msg.lower()
+
+
 def _llm_extract(text: str) -> List[Dict[str, Any]]:
+    global _llm_circuit_open  # noqa: PLW0603
     settings = get_settings()
     try:
         from langchain_core.prompts import ChatPromptTemplate
@@ -393,6 +419,12 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
                 )
                 return []
     except Exception as exc:
+        if _is_403_error(exc):
+            _llm_circuit_open = True
+            logger.warning(
+                "Groq 403 received — disabling LLM for this ingest cycle"
+            )
+            return []
         logger.warning("LLM extraction failed, falling back to rules: %s", exc)
         return []
 
@@ -412,16 +444,16 @@ class EventExtractor:
         Extract events from a single text string.
 
         v2 strategy:
-          1. LLM (if enabled) — full semantic extraction
+          1. LLM (if enabled and circuit not open) — full semantic extraction
           2. Augment with compound-rule events not yet covered by LLM
-          3. Rule-based fallback when LLM unavailable
+          3. Rule-based fallback when LLM unavailable or circuit is open
 
         This guarantees active_patterns≥2 for military/crisis headlines.
         """
         if not text or not text.strip():
             return []
 
-        if self._settings.llm_enabled:
+        if self._settings.llm_enabled and not _llm_circuit_open:
             llm_events = _llm_extract(text)
             if llm_events:
                 # Augment with compound-rule events that LLM may have missed
@@ -438,15 +470,21 @@ class EventExtractor:
         self,
         articles: List[Dict[str, Any]],
         max_articles: int = 30,
+        reset_circuit: bool = False,
     ) -> List[Dict[str, Any]]:
         """Extract and deduplicate events across a list of articles.
 
         Args:
-            articles:     List of article dicts (title, description, …).
-            max_articles: Maximum number of articles to run LLM extraction on.
-                          Articles beyond this cap are skipped to avoid burning
-                          the Groq free-tier token budget (6 000 TPM).
+            articles:      List of article dicts (title, description, …).
+            max_articles:  Maximum number of articles to run LLM extraction on.
+                           Articles beyond this cap are skipped to avoid burning
+                           the Groq free-tier token budget (6 000 TPM).
+            reset_circuit: If True, reset the LLM circuit-breaker before
+                           processing so a new ingest cycle can retry the LLM.
         """
+        global _llm_circuit_open  # noqa: PLW0603
+        if reset_circuit:
+            _llm_circuit_open = False
         all_events: List[Dict[str, Any]] = []
         llm_call_count = 0
         capped = articles[:max_articles]

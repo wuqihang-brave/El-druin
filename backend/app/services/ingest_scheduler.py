@@ -64,6 +64,13 @@ def _run_once() -> dict:
     global last_run_at, cycle_count  # noqa: PLW0603
     from app.data_ingestion.news_aggregator import NewsAggregator
     from app.services.assessment_generator import AssessmentGenerator
+    from app.data_ingestion.event_extractor import reset_circuit as reset_event_circuit
+    from app.knowledge.entity_extractor import reset_circuit as reset_entity_circuit
+
+    # Reset LLM circuit-breakers at the start of each cycle so transient 403s
+    # from a previous cycle do not permanently suppress LLM extraction.
+    reset_event_circuit()
+    reset_entity_circuit()
 
     t0 = datetime.now(timezone.utc)
     agg = NewsAggregator()
