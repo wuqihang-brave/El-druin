@@ -56,8 +56,8 @@ def reset_circuit() -> None:
     _llm_circuit_open = False
 
 
-_LLM_BATCH_SIZE      = 5    # pause after every N LLM calls to respect Groq RPM/TPM limits
-_LLM_BATCH_SLEEP     = 1.0  # seconds to sleep between batches
+_LLM_BATCH_SIZE      = 3    # pause after every N LLM calls to respect Groq RPM/TPM limits
+_LLM_BATCH_SLEEP     = 12.0 # seconds to sleep between batches (≈5,100 TPM, below free-tier 6,000 limit)
 # Prefix length used when building (event_type, title_prefix) dedup keys.
 # Short enough to collapse near-duplicates within the same article while
 # keeping events from different articles distinct.
@@ -362,6 +362,15 @@ def _is_403_error(exc: Exception) -> bool:
     return "403" in msg or "Forbidden" in msg.lower()
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Return True if *exc* represents a 429 rate-limit error."""
+    msg = str(exc)
+    return any(
+        kw in msg
+        for kw in ("429", "rate_limit", "Too Many Requests", "RateLimitError")
+    )
+
+
 def _llm_extract(text: str) -> List[Dict[str, Any]]:
     global _llm_circuit_open  # noqa: PLW0603
     settings = get_settings()
@@ -424,6 +433,10 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
             logger.warning(
                 "Groq 403 received — disabling LLM for this ingest cycle"
             )
+            return []
+        if _is_rate_limit_error(exc):
+            _llm_circuit_open = True
+            logger.warning("Groq 429 rate limit hit — disabling LLM for this ingest cycle")
             return []
         logger.warning("LLM extraction failed, falling back to rules: %s", exc)
         return []

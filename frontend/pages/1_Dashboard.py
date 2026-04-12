@@ -436,20 +436,15 @@ offline_html = (
     else ""
 )
 
-st.markdown(
-    f"""
-    <div class="alert-bar {alert_css}">
-        <span>
-            {offline_html}
-            <strong>STRUCTURAL ALERT LEVEL: {worst_regime.upper()}</strong>
-        </span>
-        <span style="font-size:12px;font-weight:400;">
-            {near_text}&nbsp;&nbsp;|&nbsp;&nbsp;{shifted_text}&nbsp;&nbsp;|&nbsp;&nbsp;Updated: {now_str}
-        </span>
-    </div>
-    """,
-    unsafe_allow_html=True,
+_alert_html = (
+    f'<div class="alert-bar {alert_css}">'
+    f'<span>{offline_html}'
+    f'<strong>STRUCTURAL ALERT LEVEL: {worst_regime.upper()}</strong></span>'
+    f'<span style="font-size:12px;font-weight:400;">'
+    f'{near_text}&nbsp;&nbsp;|&nbsp;&nbsp;{shifted_text}&nbsp;&nbsp;|&nbsp;&nbsp;Updated: {now_str}'
+    f'</span></div>'
 )
+st.markdown(_alert_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Section A: 4 Structural Status Cards
