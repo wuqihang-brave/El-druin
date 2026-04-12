@@ -171,13 +171,25 @@ def _cluster_events(
     return list(clusters.values())
 
 
+ENTITY_STOPWORDS = frozenset(
+    {"ORG", "GPE", "PERSON", "MISC", "LOC", "FAC", "UN", "EU", "US", "UK"}
+)
+
+
 def _derive_title(cluster: list[dict[str, Any]], top_domains: list[str]) -> str:
     """Derive a human-readable title from entity mentions and domains."""
     entity_counter: Counter[str] = Counter()
     for ev in cluster:
         for ent in ev.get("entities", []):
-            if isinstance(ent, str) and ent:
-                entity_counter[ent] += 1
+            if isinstance(ent, dict):
+                name = ent.get("name", "").strip()
+            elif isinstance(ent, str):
+                name = ent.strip()
+            else:
+                continue
+            # Filter out generic NER type labels and very short tokens
+            if name and name not in ENTITY_STOPWORDS and len(name) > 2:
+                entity_counter[name] += 1
 
     top_entities = [e for e, _ in entity_counter.most_common(2)]
     domain_label = " / ".join(top_domains[:2]).title() if top_domains else "Multi-Domain"

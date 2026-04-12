@@ -334,90 +334,142 @@ def _stub_or_404(assessment_id: str) -> None:
 
 async def _fetch_assessment_context(assessment_id: str) -> dict[str, Any]:
     """
-    Fetch the assessment context required by ``TriggerAmplificationEngine``.
+    Fetch the assessment context required by the intelligence engines.
 
-    Currently returns a pre-built context for the demo assessment ``ae-204``
-    (Black Sea Energy Corridor – Structural Watch).  Returns an empty dict for
-    any other assessment ID, which causes the route to fall back to the stub.
+    Returns pre-built context for the demo assessment ``ae-204``.  For all
+    other assessments, fetches real data from the assessment store and
+    builds a context dict sufficient for the engine adapters.
     """
-    if assessment_id != _DEMO_ID:
+    if assessment_id == _DEMO_ID:
+        return {
+            "events": [
+                {
+                    "name": "Naval incident in contested strait",
+                    "title": "Naval incident in contested strait",
+                    "text": (
+                        "Naval forces have deployed additional assets that block tanker transit "
+                        "through the contested strait, triggering insurance withdrawal and causing "
+                        "energy spot-price escalation across the corridor."
+                    ),
+                    "domains": ["military", "energy", "insurance", "finance"],
+                    "entities": ["Naval Forces", "Contested Strait", "Transit Route"],
+                    "source_reliability": 0.88,
+                    "causal_weight": 0.82,
+                    "confidence": 0.81,
+                },
+                {
+                    "name": "Secondary sanctions package announced",
+                    "title": "Secondary sanctions package announced",
+                    "text": (
+                        "The administration announces a secondary sanctions package targeting "
+                        "financial institutions that facilitate corridor transit payments, "
+                        "affecting energy trade financing and driving correspondent banking withdrawal."
+                    ),
+                    "domains": ["sanctions", "finance", "energy", "trade"],
+                    "entities": ["Administration", "Financial Institutions", "Trade Finance"],
+                    "source_reliability": 0.78,
+                    "causal_weight": 0.65,
+                    "confidence": 0.68,
+                },
+            ],
+            "kg_paths": [
+                {
+                    "from_entity": "Naval Forces",
+                    "to_entity": "Energy Corridor",
+                    "relation": "BLOCKS",
+                    "domain": "energy",
+                    "strength": 0.85,
+                },
+                {
+                    "from_entity": "Energy Corridor",
+                    "to_entity": "Insurance Markets",
+                    "relation": "AFFECTS",
+                    "domain": "insurance",
+                    "strength": 0.72,
+                },
+                {
+                    "from_entity": "Sanctions Package",
+                    "to_entity": "Banking Sector",
+                    "relation": "AFFECTS",
+                    "domain": "finance",
+                    "strength": 0.68,
+                },
+            ],
+            "causal_weights": {
+                "Naval incident in contested strait": 0.82,
+                "Secondary sanctions package announced": 0.65,
+            },
+            "velocity_data": {
+                "military": 0.85,
+                "energy": 0.60,
+                "sanctions": 0.45,
+                "finance": 0.35,
+            },
+            "ontology_activations": {
+                "Hegemonic Sanctions Pattern": 0.71,
+                "Naval Coercion Pattern": 0.68,
+                "Financial Isolation Pattern": 0.64,
+            },
+            "regime_state": {
+                "regime": "Nonlinear Escalation",
+                "damping_capacity": 0.29,
+                "reversibility_index": 0.31,
+                "threshold_distance": 0.18,
+            },
+        }
+
+    # For real assessments, fetch from store and build a usable context
+    assessment = assessment_store.get_assessment(assessment_id)
+    if assessment is None:
         return {}
 
+    domain_tags = list(assessment.domain_tags or [])
+    region_tags = list(assessment.region_tags or [])
+    analyst_notes = assessment.analyst_notes or ""
+
+    # Synthesise events from assessment metadata
+    events: list[dict[str, Any]] = []
+    if analyst_notes:
+        events.append(
+            {
+                "name": assessment.title,
+                "title": assessment.title,
+                "text": analyst_notes,
+                "domains": domain_tags,
+                "entities": region_tags,
+                "source_reliability": 0.70,
+                "causal_weight": 0.60,
+                "confidence": 0.65,
+            }
+        )
+    if domain_tags and region_tags:
+        summary_text = (
+            f"Structural activity detected across {', '.join(domain_tags)} domains "
+            f"in {', '.join(region_tags)} regions."
+        )
+        events.append(
+            {
+                "name": f"{assessment.title} – structural signal",
+                "title": f"{assessment.title} – structural signal",
+                "text": summary_text,
+                "domains": domain_tags,
+                "entities": region_tags,
+                "source_reliability": 0.65,
+                "causal_weight": 0.55,
+                "confidence": 0.60,
+            }
+        )
+
+    # Build velocity data from domain tags
+    velocity_data = {d: 0.50 for d in domain_tags}
+
     return {
-        "events": [
-            {
-                "name": "Naval incident in contested strait",
-                "title": "Naval incident in contested strait",
-                "text": (
-                    "Naval forces have deployed additional assets that block tanker transit "
-                    "through the contested strait, triggering insurance withdrawal and causing "
-                    "energy spot-price escalation across the corridor."
-                ),
-                "domains": ["military", "energy", "insurance", "finance"],
-                "entities": ["Naval Forces", "Contested Strait", "Transit Route"],
-                "source_reliability": 0.88,
-                "causal_weight": 0.82,
-                "confidence": 0.81,
-            },
-            {
-                "name": "Secondary sanctions package announced",
-                "title": "Secondary sanctions package announced",
-                "text": (
-                    "The administration announces a secondary sanctions package targeting "
-                    "financial institutions that facilitate corridor transit payments, "
-                    "affecting energy trade financing and driving correspondent banking withdrawal."
-                ),
-                "domains": ["sanctions", "finance", "energy", "trade"],
-                "entities": ["Administration", "Financial Institutions", "Trade Finance"],
-                "source_reliability": 0.78,
-                "causal_weight": 0.65,
-                "confidence": 0.68,
-            },
-        ],
-        "kg_paths": [
-            {
-                "from_entity": "Naval Forces",
-                "to_entity": "Energy Corridor",
-                "relation": "BLOCKS",
-                "domain": "energy",
-                "strength": 0.85,
-            },
-            {
-                "from_entity": "Energy Corridor",
-                "to_entity": "Insurance Markets",
-                "relation": "AFFECTS",
-                "domain": "insurance",
-                "strength": 0.72,
-            },
-            {
-                "from_entity": "Sanctions Package",
-                "to_entity": "Banking Sector",
-                "relation": "AFFECTS",
-                "domain": "finance",
-                "strength": 0.68,
-            },
-        ],
-        "causal_weights": {
-            "Naval incident in contested strait": 0.82,
-            "Secondary sanctions package announced": 0.65,
-        },
-        "velocity_data": {
-            "military": 0.85,
-            "energy": 0.60,
-            "sanctions": 0.45,
-            "finance": 0.35,
-        },
-        "ontology_activations": {
-            "Hegemonic Sanctions Pattern": 0.71,
-            "Naval Coercion Pattern": 0.68,
-            "Financial Isolation Pattern": 0.64,
-        },
-        "regime_state": {
-            "regime": "Nonlinear Escalation",
-            "damping_capacity": 0.29,
-            "reversibility_index": 0.31,
-            "threshold_distance": 0.18,
-        },
+        "events": events,
+        "kg_paths": [],
+        "causal_weights": {ev["name"]: ev["causal_weight"] for ev in events},
+        "velocity_data": velocity_data,
+        "ontology_activations": {},
+        "regime_state": {},
     }
 
 
@@ -431,7 +483,19 @@ def _build_assessment_context(assessment_id: str) -> dict:
             "region_tags": list(_DEMO_ASSESSMENT.region_tags),
             "evidence_count": len(_DEMO_EVIDENCE.evidence),
         }
-    return {}
+
+    # For real assessments, fetch from store
+    assessment = assessment_store.get_assessment(assessment_id)
+    if assessment is None:
+        return {}
+    return {
+        "assessment_id": assessment_id,
+        "title": assessment.title,
+        "domain_tags": list(assessment.domain_tags or []),
+        "region_tags": list(assessment.region_tags or []),
+        "evidence_count": assessment.alert_count or 0,
+        "analyst_notes": assessment.analyst_notes or "",
+    }
 
 
 # ---------------------------------------------------------------------------

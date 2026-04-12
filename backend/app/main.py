@@ -133,6 +133,11 @@ def root() -> dict:
     return {"message": "EL'druin API – see /docs for the OpenAPI spec"}
 
 
+@app.get("/api/v1", include_in_schema=False)
+def api_v1_root() -> dict:
+    return {"status": "ok", "version": "1.0.0", "message": "EL'druin API v1"}
+
+
 # ---------------------------------------------------------------------------
 # Dev entry-point
 # ---------------------------------------------------------------------------
