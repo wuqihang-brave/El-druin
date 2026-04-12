@@ -11,7 +11,7 @@ import logging
 import os
 from pathlib import Path
 from functools import lru_cache
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
 from dotenv import load_dotenv
 # 1. 精確定位項目根目錄 (El-druin)
@@ -30,8 +30,24 @@ class Settings:
     groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
     # Preferred provider: "openai" | "groq" | "none"
     llm_provider: str = os.getenv("LLM_PROVIDER", "none")
-    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+
+    _DEFAULT_GROQ_MODEL: ClassVar[str] = "llama-3.1-8b-instant"
+    _DEFAULT_OPENAI_MODEL: ClassVar[str] = "gpt-4o-mini"
+
+    def __init__(self) -> None:
+        # Compute provider-aware default for llm_model.
+        # Priority: explicit LLM_MODEL env var → provider default → gpt-4o-mini
+        _llm_model_env = os.getenv("LLM_MODEL")
+        if _llm_model_env:
+            self.llm_model: str = _llm_model_env
+        elif self.llm_provider == "groq":
+            self.llm_model = self._DEFAULT_GROQ_MODEL
+        elif self.llm_provider == "openai":
+            self.llm_model = self._DEFAULT_OPENAI_MODEL
+        else:
+            self.llm_model = self._DEFAULT_OPENAI_MODEL
+
     # Explicit kill-switch: set LLM_ENABLED=false to skip all LLM calls and
     # rely on rule-based extraction only (useful when the API key is invalid).
     _llm_enabled_env: bool = os.getenv("LLM_ENABLED", "true").lower() not in ("false", "0", "no")
