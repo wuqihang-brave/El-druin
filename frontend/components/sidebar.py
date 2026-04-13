@@ -241,17 +241,20 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
                     _status: dict = {"status": "queued"}
                     with st.sidebar:
                         with st.spinner("Generating assessments…"):
-                            for _ in range(60):  # poll for up to ~3 minutes
+                            for _ in range(40):  # poll for up to 2 minutes
                                 _status = _job_status(_job_id)
-                                if _status.get("status") in ("completed", "failed"):
+                                if _status.get("status") in ("completed", "failed", "error"):
                                     break
                                 _time.sleep(3)
                     if _status.get("status") == "completed":
                         _n = _status.get("result", {}).get("generated", 0)
-                        st.session_state.gen_assess_status = f"✅ Generated {_n} new assessments"
-                    else:
+                        _u = _status.get("result", {}).get("updated", 0)
+                        st.session_state.gen_assess_status = f"✅ Generated {_n} new, updated {_u} assessments"
+                    elif _status.get("status") in ("failed", "error"):
                         _err = _status.get("error", "unknown error")
                         st.session_state.gen_assess_status = f"❌ Generation failed: {_err}"
+                    else:
+                        st.session_state.gen_assess_status = "⏳ Generation still running — check back soon"
             except Exception as _exc:
                 st.session_state.gen_assess_status = f"❌ {_exc}"
 
