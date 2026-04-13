@@ -27,8 +27,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 
 from app.schemas.assessment import (
     Assessment,
@@ -68,6 +69,31 @@ from app.schemas.structural_forecast import (
 )
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
+
+# ---------------------------------------------------------------------------
+# Async job store – used by POST /trigger and GET /status/{job_id}
+# In-memory; replace with Redis in production for multi-worker deployments.
+# ---------------------------------------------------------------------------
+_jobs: dict[str, dict[str, Any]] = {}
+
+
+async def _run_generation_job(job_id: str, hours: int, min_events: int, max_assessments: int) -> None:
+    """Background task: run the full assessment generation pipeline."""
+    _jobs[job_id]["status"] = "running"
+    try:
+        from app.services.assessment_generator import AssessmentGenerator  # noqa: PLC0415
+
+        result = AssessmentGenerator().generate_from_news(
+            hours=hours,
+            min_events_per_cluster=min_events,
+            max_assessments=max_assessments,
+        )
+        _jobs[job_id] = {"status": "completed", "result": result}
+        logger.info("Job %s completed: %s", job_id, result)
+    except Exception as exc:  # noqa: BLE001
+        _jobs[job_id] = {"status": "failed", "error": str(exc)}
+        logger.error("Job %s failed: %s", job_id, exc)
+
 
 # ---------------------------------------------------------------------------
 # Demo stub data – keyed to assessment "ae-204"
@@ -502,6 +528,42 @@ def _build_assessment_context(assessment_id: str) -> dict:
 # Routes
 # ---------------------------------------------------------------------------
 
+@router.post("/trigger", response_model=dict)
+async def trigger_assessment_generation(
+    background_tasks: BackgroundTasks,
+    hours: int = 48,
+    min_events: int = 1,
+    max_assessments: int = 10,
+) -> dict:
+    """
+    Trigger Assessment auto-generation from recent news clusters (async).
+
+    Returns a job_id immediately. Poll ``GET /assessments/status/{job_id}``
+    to track progress.
+
+    Query params:
+    - ``hours``: look-back window for news articles (default 48).
+    - ``min_events``: minimum events to form a cluster (default 1).
+    - ``max_assessments``: cap on assessments generated per run (default 10).
+    """
+    job_id = f"job-{uuid4().hex[:8]}"
+    _jobs[job_id] = {
+        "status": "queued",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    background_tasks.add_task(_run_generation_job, job_id, hours, min_events, max_assessments)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/status/{job_id}", response_model=dict)
+def get_job_status(job_id: str) -> dict:
+    """Return the current status of an assessment generation job."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return job
+
+
 @router.post("/generate-from-news", response_model=dict)
 async def generate_assessments_from_news(
     hours: int = 48,
@@ -510,11 +572,11 @@ async def generate_assessments_from_news(
     max_articles: int = 30,
 ) -> dict:
     """
-    Auto-generate Assessment records from the news event pipeline.
+    Auto-generate Assessment records from the news event pipeline (synchronous).
 
-    Reads recent articles via NewsAggregator, extracts events via
-    EventExtractor, clusters them by domain/region similarity, and
-    upserts new Assessment records for qualifying clusters.
+    .. deprecated::
+        Use ``POST /assessments/trigger`` instead. This endpoint is retained for
+        backward compatibility but will time out when the LLM pipeline is slow.
 
     Query params:
     - ``hours``: look-back window for news articles (default 48).
@@ -542,7 +604,7 @@ async def generate_assessments_from_news(
         logger.warning("generate_assessments_from_news timed out after 55s")
         return {
             "status": "timeout",
-            "message": "Assessment generation timed out. Partial results may have been saved.",
+            "message": "Assessment generation timed out. Use POST /assessments/trigger for async generation.",
             "generated": 0,
             "updated": 0,
             "assessment_ids": [],

@@ -748,6 +748,22 @@ class APIClient:
             params={"hours": hours, "min_events": min_events, "max_assessments": max_assessments},
         )
 
+    def trigger_assessment_generation(
+        self,
+        hours: int = 48,
+        min_events: int = 1,
+        max_assessments: int = 10,
+    ) -> Dict[str, Any]:
+        """Submit an async assessment-generation job and return its job_id immediately."""
+        return self._post(
+            "/assessments/trigger",
+            params={"hours": hours, "min_events": min_events, "max_assessments": max_assessments},
+        )
+
+    def get_assessment_job_status(self, job_id: str) -> Dict[str, Any]:
+        """Poll the status of an async assessment-generation job."""
+        return self._get(f"/assessments/status/{job_id}")
+
 
 # ---------------------------------------------------------------------------
 # Offline fallback stubs – returned when backend is unreachable
@@ -1082,6 +1098,16 @@ def trigger_ingest_cycle() -> Dict[str, Any]:
 def generate_assessments_from_news(**kwargs) -> Dict[str, Any]:
     """Trigger Assessment auto-generation from recent news clusters."""
     return api_client.generate_assessments_from_news(**kwargs)
+
+
+def trigger_assessment_generation(**kwargs) -> Dict[str, Any]:
+    """Submit an async assessment-generation job and return its job_id immediately."""
+    return api_client.trigger_assessment_generation(**kwargs)
+
+
+def get_assessment_job_status(job_id: str) -> Dict[str, Any]:
+    """Poll the status of an async assessment-generation job."""
+    return api_client.get_assessment_job_status(job_id)
 
 
 # Module-level singleton – import and use directly in Streamlit pages.

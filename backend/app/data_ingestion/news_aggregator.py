@@ -31,13 +31,14 @@ logger = logging.getLogger(__name__)
 # Default RSS sources (used when RSS_FEED_URLS env var is not set)
 # ---------------------------------------------------------------------------
 _DEFAULT_SOURCES: List[Dict[str, Any]] = [
-    {"name": "Reuters World", "url": "https://feeds.reuters.com/reuters/worldNews", "category": "world"},
-    {"name": "Reuters Business", "url": "https://feeds.reuters.com/reuters/businessNews", "category": "economy"},
+    # Reuters and FT removed: Reuters closed public RSS (SSLEOFError), FT requires subscription (403).
+    {"name": "AP News", "url": "https://feeds.apnews.com/rss/apf-topnews", "category": "world"},
     {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "category": "world"},
     {"name": "BBC Technology", "url": "http://feeds.bbci.co.uk/news/technology/rss.xml", "category": "technology"},
     {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "category": "world"},
+    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "category": "world"},
+    {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss", "category": "world"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "category": "technology"},
-    {"name": "Financial Times", "url": "https://www.ft.com/rss/home/us", "category": "economy"},
 ]
 
 # Simple keyword-to-category mapping for fallback categorisation
