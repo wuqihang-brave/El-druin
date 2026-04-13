@@ -88,10 +88,10 @@ async def _run_generation_job(job_id: str, hours: int, min_events: int, max_asse
             min_events_per_cluster=min_events,
             max_assessments=max_assessments,
         )
-        _jobs[job_id] = {"status": "completed", "result": result}
+        _jobs[job_id].update({"status": "completed", "result": result})
         logger.info("Job %s completed: %s", job_id, result)
     except Exception as exc:  # noqa: BLE001
-        _jobs[job_id] = {"status": "failed", "error": str(exc)}
+        _jobs[job_id].update({"status": "failed", "error": str(exc)})
         logger.error("Job %s failed: %s", job_id, exc)
 
 

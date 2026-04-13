@@ -238,6 +238,7 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
                 if not _job_id:
                     st.session_state.gen_assess_status = f"❌ Unexpected response: {_resp}"
                 else:
+                    _status: dict = {"status": "queued"}
                     with st.sidebar:
                         with st.spinner("Generating assessments…"):
                             for _ in range(60):  # poll for up to ~3 minutes
