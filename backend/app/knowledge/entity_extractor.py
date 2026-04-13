@@ -82,6 +82,18 @@ _GPE_NAMES: Dict[str, str] = {
         "Norway", "Pakistan", "Afghanistan", "Syria", "Iraq", "Libya",
         "Venezuela", "Cuba", "Belarus", "Georgia", "Armenia", "Azerbaijan",
         "Ethiopia", "Sudan", "Yemen", "Lebanon", "Jordan", "Egypt",
+        # Extended GPE names
+        "South Sudan", "Somalia", "Kenya", "Nigeria",
+        "Ghana", "Morocco", "Algeria", "Tunisia",
+        "Colombia", "Argentina", "Chile", "Peru",
+        "Bangladesh", "Sri Lanka", "Nepal",
+        "Vietnam", "Philippines", "Indonesia", "Thailand", "Singapore",
+        "Malaysia", "Cambodia",
+        "Kazakhstan", "Uzbekistan",
+        "Hungary", "Romania", "Bulgaria", "Serbia", "Croatia",
+        "Qatar", "UAE", "Kuwait", "Oman",
+        "New Zealand", "Belgium", "Switzerland", "Austria",
+        "Finland", "Denmark",
     }
 }
 

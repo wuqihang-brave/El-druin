@@ -57,20 +57,25 @@ _FALLBACK_SNIPPET_LENGTH = 120
 # ---------------------------------------------------------------------------
 
 class CAMEOEventType(str, Enum):
-    SANCTION        = "制裁/经济封锁"
-    MILITARY_ACTION = "军事行动/武力威胁"
-    DIPLOMATIC      = "外交接触/谈判"
-    AID             = "提供援助/资源转让"
-    PROTEST         = "抗议/民间抵制"
-    ARREST          = "逮捕/司法行动"
-    AGREE           = "达成协议/条约"
-    OPPOSE          = "公开反对/谴责"
-    SUPPLY_CHAIN    = "供应链调整/技术管控"
-    INTEL_OP        = "情报操作/信息战"
-    SPORTS_EVENT    = "体育竞技/赛事"
-    BUSINESS_OP     = "商业运营/市场行为"
-    SOCIAL_EVENT    = "社会事件/文化活动"
-    SCIENCE_TECH    = "科学技术/研究发现"
+    SANCTION              = "制裁/经济封锁"
+    MILITARY_ACTION       = "军事行动/武力威胁"
+    DIPLOMATIC            = "外交接触/谈判"
+    AID                   = "提供援助/资源转让"
+    PROTEST               = "抗议/民间抵制"
+    ARREST                = "逮捕/司法行动"
+    AGREE                 = "达成协议/条约"
+    OPPOSE                = "公开反对/谴责"
+    SUPPLY_CHAIN          = "供应链调整/技术管控"
+    INTEL_OP              = "情报操作/信息战"
+    SPORTS_EVENT          = "体育竞技/赛事"
+    BUSINESS_OP           = "商业运营/市场行为"
+    SOCIAL_EVENT          = "社会事件/文化活动"
+    SCIENCE_TECH          = "科学技术/研究发现"
+    ECONOMIC_COOPERATION  = "经济合作/能源协议"
+    ASSAULT               = "攻击/网络战"
+    PROVIDE_AID           = "提供人道援助"
+    TECHNOLOGY_TRANSFER   = "技术转让/出口管制"
+    POLITICAL_EVENT       = "政治事件/选举"
 
 
 class FIBORelationType(str, Enum):
@@ -82,6 +87,7 @@ class FIBORelationType(str, Enum):
     CENTRAL_BANK     = "央行政策传导"
     COMMODITY_LINK   = "大宗商品联动"
     CORPORATE_ACTION = "企业行为/并购重组"
+    MARKET_EVENT     = "市场事件/金融波动"
 
 
 class RelationDomain(str, Enum):
@@ -95,6 +101,8 @@ class RelationDomain(str, Enum):
     BUSINESS     = "business"
     SOCIETY      = "society"
     SCIENCE      = "science"
+    ENERGY       = "energy"
+    POLITICS     = "politics"
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +243,67 @@ _KEYWORD_MECHANISM_MAP: List[Tuple[List[str], Any, RelationDomain]] = [
      FIBORelationType.CENTRAL_BANK, RelationDomain.ECONOMICS),
     (["debt", "债务", "bond", "bonds", "credit"],
      FIBORelationType.HOLDS_DEBT, RelationDomain.ECONOMICS),
+
+    # ── 能源与资源 ────────────────────────────────────────────────
+    (["oil", "gas", "lng", "pipeline", "opec", "crude", "energy crisis",
+      "power outage", "electricity", "nuclear power", "renewable", "solar",
+      "wind energy", "coal", "fuel", "refinery", "petrochemical",
+      "natural resources", "energy security", "energy transition",
+      "carbon", "emissions", "decarbonization"],
+     CAMEOEventType.ECONOMIC_COOPERATION, RelationDomain.ENERGY),
+
+    # ── 气候与环境 ────────────────────────────────────────────────
+    (["climate change", "global warming", "greenhouse", "carbon neutral",
+      "net zero", "cop28", "cop29", "cop30", "paris agreement",
+      "deforestation", "biodiversity", "sea level", "glacier", "permafrost",
+      "methane", "carbon tax", "green deal", "climate summit", "extreme weather"],
+     CAMEOEventType.PROTEST, RelationDomain.SOCIETY),
+
+    # ── 网络安全与数字战 ──────────────────────────────────────────
+    (["cyberattack", "hacking", "ransomware", "data breach", "malware",
+      "phishing", "espionage", "spyware", "zero-day", "cybersecurity",
+      "disinformation", "fake news", "influence operation", "information warfare",
+      "election interference", "social media manipulation", "deepfake",
+      "cyber warfare", "critical infrastructure attack"],
+     CAMEOEventType.ASSAULT, RelationDomain.MILITARY),
+
+    # ── 粮食与人道 ────────────────────────────────────────────────
+    (["famine", "food security", "food crisis", "hunger", "malnutrition",
+      "starvation", "aid convoy", "humanitarian corridor", "refugee camp",
+      "displacement", "internally displaced", "idp", "unhcr", "wfp",
+      "food prices", "grain supply", "harvest failure", "locust"],
+     CAMEOEventType.PROVIDE_AID, RelationDomain.SOCIETY),
+
+    # ── 金融与货币 ────────────────────────────────────────────────
+    (["interest rate", "fed rate", "ecb rate", "rate hike", "rate cut",
+      "monetary policy", "quantitative easing", "deflation",
+      "currency crisis", "debt default", "sovereign debt", "imf bailout",
+      "world bank", "bond yield", "credit rating", "capital flight",
+      "foreign exchange", "forex", "dollar", "euro", "yuan", "yen",
+      "banking crisis", "bank run", "financial contagion"],
+     FIBORelationType.MARKET_EVENT, RelationDomain.ECONOMICS),
+
+    # ── 科技与半导体 ──────────────────────────────────────────────
+    (["semiconductor", "wafer", "tsmc", "nvidia", "ai chip",
+      "tech ban", "entity list", "foundry", "fab",
+      "lithography", "asml", "5g", "6g", "quantum computing",
+      "artificial intelligence", "machine learning", "large language model",
+      "chatgpt", "space launch", "space race"],
+     CAMEOEventType.TECHNOLOGY_TRANSFER, RelationDomain.TECHNOLOGY),
+
+    # ── 选举与政治变动 ────────────────────────────────────────────
+    (["ballot", "polling", "referendum", "coup",
+      "impeachment", "resignation", "cabinet reshuffle",
+      "parliament", "congress", "senate", "political crisis",
+      "demonstration", "uprising", "civil unrest", "martial law"],
+     CAMEOEventType.POLITICAL_EVENT, RelationDomain.POLITICS),
+
+    # ── 制裁扩展 ──────────────────────────────────────────────────
+    (["secondary sanctions", "ofac", "sdn list", "treasury department",
+      "asset freeze", "visa ban", "travel restriction", "arms embargo",
+      "technology embargo", "financial exclusion", "swift exclusion",
+      "correspondent banking", "de-dollarization"],
+     CAMEOEventType.SANCTION, RelationDomain.GEOPOLITICS),
 ]
 
 _ENTITY_PAIR_PATTERN = re.compile(
