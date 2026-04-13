@@ -36,11 +36,14 @@ try:
 except Exception:
     pass
 
+import hashlib
+
 from utils.api_client import (
     APIClient,
     get_assessments,
     get_regime,
     get_attractors,
+    get_latest_news,
 )
 
 # ---------------------------------------------------------------------------
@@ -134,51 +137,118 @@ if "reviewed_items" not in st.session_state:
     st.session_state.reviewed_items = set()
 if "kg_extract_result" not in st.session_state:
     st.session_state.kg_extract_result = {}
+if "triage_queue_loaded" not in st.session_state:
+    st.session_state.triage_queue_loaded = False
 
-# Seed triage queue with representative items if empty
-if not st.session_state.triage_queue:
-    st.session_state.triage_queue = [
-        {
-            "id": "ti-001",
-            "title": "Additional naval vessels reported in contested strait — AIS blackout zone expanding",
-            "snippet": "Multiple AIS signals went dark in the northern corridor sector as naval exercises were announced.",
-            "domains": ["military", "energy"],
-            "timestamp": "2026-04-10T06:14:00Z",
-            "source": "Lloyd's List Intelligence",
-        },
-        {
-            "id": "ti-002",
-            "title": "Treasury signals expansion of secondary sanctions to transit payment facilitators",
-            "snippet": "Officials briefed key banks on forthcoming designations targeting energy corridor financing.",
-            "domains": ["sanctions", "finance"],
-            "timestamp": "2026-04-10T04:30:00Z",
-            "source": "Reuters",
-        },
-        {
-            "id": "ti-003",
-            "title": "EU emergency energy ministers meeting convened for Thursday",
-            "snippet": "The agenda focuses on alternative routing options and emergency reserve activation.",
-            "domains": ["political", "energy"],
-            "timestamp": "2026-04-09T22:00:00Z",
-            "source": "EU Commission",
-        },
-        {
-            "id": "ti-004",
-            "title": "Lloyd's market withdraws war-risk coverage for corridor tankers",
-            "snippet": "Underwriters cite escalating geopolitical risk following recent incidents.",
-            "domains": ["insurance", "energy"],
-            "timestamp": "2026-04-09T18:45:00Z",
-            "source": "Lloyd's of London",
-        },
-        {
-            "id": "ti-005",
-            "title": "Regional sovereign spreads widen 35bps on risk repricing",
-            "snippet": "Credit default swap spreads for corridor-adjacent sovereigns hit 18-month highs.",
-            "domains": ["finance"],
-            "timestamp": "2026-04-09T15:00:00Z",
-            "source": "Bloomberg Terminal",
-        },
+# ---------------------------------------------------------------------------
+# Demo fallback items – shown when backend is unreachable
+# ---------------------------------------------------------------------------
+_DEMO_TRIAGE_ITEMS = [
+    {
+        "id": "ti-001",
+        "title": "Additional naval vessels reported in contested strait — AIS blackout zone expanding",
+        "snippet": "Multiple AIS signals went dark in the northern corridor sector as naval exercises were announced.",
+        "domains": ["military", "energy"],
+        "timestamp": "2026-04-10T06:14:00Z",
+        "source": "Lloyd's List Intelligence",
+    },
+    {
+        "id": "ti-002",
+        "title": "Treasury signals expansion of secondary sanctions to transit payment facilitators",
+        "snippet": "Officials briefed key banks on forthcoming designations targeting energy corridor financing.",
+        "domains": ["sanctions", "finance"],
+        "timestamp": "2026-04-10T04:30:00Z",
+        "source": "Reuters",
+    },
+    {
+        "id": "ti-003",
+        "title": "EU emergency energy ministers meeting convened for Thursday",
+        "snippet": "The agenda focuses on alternative routing options and emergency reserve activation.",
+        "domains": ["political", "energy"],
+        "timestamp": "2026-04-09T22:00:00Z",
+        "source": "EU Commission",
+    },
+    {
+        "id": "ti-004",
+        "title": "Lloyd's market withdraws war-risk coverage for corridor tankers",
+        "snippet": "Underwriters cite escalating geopolitical risk following recent incidents.",
+        "domains": ["insurance", "energy"],
+        "timestamp": "2026-04-09T18:45:00Z",
+        "source": "Lloyd's of London",
+    },
+    {
+        "id": "ti-005",
+        "title": "Regional sovereign spreads widen 35bps on risk repricing",
+        "snippet": "Credit default swap spreads for corridor-adjacent sovereigns hit 18-month highs.",
+        "domains": ["finance"],
+        "timestamp": "2026-04-09T15:00:00Z",
+        "source": "Bloomberg Terminal",
+    },
+]
+
+
+def _article_to_triage_item(article: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a backend news article dict to a triage queue item."""
+    title = article.get("title", "")
+    description = article.get("description", "") or ""
+    text = f"{title} {description}".lower()
+    domains = [
+        domain for domain, keywords in _DOMAIN_KEYWORDS.items()
+        if any(kw in text for kw in keywords)
     ]
+    if not domains:
+        category = article.get("category", "")
+        if category and category != "general":
+            domains = [category]
+    item_id = hashlib.sha256(
+        f"{article.get('link', '')}{title}".encode()
+    ).hexdigest()[:32]
+    return {
+        "id": item_id,
+        "title": title,
+        "snippet": description[:300] if description else "",
+        "domains": domains,
+        "timestamp": article.get("published", ""),
+        "source": article.get("source", "—"),
+    }
+
+
+def _load_triage_queue_from_backend() -> bool:
+    """Try to populate triage_queue from the backend news feed.
+
+    Returns True on success, False if the backend is unreachable or returns
+    no articles (caller should fall back to demo items).
+    """
+    try:
+        result = get_latest_news(limit=30, hours=48)
+        if not isinstance(result, dict) or "error" in result:
+            return False
+        articles = result.get("articles", [])
+        if not articles:
+            return False
+        reviewed = st.session_state.reviewed_items
+        existing_ids = {i["id"] for i in st.session_state.triage_queue}
+        new_items = []
+        for article in articles:
+            item = _article_to_triage_item(article)
+            if item["id"] not in existing_ids and item["id"] not in reviewed:
+                new_items.append(item)
+        if new_items:
+            new_item_ids = {x["id"] for x in new_items}
+            st.session_state.triage_queue = new_items + [
+                i for i in st.session_state.triage_queue if i["id"] not in new_item_ids
+            ]
+        return True
+    except Exception:
+        return False
+
+
+# Populate triage queue on first load: prefer backend, fall back to demo items
+if not st.session_state.triage_queue_loaded:
+    backend_ok = _load_triage_queue_from_backend()
+    if not backend_ok and not st.session_state.triage_queue:
+        st.session_state.triage_queue = list(_DEMO_TRIAGE_ITEMS)
+    st.session_state.triage_queue_loaded = True
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +362,12 @@ with _top_bar_r:
             f'<span style="color:#D4DDE6;font-weight:600">{_pending_count}</span> items</span>',
             unsafe_allow_html=True,
         )
+    if st.button("↻ Refresh queue", key="refresh_triage_queue", use_container_width=True):
+        ok = _load_triage_queue_from_backend()
+        if ok:
+            st.success("Queue refreshed from news feed")
+        else:
+            st.warning("Backend unavailable — showing cached items")
 
 st.markdown('<div class="str-divider"></div>', unsafe_allow_html=True)
 

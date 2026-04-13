@@ -1085,6 +1085,15 @@ def get_coupling(assessment_id: str) -> Dict[str, Any]:
     return api_client.get_coupling(assessment_id)
 
 
+def get_latest_news(
+    category: Optional[str] = None,
+    limit: int = 20,
+    hours: int = 48,
+) -> Dict[str, Any]:
+    """Return the most recent articles from the backend news feed."""
+    return api_client.get_latest_news(category=category, limit=limit, hours=hours)
+
+
 def get_scheduler_status() -> Dict[str, Any]:
     """Return the current ingest scheduler status."""
     return api_client.get_scheduler_status()
