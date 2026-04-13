@@ -48,7 +48,7 @@ from components.proof_panel import render_proof_panel  # noqa: E402
 try:
     from streamlit_agraph import agraph, Config, Edge, Node  # type: ignore[import]
     _AGRAPH = True
-except ImportError:
+except (ImportError, AttributeError, TypeError):
     _AGRAPH = False
 
 try:
@@ -176,11 +176,12 @@ st.markdown(
 # ---------------------------------------------------------------------------
 _backend_url_raw = os.environ.get("BACKEND_URL")
 if not _backend_url_raw:
-    raise RuntimeError(
-        "BACKEND_URL environment variable is not set. "
-        "Please configure it in your deployment environment. "
-        "Expected format: https://your-backend-domain.com/api/v1"
+    st.error(
+        "**BACKEND_URL is not configured.**\n\n"
+        "Set the `BACKEND_URL` environment variable to the backend base URL "
+        "(e.g. `https://your-backend.railway.app`) and redeploy."
     )
+    st.stop()
 _backend_url = _backend_url_raw.rstrip("/")
 _api = APIClient(base_url=_backend_url)
 

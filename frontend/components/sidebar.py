@@ -32,6 +32,12 @@ from __future__ import annotations
 import streamlit as st
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_POLL_INTERVAL_SECONDS: int = 3  # seconds to wait between job-status polls
+
+# ---------------------------------------------------------------------------
 # Navigation configuration
 # ---------------------------------------------------------------------------
 
@@ -213,6 +219,9 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             st.session_state.ingest_status = None
         if "gen_assess_status" not in st.session_state:
             st.session_state.gen_assess_status = None
+        # job_id tracked across renders; None means no job in flight
+        if "gen_assess_job_id" not in st.session_state:
+            st.session_state.gen_assess_job_id = None
 
         if st.button("Force Ingest Cycle", use_container_width=True, key="sidebar_force_ingest"):
             try:
@@ -229,34 +238,48 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
             st.sidebar.caption(st.session_state.ingest_status)
 
         if st.button("Generate Assessments", use_container_width=True, key="sidebar_gen_assessments"):
+            # Submit the async job and return immediately.  Polling is done on
+            # subsequent renders (see block below) so we never block here.
             try:
-                import time as _time
                 from utils.api_client import trigger_assessment_generation as _trigger_gen
-                from utils.api_client import get_assessment_job_status as _job_status
                 _resp = _trigger_gen(min_events=1)
                 _job_id = _resp.get("job_id")
                 if not _job_id:
                     st.session_state.gen_assess_status = f"❌ Unexpected response: {_resp}"
                 else:
-                    _status: dict = {"status": "queued"}
-                    with st.sidebar:
-                        with st.spinner("Generating assessments…"):
-                            for _ in range(40):  # poll for up to 2 minutes
-                                _status = _job_status(_job_id)
-                                if _status.get("status") in ("completed", "failed", "error"):
-                                    break
-                                _time.sleep(3)
-                    if _status.get("status") == "completed":
-                        _n = _status.get("result", {}).get("generated", 0)
-                        _u = _status.get("result", {}).get("updated", 0)
-                        st.session_state.gen_assess_status = f"✅ Generated {_n} new, updated {_u} assessments"
-                    elif _status.get("status") in ("failed", "error"):
-                        _err = _status.get("error", "unknown error")
-                        st.session_state.gen_assess_status = f"❌ Generation failed: {_err}"
-                    else:
-                        st.session_state.gen_assess_status = "⏳ Generation still running — check back soon"
+                    st.session_state.gen_assess_job_id = _job_id
+                    st.session_state.gen_assess_status = "⏳ Assessment generation submitted…"
             except Exception as _exc:
                 st.session_state.gen_assess_status = f"❌ {_exc}"
+
+        # Non-blocking poll: executed once per render while a job is in flight.
+        # If the job is still running we sleep _POLL_INTERVAL_SECONDS then
+        # rerun — each render blocks for at most that many seconds, well within
+        # Streamlit / Railway health-check timeouts (previous code blocked for
+        # up to 120 s).
+        if st.session_state.gen_assess_job_id:
+            try:
+                import time as _time
+                from utils.api_client import get_assessment_job_status as _job_status
+                _poll = _job_status(st.session_state.gen_assess_job_id)
+                if _poll.get("status") == "completed":
+                    _n = _poll.get("result", {}).get("generated", 0)
+                    _u = _poll.get("result", {}).get("updated", 0)
+                    st.session_state.gen_assess_status = (
+                        f"✅ Generated {_n} new, updated {_u} assessments"
+                    )
+                    st.session_state.gen_assess_job_id = None
+                elif _poll.get("status") in ("failed", "error"):
+                    _err = _poll.get("error", "unknown error")
+                    st.session_state.gen_assess_status = f"❌ Generation failed: {_err}"
+                    st.session_state.gen_assess_job_id = None
+                else:
+                    st.session_state.gen_assess_status = "⏳ Generation running — refreshing…"
+                    _time.sleep(_POLL_INTERVAL_SECONDS)
+                    st.rerun()
+            except Exception as _exc:
+                st.session_state.gen_assess_status = f"❌ Poll error: {_exc}"
+                st.session_state.gen_assess_job_id = None
 
         if st.session_state.gen_assess_status:
             st.sidebar.caption(st.session_state.gen_assess_status)
