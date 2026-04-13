@@ -201,7 +201,7 @@ def _article_to_triage_item(article: Dict[str, Any]) -> Dict[str, Any]:
         if category and category != "general":
             domains = [category]
     item_id = hashlib.sha256(
-        f"{article.get('link', '')}{title}".encode()
+        f"{article.get('link', '')}{title}{article.get('published', '')}{article.get('source', '')}".encode()
     ).hexdigest()[:32]
     return {
         "id": item_id,
