@@ -230,13 +230,28 @@ def render_sidebar_navigation(is_subpage: bool = False) -> str:
 
         if st.button("Generate Assessments", use_container_width=True, key="sidebar_gen_assessments"):
             try:
-                from utils.api_client import generate_assessments_from_news as _gen
-                _result = _gen(min_events=1)
-                if "error" in _result:
-                    st.session_state.gen_assess_status = f"❌ {_result['error']}"
+                import time as _time
+                from utils.api_client import trigger_assessment_generation as _trigger_gen
+                from utils.api_client import get_assessment_job_status as _job_status
+                _resp = _trigger_gen(min_events=1)
+                _job_id = _resp.get("job_id")
+                if not _job_id:
+                    st.session_state.gen_assess_status = f"❌ Unexpected response: {_resp}"
                 else:
-                    _n = _result.get("generated", 0)
-                    st.session_state.gen_assess_status = f"✅ Generated {_n} new assessments"
+                    _status: dict = {"status": "queued"}
+                    with st.sidebar:
+                        with st.spinner("Generating assessments…"):
+                            for _ in range(60):  # poll for up to ~3 minutes
+                                _status = _job_status(_job_id)
+                                if _status.get("status") in ("completed", "failed"):
+                                    break
+                                _time.sleep(3)
+                    if _status.get("status") == "completed":
+                        _n = _status.get("result", {}).get("generated", 0)
+                        st.session_state.gen_assess_status = f"✅ Generated {_n} new assessments"
+                    else:
+                        _err = _status.get("error", "unknown error")
+                        st.session_state.gen_assess_status = f"❌ Generation failed: {_err}"
             except Exception as _exc:
                 st.session_state.gen_assess_status = f"❌ {_exc}"
 
