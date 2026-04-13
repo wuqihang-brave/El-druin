@@ -153,7 +153,14 @@ class NewsAggregator:
         url = source["url"]
         default_category = source.get("category", "general")
 
-        feed = feedparser.parse(url)
+        # Use the requests.Session so that the custom User-Agent header is sent
+        # and the configurable timeout is respected.  feedparser.parse() does
+        # not accept a timeout parameter, so we pre-fetch the raw content and
+        # pass it directly.  This also prevents indefinite hangs on slow feeds.
+        timeout = self._settings.news_fetch_timeout
+        response = self._session.get(url, timeout=timeout)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
         articles: List[Dict[str, Any]] = []
 
         for entry in feed.entries:

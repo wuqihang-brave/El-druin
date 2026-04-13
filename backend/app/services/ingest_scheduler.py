@@ -61,6 +61,12 @@ async def run_once_async() -> dict:
 
 def _run_once() -> dict:
     """Execute one full ingest + assessment generation cycle."""
+    # NOTE: All service imports are intentionally deferred to this function
+    # body to avoid circular-import errors at module load time.  The scheduler
+    # module is itself imported during app startup (before the service packages
+    # are fully initialised), so top-level imports would create import cycles
+    # between app.services.* and app.core.*.  Keeping imports local is the
+    # accepted pattern here — do not move them to the top of the file.
     global last_run_at, cycle_count  # noqa: PLW0603
     from app.data_ingestion.news_aggregator import NewsAggregator
     from app.services.assessment_generator import AssessmentGenerator
@@ -103,5 +109,11 @@ def _run_once() -> dict:
     )
 
     last_run_at = datetime.now(timezone.utc).replace(microsecond=0)
+    # NOTE: `last_run_at` and `cycle_count` are module-level globals that may
+    # be read by status endpoints running on the same thread (asyncio) or a
+    # different OS thread.  Simple attribute assignment and integer increment
+    # are atomic under CPython's GIL, so no explicit threading.Lock is required
+    # for these particular accesses.  If this code is ever ported to a
+    # free-threaded Python build, a lock should be added here.
     cycle_count += 1
     return result
