@@ -24,7 +24,7 @@ if BACKEND_URL.endswith("/api/v1"):
 
 # All paths in this client are relative to /api/v1.
 _DEFAULT_BASE_URL = BACKEND_URL + "/api/v1"
-_TIMEOUT = 40
+_TIMEOUT = 90
 class APIClient:
     """Thin HTTP wrapper around the EL'druin FastAPI backend."""
 

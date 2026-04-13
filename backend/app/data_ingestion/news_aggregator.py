@@ -29,16 +29,24 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default RSS sources (used when RSS_FEED_URLS env var is not set)
+#
+# Ordering rationale: reliably accessible sources come first so that even if
+# the fallback entries (BBC, NPR, AP — occasionally DNS-blocked by some HK
+# ISPs) all fail we will have already collected enough articles from the
+# reliable ones.  Set RSS_FEED_URLS env var to override this list entirely.
 # ---------------------------------------------------------------------------
 _DEFAULT_SOURCES: List[Dict[str, Any]] = [
-    # Reuters and FT removed: Reuters closed public RSS (SSLEOFError), FT requires subscription (403).
-    {"name": "AP News", "url": "https://feeds.apnews.com/rss/apf-topnews", "category": "world"},
-    {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "category": "world"},
-    {"name": "BBC Technology", "url": "http://feeds.bbci.co.uk/news/technology/rss.xml", "category": "technology"},
-    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "category": "world"},
-    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "category": "world"},
+    # --- Reliable from Hong Kong ---
+    {"name": "DW World", "url": "https://rss.dw.com/rdf/rss-en-world", "category": "world"},
+    {"name": "RFI English", "url": "https://www.rfi.fr/en/rss", "category": "world"},
+    {"name": "VOA News", "url": "https://www.voanews.com/api/zkmogvmk_q", "category": "world"},
     {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss", "category": "world"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "category": "technology"},
+    {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "category": "technology"},
+    # --- Fallbacks: may be DNS-blocked by some HK ISPs ---
+    {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "category": "world"},
+    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "category": "world"},
+    {"name": "AP News", "url": "https://feeds.apnews.com/rss/apf-topnews", "category": "world"},
 ]
 
 # Simple keyword-to-category mapping for fallback categorisation
@@ -128,6 +136,12 @@ class NewsAggregator:
                         all_articles.append(art)
             except Exception as exc:
                 logger.warning("Feed fetch failed [%s]: %s", source["name"], exc)
+
+        if not all_articles:
+            logger.warning(
+                "All RSS feeds failed — check network connectivity or set "
+                "RSS_FEED_URLS env var with accessible feeds"
+            )
 
         # Sort by published date (newest first)
         all_articles.sort(key=lambda a: a.get("published", ""), reverse=True)
