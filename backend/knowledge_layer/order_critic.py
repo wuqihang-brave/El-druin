@@ -112,16 +112,15 @@ def _build_llm(api_key: Optional[str], model: str, temperature: float) -> Any:
     except Exception:
         provider = "groq"
 
-    if provider == "deepseek":
+    if provider in ("deepseek", "openai"):
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=model,
-            temperature=temperature,
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
-        )
-    elif provider == "openai":
-        from langchain_openai import ChatOpenAI
+        if provider == "deepseek":
+            return ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+            )
         return ChatOpenAI(
             model=model,
             temperature=temperature,
