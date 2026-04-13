@@ -229,6 +229,20 @@ def _call_llm(settings: Any, prompt: str) -> str:
         response = llm.invoke([HumanMessage(content=prompt)])
         return str(response.content).strip()
 
+    if provider == "deepseek":
+        from langchain_openai import ChatOpenAI  # type: ignore[import]
+        from langchain_core.messages import HumanMessage
+
+        llm = ChatOpenAI(
+            model=getattr(settings, "llm_model", "deepseek-chat"),
+            temperature=0.4,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+            max_tokens=300,
+        )
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return str(response.content).strip()
+
     raise RuntimeError("No LLM configured")
 
 

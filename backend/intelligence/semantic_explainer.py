@@ -133,6 +133,8 @@ def _generate(
             return _call_openai(settings, user_msg)
         if settings.llm_provider == "groq":
             return _call_groq(settings, user_msg)
+        if settings.llm_provider == "deepseek":
+            return _call_deepseek(settings, user_msg)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Ontological explanation LLM call failed: %s", exc)
 
@@ -166,6 +168,25 @@ def _call_groq(settings: Any, user_msg: str) -> str:
         model=settings.llm_model,
         temperature=0.7,
         api_key=settings.groq_api_key,
+        max_tokens=250,
+    )
+    response = llm.invoke([
+        SystemMessage(content=_SYSTEM_PROMPT),
+        HumanMessage(content=user_msg),
+    ])
+    return str(response.content).strip()
+
+
+def _call_deepseek(settings: Any, user_msg: str) -> str:
+    """Call DeepSeek to generate the explanation."""
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    llm = ChatOpenAI(
+        model=settings.llm_model,
+        temperature=0.7,
+        api_key=settings.deepseek_api_key,
+        base_url=settings.deepseek_base_url,
         max_tokens=250,
     )
     response = llm.invoke([
