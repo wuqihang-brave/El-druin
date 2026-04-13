@@ -143,6 +143,12 @@ class SacredSwordAnalyzer:
         elif self._client_type == "openai":
             import openai
             self._client = openai.OpenAI(api_key=self._settings.openai_api_key)
+        elif self._client_type == "deepseek":
+            import openai
+            self._client = openai.OpenAI(
+                api_key=self._settings.deepseek_api_key,
+                base_url=self._settings.deepseek_base_url,
+            )
 
     # ------------------------------------------------------------------
     # Public entry point

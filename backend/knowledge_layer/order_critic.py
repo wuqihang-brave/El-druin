@@ -104,14 +104,31 @@ _HUMAN_PROMPT_TEMPLATE = (
 
 
 def _build_llm(api_key: Optional[str], model: str, temperature: float) -> Any:
-    """构建 ChatGroq LLM 实例。"""
-    from langchain_groq import ChatGroq
+    """Build an LLM instance supporting DeepSeek, Groq, or OpenAI."""
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        provider = settings.llm_provider
+    except Exception:
+        provider = "groq"
 
-    return ChatGroq(
-        model=model,
-        temperature=temperature,
-        api_key=api_key,
-    )
+    if provider in ("deepseek", "openai"):
+        from langchain_openai import ChatOpenAI
+        if provider == "deepseek":
+            return ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+            )
+        return ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            api_key=settings.openai_api_key,
+        )
+    else:
+        from langchain_groq import ChatGroq
+        return ChatGroq(model=model, temperature=temperature, api_key=api_key)
 
 
 class OrderCritic:
@@ -165,10 +182,14 @@ class OrderCritic:
 
     @staticmethod
     def _resolve_api_key() -> Optional[str]:
-        """从应用配置或环境变量中读取 Groq API key。"""
+        """从应用配置或环境变量中读取 API key。"""
         try:
             from app.core.config import get_settings
             settings = get_settings()
+            if settings.llm_provider == "deepseek" and settings.deepseek_api_key:
+                return settings.deepseek_api_key
+            if settings.llm_provider == "openai" and settings.openai_api_key:
+                return settings.openai_api_key
             if settings.groq_api_key:
                 return settings.groq_api_key
         except ImportError:

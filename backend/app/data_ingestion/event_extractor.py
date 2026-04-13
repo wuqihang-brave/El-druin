@@ -426,6 +426,15 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
                 api_key=settings.groq_api_key,
                 max_retries=0,   # disable built-in retries; ThreadPoolExecutor timeout is the hard cap
             )
+        elif settings.llm_provider == "deepseek":
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model=settings.llm_model,
+                temperature=settings.llm_temperature,
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+                max_retries=0,   # disable built-in retries; ThreadPoolExecutor timeout is the hard cap
+            )
         else:
             return []
 
@@ -463,12 +472,12 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
         if _is_403_error(exc):
             _llm_circuit_open = True
             logger.warning(
-                "Groq 403 received — disabling LLM for this ingest cycle"
+                "LLM 403 received — disabling LLM for this ingest cycle"
             )
             return []
         if _is_rate_limit_error(exc):
             _llm_circuit_open = True
-            logger.warning("Groq 429 rate limit hit — disabling LLM for this ingest cycle")
+            logger.warning("LLM 429 rate limit hit — disabling LLM for this ingest cycle")
             return []
         logger.warning("LLM extraction failed, falling back to rules: %s", exc)
         return []

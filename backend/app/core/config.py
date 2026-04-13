@@ -42,12 +42,16 @@ class Settings:
 
     _DEFAULT_GROQ_MODEL: ClassVar[str] = "llama-3.1-8b-instant"
     _DEFAULT_OPENAI_MODEL: ClassVar[str] = "gpt-4o-mini"
+    _DEFAULT_DEEPSEEK_MODEL: ClassVar[str] = "deepseek-chat"
+    _DEFAULT_DEEPSEEK_BASE_URL: ClassVar[str] = "https://api.deepseek.com"
 
     def __init__(self) -> None:
         # ── LLM ──────────────────────────────────────────────────────────────
         self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
         self.groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
-        # Preferred provider: "openai" | "groq" | "none"
+        self.deepseek_api_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+        self.deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", self._DEFAULT_DEEPSEEK_BASE_URL)
+        # Preferred provider: "openai" | "groq" | "deepseek" | "none"
         self.llm_provider: str = os.getenv("LLM_PROVIDER", "none")
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
@@ -60,6 +64,8 @@ class Settings:
             self.llm_model = self._DEFAULT_GROQ_MODEL
         elif self.llm_provider == "openai":
             self.llm_model = self._DEFAULT_OPENAI_MODEL
+        elif self.llm_provider == "deepseek":
+            self.llm_model = self._DEFAULT_DEEPSEEK_MODEL
         else:
             self.llm_model = self._DEFAULT_OPENAI_MODEL
 
@@ -132,6 +138,15 @@ class Settings:
                 return True
             _log.warning(
                 "LLM_ENABLED=true but GROQ_API_KEY is not set — "
+                "falling back to rule-based extraction"
+            )
+            return False
+
+        if self.llm_provider == "deepseek":
+            if self.deepseek_api_key:
+                return True
+            _log.warning(
+                "LLM_ENABLED=true but DEEPSEEK_API_KEY is not set — "
                 "falling back to rule-based extraction"
             )
             return False
