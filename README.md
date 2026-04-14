@@ -9,7 +9,7 @@
 
 > Paper: *Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs*  
 > Author: Qihang Wu — The Hong Kong Polytechnic University  
-> Repository: [https://github.com/wuqihang-brave/El-druin](https://arxiv.org/abs/2604.10087)
+> Repository: [https://arxiv.org/abs/2604.10087]
 
 
 ## ⚡ 60-Second Overview
