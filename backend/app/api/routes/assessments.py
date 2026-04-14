@@ -1756,30 +1756,57 @@ async def get_delta(assessment_id: str) -> DeltaOutput:
 
         engine = DeltaEngine()
         context = _build_assessment_context(assessment_id)
-        snapshot = AssessmentSnapshot(
-            assessment_id=assessment_id,
-            regime=_DEMO_REGIME.current_regime,
-            threshold_distance=_DEMO_REGIME.threshold_distance,
-            damping_capacity=_DEMO_REGIME.damping_capacity,
-            confidence=0.72,
-            trigger_rankings=[
-                {
-                    "name": t.name,
-                    "rank": i + 1,
-                    "amplification_factor": t.amplification_factor,
-                }
-                for i, t in enumerate(_DEMO_TRIGGERS.triggers)
-            ],
-            attractor_rankings=[
-                {
-                    "name": a.name,
-                    "rank": i + 1,
-                    "pull_strength": a.pull_strength,
-                }
-                for i, a in enumerate(_DEMO_ATTRACTORS.attractors)
-            ],
-            evidence_count=len(_DEMO_EVIDENCE.evidence),
-        )
+
+        if assessment_id == _DEMO_ID:
+            # Use the rich demo snapshot for the demo assessment.
+            snapshot = AssessmentSnapshot(
+                assessment_id=assessment_id,
+                regime=_DEMO_REGIME.current_regime,
+                threshold_distance=_DEMO_REGIME.threshold_distance,
+                damping_capacity=_DEMO_REGIME.damping_capacity,
+                confidence=0.72,
+                trigger_rankings=[
+                    {
+                        "name": t.name,
+                        "rank": i + 1,
+                        "amplification_factor": t.amplification_factor,
+                    }
+                    for i, t in enumerate(_DEMO_TRIGGERS.triggers)
+                ],
+                attractor_rankings=[
+                    {
+                        "name": a.name,
+                        "rank": i + 1,
+                        "pull_strength": a.pull_strength,
+                    }
+                    for i, a in enumerate(_DEMO_ATTRACTORS.attractors)
+                ],
+                evidence_count=len(_DEMO_EVIDENCE.evidence),
+            )
+        else:
+            # Build a snapshot from the real assessment's stored metadata so
+            # that the delta engine produces differentiated, non-demo output.
+            assessment = assessment_store.get_assessment(assessment_id)
+            regime_key = (
+                assessment.last_regime if assessment and assessment.last_regime
+                else "Stress Accumulation"
+            )
+            regime_vals = _REGIME_STATE_DEFAULTS.get(
+                regime_key, _REGIME_STATE_DEFAULTS["Stress Accumulation"]
+            )
+            confidence_val = _CONFIDENCE_VELOCITY.get(
+                assessment.last_confidence or "", 0.52
+            ) if assessment else 0.52
+            snapshot = AssessmentSnapshot(
+                assessment_id=assessment_id,
+                regime=regime_key,
+                threshold_distance=regime_vals["threshold_distance"],
+                damping_capacity=regime_vals["damping_capacity"],
+                confidence=confidence_val,
+                trigger_rankings=[],
+                attractor_rankings=[],
+                evidence_count=(assessment.alert_count or 0) if assessment else 0,
+            )
         return await engine.compute_delta(assessment_id, snapshot)
     except Exception:
         logger.warning(

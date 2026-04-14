@@ -72,11 +72,16 @@ def _run_once() -> dict:
     from app.services.assessment_generator import AssessmentGenerator
     from app.data_ingestion.event_extractor import reset_circuit as reset_event_circuit
     from app.knowledge.entity_extractor import reset_circuit as reset_entity_circuit
+    from app.knowledge.knowledge_graph import clear_seen_cache
 
     # Reset LLM circuit-breakers at the start of each cycle so transient 403s
     # from a previous cycle do not permanently suppress LLM extraction.
     reset_event_circuit()
     reset_entity_circuit()
+
+    # Clear the article-deduplication cache so the entity-extraction LLM can
+    # process articles that were skipped or failed in previous cycles.
+    clear_seen_cache()
 
     t0 = datetime.now(timezone.utc)
     agg = NewsAggregator()

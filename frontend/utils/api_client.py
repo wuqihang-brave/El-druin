@@ -1031,6 +1031,9 @@ _COUPLING_STUB: Dict[str, Any] = {
 }
 
 
+# Module-level singleton – import and use directly in Streamlit pages.
+api_client = APIClient()
+
 # ---------------------------------------------------------------------------
 # Module-level convenience functions (functional-style API)
 # ---------------------------------------------------------------------------
@@ -1117,7 +1120,3 @@ def trigger_assessment_generation(**kwargs) -> Dict[str, Any]:
 def get_assessment_job_status(job_id: str) -> Dict[str, Any]:
     """Poll the status of an async assessment-generation job."""
     return api_client.get_assessment_job_status(job_id)
-
-
-# Module-level singleton – import and use directly in Streamlit pages.
-api_client = APIClient()
