@@ -48,7 +48,7 @@ from components.proof_panel import render_proof_panel  # noqa: E402
 try:
     from streamlit_agraph import agraph, Config, Edge, Node  # type: ignore[import]
     _AGRAPH = True
-except (ImportError, AttributeError, TypeError):
+except Exception:
     _AGRAPH = False
 
 try:

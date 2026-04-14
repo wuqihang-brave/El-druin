@@ -431,6 +431,10 @@ def _stable_id(cluster_key: str) -> str:
     return "ae-" + digest[:8]
 
 
+_HIGH_RISK_DOMAINS = frozenset({"military", "sanctions", "cyber"})
+_MEDIUM_RISK_DOMAINS = frozenset({"energy", "finance", "trade"})
+
+
 class AssessmentGenerator:
     """Generates Assessment records from the news event pipeline."""
 
@@ -529,6 +533,24 @@ class AssessmentGenerator:
             now = datetime.now(tz=timezone.utc)
             existing = assessment_store.get_assessment(assessment_id)
 
+            # Infer last_confidence from cluster size so engines produce
+            # differentiated probability outputs instead of the fallback 0.52.
+            cluster_size = len(cluster)
+            if cluster_size >= 8:
+                inferred_confidence = "High"
+            elif cluster_size >= 5:
+                inferred_confidence = "Medium"
+            else:
+                inferred_confidence = "Low"
+
+            # Infer last_regime from the top domains in the cluster.
+            if any(d in _HIGH_RISK_DOMAINS for d in top_domains):
+                inferred_regime = "Nonlinear Escalation"
+            elif any(d in _MEDIUM_RISK_DOMAINS for d in top_domains):
+                inferred_regime = "Stress Accumulation"
+            else:
+                inferred_regime = "Linear"
+
             assessment = Assessment(
                 assessment_id=assessment_id,
                 title=title,
@@ -538,8 +560,8 @@ class AssessmentGenerator:
                 domain_tags=top_domains,
                 created_at=existing.created_at if existing else now,
                 updated_at=now,
-                last_regime=None,
-                last_confidence=None,
+                last_regime=inferred_regime,
+                last_confidence=inferred_confidence,
                 alert_count=len(cluster),
                 analyst_notes=analyst_notes,
             )

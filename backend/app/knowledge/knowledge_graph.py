@@ -222,3 +222,16 @@ class KnowledgeGraph:
 def get_knowledge_graph() -> KnowledgeGraph:
     """Return the cached singleton KnowledgeGraph instance."""
     return KnowledgeGraph()
+
+
+def clear_seen_cache() -> None:
+    """Clear the processed-article deduplication cache.
+
+    Call at the start of each ingest cycle so that the LLM entity-extraction
+    step re-processes articles whose entities have not yet been committed to
+    the graph (e.g. after a transient API failure in a previous cycle).
+    Article-node deduplication is handled by the KuzuDB upsert in
+    ``GraphStore.add_article``, so clearing this cache is safe.
+    """
+    global _seen_article_ids  # noqa: PLW0603
+    _seen_article_ids = set()
