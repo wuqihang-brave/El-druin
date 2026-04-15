@@ -16,7 +16,30 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001").rstrip("/")
+
+def _get_backend_url() -> str:
+    """Return the backend base URL.
+
+    Preference order:
+    1. ``st.secrets["BACKEND_URL"]`` – set in Streamlit Cloud Secrets (toml).
+    2. ``BACKEND_URL`` environment variable – used on Railway / local dev.
+    3. Hard-coded localhost fallback for local development.
+
+    The try/except is required because the Railway backend process does not run
+    Streamlit, so importing ``streamlit`` there would fail or secrets would be
+    unavailable.
+    """
+    try:
+        import streamlit as st  # noqa: PLC0415
+        secret_url = st.secrets.get("BACKEND_URL", "")
+        if secret_url:
+            return str(secret_url).rstrip("/")
+    except Exception:
+        pass
+    return os.getenv("BACKEND_URL", "http://localhost:8001").rstrip("/")
+
+
+BACKEND_URL = _get_backend_url()
 
 # Normalise: strip any trailing /api/v1 so we can unconditionally append it once.
 if BACKEND_URL.endswith("/api/v1"):

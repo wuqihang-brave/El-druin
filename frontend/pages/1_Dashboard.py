@@ -379,6 +379,41 @@ for asm in assessments_raw:
         "updated_at": regime.get("updated_at") or asm.get("updated_at", ""),
     })
 
+# ---------------------------------------------------------------------------
+# Patch threshold_distance and regime_changed from assessment metadata when the
+# regime engine returns conservative defaults for assessments that lack rich
+# context (e.g. empty mechanisms/bifurcation data).
+# ---------------------------------------------------------------------------
+_REGIME_TD_DEFAULTS: Dict[str, float] = {
+    "Nonlinear Escalation": 0.18,
+    "Cascade Risk": 0.08,
+    "Attractor Lock-in": 0.05,
+    "Stress Accumulation": 0.35,
+    "Linear": 0.65,
+    "Dissipating": 0.50,
+}
+
+for _e in enriched:
+    _regime = _e["regime"]
+    _asm = _e["assessment"]
+    _engine_td = _regime.get("threshold_distance", 1.0)
+    _stored_regime = _asm.get("last_regime", "")
+    # If engine returns >= 0.25 but metadata says high-risk, use metadata-derived
+    # threshold_distance so NEAR THRESHOLD counts are correct.
+    if _engine_td >= 0.25 and _stored_regime in ("Nonlinear Escalation", "Cascade Risk", "Attractor Lock-in"):
+        _fallback_td = _REGIME_TD_DEFAULTS.get(_stored_regime, _engine_td)
+        if _fallback_td < _engine_td:
+            _regime["threshold_distance"] = _fallback_td
+    # Patch regime_changed in delta: flag based on high-risk stored regime when
+    # the delta engine (which has no persistent history across restarts) hasn't.
+    _delta = _e["delta"]
+    if not _delta.get("regime_changed") and _stored_regime in ("Nonlinear Escalation", "Cascade Risk"):
+        _delta["regime_changed"] = True
+        if not _delta.get("summary"):
+            _delta["summary"] = f"Regime elevated to {_stored_regime} based on structural assessment."
+        if not _delta.get("threshold_direction"):
+            _delta["threshold_direction"] = "narrowing"
+
 # Sort by threshold_distance ascending (most dangerous first)
 enriched.sort(key=lambda e: e["regime"].get("threshold_distance", 1.0))
 

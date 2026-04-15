@@ -334,7 +334,18 @@ hr { border-color: var(--border) !important; opacity: 0.5; }
 """, unsafe_allow_html=True)
 
 # ── Backend setup ─────────────────────────────────────────────────────────────
-_backend_url_raw = os.environ.get("BACKEND_URL", "")
+def _get_backend_url_for_app() -> str:
+    """Return the backend URL, preferring st.secrets (Streamlit Cloud) over
+    os.environ (Railway / local).  Returns an empty string if neither is set."""
+    try:
+        secret_url = st.secrets.get("BACKEND_URL", "")
+        if secret_url:
+            return str(secret_url).rstrip("/")
+    except Exception:
+        pass
+    return os.environ.get("BACKEND_URL", "").rstrip("/")
+
+_backend_url_raw = _get_backend_url_for_app()
 if not _backend_url_raw:
     st.error("BACKEND_URL is not set.")
     st.stop()
