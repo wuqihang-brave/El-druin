@@ -44,6 +44,7 @@ from utils.api_client import (
     get_regime,
     get_attractors,
     get_latest_news,
+    get_backend_url,
 )
 
 # ---------------------------------------------------------------------------
@@ -557,7 +558,7 @@ with _tab_extraction:
     st.subheader("Manual Knowledge Extraction")
     st.caption("Extract entities and relations from text. Requires a running backend.")
 
-    _backend_url_raw = os.environ.get("BACKEND_URL")
+    _backend_url_raw = get_backend_url()
     if not _backend_url_raw:
         st.info(
             "Knowledge extraction requires a running backend.\n\n"
