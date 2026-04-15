@@ -39,6 +39,30 @@ def _get_backend_url() -> str:
     return os.getenv("BACKEND_URL", "http://localhost:8001").rstrip("/")
 
 
+def get_backend_url() -> str:
+    """Return the backend base URL for use in page modules.
+
+    Preference order:
+    1. ``st.secrets["BACKEND_URL"]`` – set in Streamlit Cloud Secrets (toml).
+    2. ``BACKEND_URL`` environment variable – used on Railway / local dev.
+    3. Empty string when neither source is configured (allows callers to
+       detect the missing-configuration case with ``if not get_backend_url()``).
+
+    Unlike the internal ``_get_backend_url()`` used by :class:`APIClient`,
+    this function deliberately has **no** localhost fallback so that pages can
+    display a meaningful "backend not configured" message when the variable is
+    absent.
+    """
+    try:
+        import streamlit as st  # noqa: PLC0415
+        secret_url = st.secrets.get("BACKEND_URL", "")
+        if secret_url:
+            return str(secret_url).rstrip("/")
+    except Exception:
+        pass
+    return os.getenv("BACKEND_URL", "").rstrip("/")
+
+
 BACKEND_URL = _get_backend_url()
 
 # Normalise: strip any trailing /api/v1 so we can unconditionally append it once.

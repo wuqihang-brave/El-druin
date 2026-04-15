@@ -40,7 +40,7 @@ _FRONTEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _FRONTEND_DIR not in sys.path:
     sys.path.insert(0, _FRONTEND_DIR)
 
-from utils.api_client import APIClient, get_assessments, get_propagation, get_triggers, get_attractors  # noqa: E402
+from utils.api_client import APIClient, get_assessments, get_propagation, get_triggers, get_attractors, get_backend_url  # noqa: E402
 from components.faceted_search import render_faceted_search  # noqa: E402
 from components.object_view import render_object_view  # noqa: E402
 from components.proof_panel import render_proof_panel  # noqa: E402
@@ -174,7 +174,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # API client
 # ---------------------------------------------------------------------------
-_backend_url_raw = os.environ.get("BACKEND_URL")
+_backend_url_raw = get_backend_url()
 if not _backend_url_raw:
     st.error(
         "**BACKEND_URL is not configured.**\n\n"
