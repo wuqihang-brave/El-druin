@@ -89,6 +89,7 @@ async def fetch_assessment_context(assessment_id: str) -> Dict[str, Any]:
     _ensure_backend_on_path()
 
     context: Dict[str, Any] = {}
+    _assessment = None  # kept for later use in deduction step
 
     # ── 1. Determine seed events ──────────────────────────────────────────
     if assessment_id == _DEMO_ASSESSMENT_ID:
@@ -99,6 +100,7 @@ async def fetch_assessment_context(assessment_id: str) -> Dict[str, Any]:
         from app.core.assessment_store import assessment_store  # noqa: PLC0415
 
         assessment = assessment_store.get_assessment(assessment_id)
+        _assessment = assessment
         if assessment is None:
             logger.info(
                 "fetch_assessment_context: assessment %s not found",
@@ -191,9 +193,34 @@ async def fetch_assessment_context(assessment_id: str) -> Dict[str, Any]:
             best_mech = max(mechanisms, key=lambda m: getattr(m, "strength", 0.5))
             alpha_prob = round(1.0 - best_mech.strength * 0.4, 3)   # higher strength → lower alpha
             beta_prob  = round(best_mech.strength * 0.5, 3)
+        elif _assessment is not None and _assessment.last_regime:
+            # Map the assessment's stored regime to plausible beta-scenario probability
+            # priors so each assessment produces differentiated deduction outputs even
+            # when no mechanism labels can be extracted.  "Dissipating" intentionally
+            # uses a low value because it indicates de-escalation, not escalation.
+            _REGIME_BETA: Dict[str, float] = {
+                "Linear": 0.15,
+                "Stress Accumulation": 0.32,
+                "Nonlinear Escalation": 0.52,
+                "Cascade Risk": 0.68,
+                "Attractor Lock-in": 0.82,
+                "Dissipating": 0.12,
+            }
+            beta_prob  = _REGIME_BETA.get(_assessment.last_regime, 0.35)
+            alpha_prob = round(1.0 - beta_prob * 0.6, 3)
+            beta_prob  = round(beta_prob, 3)
         else:
             alpha_prob = 0.65
             beta_prob  = 0.35
+
+        # Vary probabilities by alert_count so assessments with more events
+        # trend towards higher beta (escalation) probability.
+        _MAX_ALERT_BOOST = 0.15      # cap on total boost regardless of event count
+        _ALERT_BOOST_FACTOR = 0.005  # beta boost per additional alert event
+        if _assessment is not None and _assessment.alert_count:
+            alert_boost = min(_MAX_ALERT_BOOST, _assessment.alert_count * _ALERT_BOOST_FACTOR)
+            beta_prob  = round(min(0.95, beta_prob + alert_boost), 3)
+            alpha_prob = round(max(0.05, alpha_prob - alert_boost * 0.5), 3)
 
         context["deduction"] = {
             "confidence":      round((alpha_prob + beta_prob) / 2.0, 3),
