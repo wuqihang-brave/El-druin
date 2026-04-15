@@ -36,17 +36,19 @@ logger = logging.getLogger(__name__)
 # reliable ones.  Set RSS_FEED_URLS env var to override this list entirely.
 # ---------------------------------------------------------------------------
 _DEFAULT_SOURCES: List[Dict[str, Any]] = [
-    # --- Reliable from Hong Kong ---
+    # --- Reliably accessible from Hong Kong ---
     {"name": "DW World", "url": "https://rss.dw.com/rdf/rss-en-world", "category": "world"},
     {"name": "RFI English", "url": "https://www.rfi.fr/en/rss", "category": "world"},
-    {"name": "VOA News", "url": "https://www.voanews.com/api/zkmogvmk_q", "category": "world"},
     {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss", "category": "world"},
+    {"name": "Reuters World", "url": "https://feeds.reuters.com/reuters/worldnews", "category": "world"},
+    {"name": "Al Jazeera English", "url": "https://www.aljazeera.com/xml/rss/all.xml", "category": "world"},
+    {"name": "SCMP World", "url": "https://www.scmp.com/rss/2/feed", "category": "world"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "category": "technology"},
     {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "category": "technology"},
     # --- Fallbacks: may be DNS-blocked by some HK ISPs ---
     {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "category": "world"},
-    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "category": "world"},
     {"name": "AP News", "url": "https://feeds.apnews.com/rss/apf-topnews", "category": "world"},
+    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "category": "world"},
 ]
 
 # Simple keyword-to-category mapping for fallback categorisation

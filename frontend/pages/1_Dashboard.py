@@ -379,6 +379,62 @@ for asm in assessments_raw:
         "updated_at": regime.get("updated_at") or asm.get("updated_at", ""),
     })
 
+# ---------------------------------------------------------------------------
+# Patch threshold_distance and regime_changed from assessment metadata when the
+# regime engine returns conservative defaults for assessments that lack rich
+# context (e.g. empty mechanisms/bifurcation data).
+#
+# _REGIME_TD_DEFAULTS maps each regime label to a representative
+# threshold_distance used when the engine cannot compute a reliable value:
+#   - "Cascade Risk" / "Attractor Lock-in": deeply non-linear, very close to
+#     the tipping threshold (< 0.1).
+#   - "Nonlinear Escalation": in the non-linear band but not yet at cascade
+#     risk (~0.18).
+#   - "Stress Accumulation": mid-range, approaching non-linear territory (~0.35).
+#   - "Linear" / "Dissipating": comfortably away from threshold (> 0.5).
+# ---------------------------------------------------------------------------
+_REGIME_TD_DEFAULTS: Dict[str, float] = {
+    "Nonlinear Escalation": 0.18,
+    "Cascade Risk": 0.08,
+    "Attractor Lock-in": 0.05,
+    "Stress Accumulation": 0.35,
+    "Linear": 0.65,
+    "Dissipating": 0.50,
+}
+
+# Regimes where the engine's threshold_distance should be overridden when it
+# returns a value >= _ENGINE_TD_OVERRIDE_THRESHOLD (i.e., appears safe) but
+# the stored assessment regime says otherwise.
+_HIGH_RISK_REGIMES = ("Nonlinear Escalation", "Cascade Risk", "Attractor Lock-in")
+
+# Threshold_distance above which the engine's value is considered too conservative
+# to trust when the stored regime indicates high risk.
+_ENGINE_TD_OVERRIDE_THRESHOLD = 0.25  # same as the NEAR_THRESHOLD cutoff
+
+# Regimes that definitively indicate a structural regime change has occurred.
+_REGIME_SHIFTED_REGIMES = ("Nonlinear Escalation", "Cascade Risk")
+
+for _e in enriched:
+    _regime = _e["regime"]
+    _asm = _e["assessment"]
+    _engine_td = _regime.get("threshold_distance", 1.0)
+    _stored_regime = _asm.get("last_regime", "")
+    # If engine returns >= threshold but metadata says high-risk, use metadata-derived
+    # threshold_distance so NEAR THRESHOLD counts are correct.
+    if _engine_td >= _ENGINE_TD_OVERRIDE_THRESHOLD and _stored_regime in _HIGH_RISK_REGIMES:
+        _fallback_td = _REGIME_TD_DEFAULTS.get(_stored_regime, _engine_td)
+        if _fallback_td < _engine_td:
+            _regime["threshold_distance"] = _fallback_td
+    # Patch regime_changed in delta: flag based on high-risk stored regime when
+    # the delta engine (which has no persistent history across restarts) hasn't.
+    _delta = _e["delta"]
+    if not _delta.get("regime_changed") and _stored_regime in _REGIME_SHIFTED_REGIMES:
+        _delta["regime_changed"] = True
+        if not _delta.get("summary"):
+            _delta["summary"] = f"Regime elevated to {_stored_regime} based on structural assessment."
+        if not _delta.get("threshold_direction"):
+            _delta["threshold_direction"] = "narrowing"
+
 # Sort by threshold_distance ascending (most dangerous first)
 enriched.sort(key=lambda e: e["regime"].get("threshold_distance", 1.0))
 
