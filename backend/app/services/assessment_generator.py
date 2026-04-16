@@ -534,19 +534,29 @@ class AssessmentGenerator:
             assessment_id = _stable_id(cluster_key)
             title = _derive_title(cluster, top_domains)
 
-            # Title dedup: skip if an assessment with the same title already
-            # exists under a different ID (prevents near-duplicate entries).
+            # Fetch existing record once; reuse for both dedup and upsert.
             existing = assessment_store.get_assessment(assessment_id)
+            now = datetime.now(tz=timezone.utc)
+
+            # Title dedup: if the same title exists under a different ID,
+            # update that record's alert_count and updated_at instead of
+            # creating a near-duplicate entry.
             if existing is None:
                 title_duplicate = assessment_store.find_by_title(title)
                 if title_duplicate is not None:
-                    # Refresh the existing record's updated_at and alert_count
-                    # instead of creating a near-duplicate entry.
                     logger.info(
                         "AssessmentGenerator: skipping duplicate title %r "
                         "(existing id=%s)",
                         title,
                         title_duplicate.assessment_id,
+                    )
+                    # Refresh the existing record's alert_count and updated_at.
+                    from app.schemas.assessment import AssessmentUpdate  # noqa: PLC0415
+                    assessment_store.update_assessment(
+                        title_duplicate.assessment_id,
+                        AssessmentUpdate(
+                            alert_count=len(cluster),
+                        ),
                     )
                     assessment_ids.append(title_duplicate.assessment_id)
                     updated += 1
@@ -581,8 +591,6 @@ class AssessmentGenerator:
             )
             if top_events_preview:
                 analyst_notes += f". Key events: {top_events_preview}"
-
-            now = datetime.now(tz=timezone.utc)
 
             # Infer last_confidence from cluster size so engines produce
             # differentiated probability outputs instead of the fallback 0.52.

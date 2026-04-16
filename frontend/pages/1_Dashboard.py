@@ -290,7 +290,7 @@ def _load_padic_data(assessment_id: str) -> Dict[str, Any]:
         return {}
 
 
-
+def _is_stub_data(regime: Dict[str, Any]) -> bool:
     """Return True if this looks like offline stub data (assessment_id == ae-204)."""
     return regime.get("assessment_id") == "ae-204"
 

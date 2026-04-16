@@ -519,10 +519,7 @@ with _center_col:
             # Header metrics
             _ph_color = "#C8A84B" if _is_phase else "#7A8FA6"
             _ph_label = "⚡ Phase Transition" if _is_phase else "Stable"
-            _t_abs_p = _prime_p ** (
-                -sum(1 for _ in iter(lambda: _step_t % _prime_p == 0 and False or True, True))
-            ) if _step_t else 1.0
-            # Compute |t|_p properly
+            # Compute |t|_p = p^{-v_p(t)}
             _tv = _step_t
             _vp = 0
             while _tv and _tv % _prime_p == 0:
