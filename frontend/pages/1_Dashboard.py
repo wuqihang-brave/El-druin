@@ -14,6 +14,7 @@ Layout:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -47,6 +48,8 @@ from utils.api_client import (  # noqa: E402
     get_delta,
     api_client as _api_client,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CSS – mirror design tokens from app.py
@@ -286,7 +289,8 @@ def _load_padic_data(assessment_id: str) -> Dict[str, Any]:
     try:
         result = _api_client.get_probability_tree_for_assessment(assessment_id)
         return result if isinstance(result, dict) else {}
-    except Exception:
+    except Exception as exc:
+        logger.debug("p-adic data unavailable for assessment %s: %s", assessment_id, exc)
         return {}
 
 

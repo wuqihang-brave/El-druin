@@ -15,6 +15,7 @@ Layout:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import datetime
@@ -48,6 +49,8 @@ from utils.api_client import (  # noqa: E402
 )
 from components.forecast_brief import render_forecast_brief  # noqa: E402
 from components.regime_view import render_regime_view  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 try:
     from components.sidebar import render_sidebar_navigation  # noqa: E402
@@ -349,7 +352,8 @@ if _assessment_id:
         _result = _api_client.get_probability_tree_for_assessment(_assessment_id)
         if isinstance(_result, dict) and "error" not in _result:
             _padic_data = _result
-    except Exception:
+    except Exception as _exc:
+        logger.debug("p-adic data unavailable for assessment %s: %s", _assessment_id, _exc)
         _padic_data = {}
 
 _regime_name = _regime_data.get("current_regime", "\u2014") if isinstance(_regime_data, dict) else "\u2014"

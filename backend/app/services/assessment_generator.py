@@ -32,7 +32,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.schemas.assessment import Assessment, AssessmentStatus, AssessmentType
+from app.schemas.assessment import Assessment, AssessmentStatus, AssessmentType, AssessmentUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -551,7 +551,6 @@ class AssessmentGenerator:
                         title_duplicate.assessment_id,
                     )
                     # Refresh the existing record's alert_count and updated_at.
-                    from app.schemas.assessment import AssessmentUpdate  # noqa: PLC0415
                     assessment_store.update_assessment(
                         title_duplicate.assessment_id,
                         AssessmentUpdate(
