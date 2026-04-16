@@ -7,7 +7,14 @@ Bayesian-weighted probability scores to each branch.
 
 Weighting formula::
 
-    calculated_weight = confidence × source_reliability
+    calculated_weight = confidence × source_reliability × |t|_p
+
+where ``|t|_p`` is the p-adic absolute value of the current reasoning step t
+(imported from ``p_adic_confidence``).  This replaces the previous geometric
+decay ``λ^t`` with a non-Archimedean confidence factor grounded in the
+ultrametric topology of the pattern space.  Phase transitions (confidence
+jumps) occur at structurally significant steps — multiples of p — rather
+than uniformly.
 
 All branch weights are then normalised so that they sum to 1.0.
 
@@ -39,6 +46,7 @@ from intelligence.models import (
     InterpretationBranch,
     ProbabilityTree,
 )
+from intelligence.p_adic_confidence import p_adic_abs
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +130,34 @@ def _extract_entities_from_text(text: str) -> List[str]:
     return entities[:6]  # cap at 6 for brevity
 
 
+_LIE_SIM_WARNING_ISSUED = False
+
+
+def _lie_sim(A: object, B: object, C: object) -> float:
+    """Lie-algebraic similarity of the transition A, B → C.
+
+    Placeholder implementation returning 1.0 (neutral weight).  A full
+    implementation should compute the Lie bracket similarity of the pattern
+    vectors in the Lie algebra of the pattern space.
+
+    Args:
+        A: Source pattern A.
+        B: Source pattern B.
+        C: Target pattern C.
+
+    Returns:
+        Similarity scalar in (0, 1] (currently always 1.0).
+    """
+    global _LIE_SIM_WARNING_ISSUED
+    if not _LIE_SIM_WARNING_ISSUED:
+        logger.warning(
+            "lie_sim is a placeholder returning 1.0. "
+            "Implement using Lie bracket of pattern vectors."
+        )
+        _LIE_SIM_WARNING_ISSUED = True
+    return 1.0
+
+
 # ---------------------------------------------------------------------------
 # ProbabilityTreeBuilder
 # ---------------------------------------------------------------------------
@@ -134,8 +170,10 @@ class ProbabilityTreeBuilder:
     standard library and Pydantic.
     """
 
-    def __init__(self, tree_store: Optional[Path] = None) -> None:
+    def __init__(self, tree_store: Optional[Path] = None, p: int = 7, t: int = 1) -> None:
         self._tree_store: Path = tree_store or _resolve_tree_store()
+        self._p: int = p  # prime for p-adic confidence (phase-transition period)
+        self._t: int = t  # current reasoning step
         # report_id → ProbabilityTree (in-memory cache)
         self._cache: Dict[str, ProbabilityTree] = {}
 
@@ -156,8 +194,13 @@ class ProbabilityTreeBuilder:
         2. **Contradiction** – if contradiction language is detected.
         3. **Insufficient evidence** – default fallback branch.
 
-        Weights are computed as ``confidence × source_reliability``, then
-        normalised to sum to 1.0.
+        Weights are computed as::
+
+            confidence × source_reliability × |t|_p
+
+        where ``|t|_p`` is the p-adic absolute value of the current step t
+        (replacing the former geometric decay ``λ^t``).  Phase transitions
+        occur at multiples of p.  All weights are then normalised to sum to 1.0.
 
         Args:
             text: Raw news text to interpret.
@@ -171,9 +214,12 @@ class ProbabilityTreeBuilder:
         source_reliability = float(source_reliability)
         entities = _extract_entities_from_text(text)
 
+        # p-adic confidence factor for this step
+        t_abs_p = p_adic_abs(self._t, self._p)
+
         # ── Branch 1: Causal relationship ─────────────────────────────────
         causal_conf = _causal_confidence(text)
-        branch1_raw = causal_conf * source_reliability
+        branch1_raw = causal_conf * source_reliability * t_abs_p
         branch1 = InterpretationBranch(
             branch_id=1,
             interpretation="Causal relationship detected — entity A influences entity B",
@@ -183,11 +229,12 @@ class ProbabilityTreeBuilder:
             weight=0.0,  # filled after normalisation
             source_reliability=round(source_reliability, 4),
             calculated_weight=round(branch1_raw, 4),
+            p_adic_weight=round(t_abs_p, 6),
         )
 
         # ── Branch 2: Contradiction ────────────────────────────────────────
         contra_conf = _contradiction_confidence(text)
-        branch2_raw = contra_conf * source_reliability
+        branch2_raw = contra_conf * source_reliability * t_abs_p
         branch2 = InterpretationBranch(
             branch_id=2,
             interpretation="Contradiction detected — new claim opposes existing knowledge",
@@ -197,11 +244,12 @@ class ProbabilityTreeBuilder:
             weight=0.0,
             source_reliability=round(source_reliability, 4),
             calculated_weight=round(branch2_raw, 4),
+            p_adic_weight=round(t_abs_p, 6),
         )
 
         # ── Branch 3: Insufficient evidence ───────────────────────────────
         insuf_conf = 0.2
-        branch3_raw = insuf_conf * source_reliability
+        branch3_raw = insuf_conf * source_reliability * t_abs_p
         branch3 = InterpretationBranch(
             branch_id=3,
             interpretation="Insufficient evidence — text is ambiguous or uninformative",
@@ -211,6 +259,7 @@ class ProbabilityTreeBuilder:
             weight=0.0,
             source_reliability=round(source_reliability, 4),
             calculated_weight=round(branch3_raw, 4),
+            p_adic_weight=round(t_abs_p, 6),
         )
 
         branches = [branch1, branch2, branch3]
@@ -243,6 +292,9 @@ class ProbabilityTreeBuilder:
             total_probability=round(sum(b.weight for b in branches), 4),
             selected_branch=selected_id,
             reasoning_summary=summary,
+            step_t=self._t,
+            prime_p=self._p,
+            is_phase_transition=(self._t % self._p == 0),
         )
         return tree
 
