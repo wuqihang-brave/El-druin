@@ -216,6 +216,18 @@ class InterpretationBranch(BaseModel):
         ge=0.0,
         description="Raw product: confidence × source_reliability (before normalisation)",
     )
+    domain: Optional[str] = Field(
+        default=None,
+        description="Sylow-7 domain (e.g. geopolitics)",
+    )
+    mode: Optional[str] = Field(
+        default=None,
+        description="Sylow-3 mode (e.g. coercive)",
+    )
+    p_adic_weight: Optional[float] = Field(
+        default=None,
+        description="|t|_p p-adic confidence factor",
+    )
 
 
 class ProbabilityTree(BaseModel):
@@ -239,4 +251,16 @@ class ProbabilityTree(BaseModel):
     reasoning_summary: str = Field(
         default="",
         description="Plain-English explanation of why the selected branch was chosen",
+    )
+    step_t: int = Field(
+        default=1,
+        description="Current reasoning step t (for p-adic valuation)",
+    )
+    prime_p: int = Field(
+        default=7,
+        description="Prime p for p-adic confidence (encodes phase-transition period)",
+    )
+    is_phase_transition: bool = Field(
+        default=False,
+        description="True if t is a multiple of p (domain-level phase transition)",
     )
