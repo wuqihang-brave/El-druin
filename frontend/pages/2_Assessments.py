@@ -44,6 +44,7 @@ from utils.api_client import (  # noqa: E402
     get_delta,
     get_evidence,
     get_coupling,
+    get_probability_tree,
 )
 from components.forecast_brief import render_forecast_brief  # noqa: E402
 from components.regime_view import render_regime_view  # noqa: E402
@@ -340,6 +341,7 @@ _prop_data = get_propagation(_assessment_id) if _assessment_id else {}
 _brief_data = get_brief(_assessment_id) if _assessment_id else {}
 _ev_data = get_evidence(_assessment_id) if _assessment_id else {}
 _coupling_data = get_coupling(_assessment_id) if _assessment_id else {}
+_ptree_data = get_probability_tree(_assessment_id) if _assessment_id else {}
 
 _regime_name = _regime_data.get("current_regime", "\u2014") if isinstance(_regime_data, dict) else "\u2014"
 _regime_thresh = float(_regime_data.get("threshold_distance", 0)) if isinstance(_regime_data, dict) else 0.0
@@ -486,6 +488,69 @@ with _center_col:
             '<div class="aw-callout">No regime data for this assessment.</div>',
             unsafe_allow_html=True,
         )
+
+    st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # SECTION 1b - P-ADIC CONFIDENCE (collapsible, backward-compatible)
+    # -----------------------------------------------------------------------
+    with st.expander("P-ADIC CONFIDENCE", expanded=False):
+        if not _ptree_data:
+            st.markdown(
+                '<div class="aw-callout">P-adic confidence data not available for this assessment.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            _pt_step = _ptree_data.get("step_t", "N/A")
+            _pt_prime = _ptree_data.get("prime_p", "N/A")
+            _pt_phase = bool(_ptree_data.get("is_phase_transition", False))
+            _pt_branches = _ptree_data.get("interpretation_branches", [])
+
+            _phase_color = "#FFD700" if _pt_phase else "#7A8FA6"
+            _phase_label = "⚡ Phase transition step" if _pt_phase else "Normal step"
+
+            _pc1, _pc2, _pc3 = st.columns(3)
+            with _pc1:
+                st.markdown(
+                    f'<div class="aw-metric-label">Step t</div>'
+                    f'<div style="font-size:20px;font-weight:700;color:#D4DDE6">{_pt_step}</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pc2:
+                st.markdown(
+                    f'<div class="aw-metric-label">Prime p</div>'
+                    f'<div style="font-size:20px;font-weight:700;color:#D4DDE6">{_pt_prime}</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pc3:
+                st.markdown(
+                    f'<div class="aw-metric-label">Phase Transition</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:{_phase_color}">{_phase_label}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if _pt_branches:
+                st.markdown(
+                    '<div class="aw-metric-label" style="margin-top:12px">Interpretation Branches</div>',
+                    unsafe_allow_html=True,
+                )
+                _branch_labels = {1: "Causal", 2: "Contradiction", 3: "Insufficient"}
+                for _br in _pt_branches:
+                    _br_id = _br.get("branch_id", "?")
+                    _br_label = _branch_labels.get(_br_id, f"Branch {_br_id}")
+                    _br_weight = _br.get("weight", 0.0)
+                    _br_padic = _br.get("p_adic_weight")
+                    _br_conf = _br.get("confidence", 0.0)
+                    _padic_str = f"{_br_padic:.4f}" if _br_padic is not None else "N/A"
+                    st.markdown(
+                        f'<div class="aw-card-compact" style="margin-bottom:4px">'
+                        f'<span style="font-weight:600;color:#D4DDE6">{_br_label}</span>'
+                        f'  <span class="aw-metric-label">weight={_br_weight:.3f}'
+                        f'  |t|_p={_padic_str}'
+                        f'  conf={_br_conf:.2f}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
     st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
 

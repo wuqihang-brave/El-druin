@@ -110,6 +110,59 @@ def get_probability_tree(report_id: str) -> Dict[str, Any]:
     return tree.model_dump()
 
 
+@router.get("/probability-tree/assessment/{assessment_id}")
+def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
+    """Build and return a p-adic probability tree for the given assessment.
+
+    This endpoint generates a probability tree on-the-fly from the assessment's
+    title and analyst notes.  It does not persist the tree – the result is
+    computed fresh on each request.
+
+    Args:
+        assessment_id: The assessment's stable ID (e.g. ``ae-XXXXXXXX``).
+
+    Returns:
+        Serialised ``ProbabilityTree`` dict, or 404 if the assessment is unknown.
+    """
+    try:
+        from app.core.assessment_store import assessment_store as _store  # noqa: PLC0415
+
+        assessment = _store.get_assessment(assessment_id)
+        if assessment is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assessment {assessment_id!r} not found",
+            )
+
+        # Build a structured text description for the probability tree builder.
+        # Use explicit labels and sentence separators to aid keyword parsing.
+        text_parts = [assessment.title or ""]
+        if assessment.analyst_notes:
+            text_parts.append(assessment.analyst_notes)
+        if assessment.domain_tags:
+            text_parts.append("Domains: " + ", ".join(assessment.domain_tags) + ".")
+        if assessment.region_tags:
+            text_parts.append("Regions: " + ", ".join(assessment.region_tags) + ".")
+        text = " ".join(text_parts)
+
+        # Use last_confidence to derive source_reliability (High→0.85, Medium→0.70, Low→0.55)
+        _reliability_map = {"High": 0.85, "Medium": 0.70, "Low": 0.55}
+        source_reliability = _reliability_map.get(assessment.last_confidence or "", 0.70)
+
+        builder = _get_builder()
+        tree = builder.build_tree(
+            text=text,
+            source_reliability=source_reliability,
+            report_id=assessment_id,
+        )
+        return tree.model_dump()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error building probability tree for %s: %s", assessment_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 # ---------------------------------------------------------------------------
 # CLAW Integration – Tool registry and dispatch
 # ---------------------------------------------------------------------------

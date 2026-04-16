@@ -13,7 +13,7 @@ Algorithm
 1. Fetch recent articles via NewsAggregator().aggregate(limit=50, hours=N)
    (or accept a pre-fetched list to avoid a redundant HTTP round-trip).
 2. Extract events via EventExtractor().extract_from_articles(articles).
-3. Cluster events that share >=2 domain/region keywords.
+3. Cluster events that share >=3 domain/region keywords.
 4. For each cluster with >= min_events_per_cluster events:
    - Derive title from most common entity mentions + domain.
    - Set domain_tags = top-3 domains in the cluster.
@@ -350,7 +350,7 @@ def _cluster_events(
     """
     Cluster events by (domain_tags, region_tags) similarity.
 
-    Two events belong to the same cluster if they share >= 2 domain or
+    Two events belong to the same cluster if they share >= 3 domain or
     region keywords. Uses a greedy union-find approach.
     """
     n = len(events)
@@ -373,7 +373,7 @@ def _cluster_events(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if len(tags[i] & tags[j]) >= 2:
+            if len(tags[i] & tags[j]) >= 3:
                 union(i, j)
 
     clusters: dict[int, list[dict[str, Any]]] = {}
@@ -445,6 +445,7 @@ class AssessmentGenerator:
         max_assessments: int = 10,
         articles: Optional[list[dict[str, Any]]] = None,
         max_articles: int = 30,
+        max_total_assessments: int = 20,
     ) -> dict[str, Any]:
         """
         Generate or update assessments from recent news events.
@@ -458,6 +459,9 @@ class AssessmentGenerator:
                 and a second large article batch hitting the LLM).
             max_articles: Maximum articles passed to EventExtractor for LLM
                 extraction.  Caps Groq token consumption per cycle.
+            max_total_assessments: Hard cap on total assessments in the store.
+                When exceeded, the oldest assessments are evicted before
+                inserting new ones.
 
         Returns:
             Summary dict with keys ``generated``, ``updated``, ``assessment_ids``.
@@ -519,9 +523,22 @@ class AssessmentGenerator:
 
             top_domains = [d for d, _ in domain_counter.most_common(3)]
             top_regions = [r for r, _ in region_counter.most_common(3)]
-            cluster_key = "|".join(sorted(top_domains)) + ";" + "|".join(sorted(top_regions))
+
+            # Use top-2 domains and top-2 regions for a stable, less granular
+            # cluster key that reduces duplicates from minor ordering changes.
+            top_domains_key = sorted(top_domains[:2])
+            top_regions_key = sorted(top_regions[:2])
+            cluster_key = "|".join(top_domains_key) + ";" + "|".join(top_regions_key)
             assessment_id = _stable_id(cluster_key)
             title = _derive_title(cluster, top_domains)
+
+            # --- Title deduplication: skip if a same-titled assessment exists ---
+            existing_by_id = assessment_store.get_assessment(assessment_id)
+            existing_by_title = assessment_store.find_by_title(title)
+            if existing_by_title is not None and existing_by_title.assessment_id != assessment_id:
+                # Same title but different cluster key → update the existing one
+                assessment_id = existing_by_title.assessment_id
+                existing_by_id = existing_by_title
 
             domains_str = ", ".join(top_domains) if top_domains else "unknown"
             regions_str = ", ".join(top_regions) if top_regions else "unknown"
@@ -531,7 +548,7 @@ class AssessmentGenerator:
             )
 
             now = datetime.now(tz=timezone.utc)
-            existing = assessment_store.get_assessment(assessment_id)
+            existing = existing_by_id
 
             # Infer last_confidence from cluster size so engines produce
             # differentiated probability outputs instead of the fallback 0.52.
@@ -550,6 +567,19 @@ class AssessmentGenerator:
                 inferred_regime = "Stress Accumulation"
             else:
                 inferred_regime = "Linear"
+
+            # --- Global total-assessments cap: evict oldest if needed ---
+            if existing is None:
+                current_count = assessment_store.count()
+                if current_count >= max_total_assessments:
+                    to_evict = current_count - max_total_assessments + 1
+                    assessment_store.delete_oldest(to_evict)
+                    logger.info(
+                        "AssessmentGenerator: evicted %d oldest assessment(s) "
+                        "to stay within max_total=%d",
+                        to_evict,
+                        max_total_assessments,
+                    )
 
             assessment = Assessment(
                 assessment_id=assessment_id,

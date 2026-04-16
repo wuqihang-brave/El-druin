@@ -771,6 +771,18 @@ class APIClient:
             return _COUPLING_STUB
         return result
 
+    def get_probability_tree(self, assessment_id: str) -> Dict[str, Any]:
+        """Return p-adic probability tree for an assessment.
+
+        Calls GET /api/v1/intelligence/probability-tree/assessment/{assessment_id}.
+        Returns an empty dict (not a stub) when the backend cannot provide data,
+        so callers can detect the absence and skip rendering gracefully.
+        """
+        result = self._get(f"/intelligence/probability-tree/assessment/{assessment_id}")
+        if "error" in result:
+            return {}
+        return result
+
     # ------------------------------------------------------------------
     # Scheduler endpoints
     # ------------------------------------------------------------------
@@ -1133,6 +1145,11 @@ def get_evidence(assessment_id: str) -> Dict[str, Any]:
 def get_coupling(assessment_id: str) -> Dict[str, Any]:
     """Return the structural coupling pairs for an assessment."""
     return api_client.get_coupling(assessment_id)
+
+
+def get_probability_tree(assessment_id: str) -> Dict[str, Any]:
+    """Return p-adic probability tree for an assessment."""
+    return api_client.get_probability_tree(assessment_id)
 
 
 def get_latest_news(
