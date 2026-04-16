@@ -130,6 +130,9 @@ def _extract_entities_from_text(text: str) -> List[str]:
     return entities[:6]  # cap at 6 for brevity
 
 
+_LIE_SIM_WARNING_ISSUED = False
+
+
 def _lie_sim(A: object, B: object, C: object) -> float:
     """Lie-algebraic similarity of the transition A, B → C.
 
@@ -145,11 +148,13 @@ def _lie_sim(A: object, B: object, C: object) -> float:
     Returns:
         Similarity scalar in (0, 1] (currently always 1.0).
     """
-    logger.warning(
-        "lie_sim(%s, %s, %s) is a placeholder — returns 1.0. "
-        "Implement using Lie bracket of pattern vectors.",
-        A, B, C,
-    )
+    global _LIE_SIM_WARNING_ISSUED
+    if not _LIE_SIM_WARNING_ISSUED:
+        logger.warning(
+            "lie_sim is a placeholder returning 1.0. "
+            "Implement using Lie bracket of pattern vectors."
+        )
+        _LIE_SIM_WARNING_ISSUED = True
     return 1.0
 
 

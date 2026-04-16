@@ -90,26 +90,18 @@ class TestEdgeCases:
         assert bifurcation_detected(pi, k0=0, p=7) is True
 
     def test_different_prime_p5(self):
-        # Difference = 5/100 = 1/20 → numerator=1 under p=5 → v_5(1)=0 < 1
+        # 55/100 - 50/100 = 5/100 = 1/20 → reduced numerator = 1
+        # v_5(1) = 0 < k0=1 → no bifurcation
         from fractions import Fraction
         w1 = float(Fraction(55, 100))
-        w2 = float(Fraction(50, 100))  # diff = 5/100 = 1/20 → num=1
+        w2 = float(Fraction(50, 100))
         pi = {"A": w1, "B": w2}
-        # With p=5: v_5(1) = 0 < 1 → no bifurcation after reduction
-        # Note: 5/100 = 1/20, numerator=1
         assert bifurcation_detected(pi, k0=1, p=5) is False
 
     def test_different_prime_p5_divisible(self):
-        # Difference numerator = 5 → v_5(5) = 1 ≥ k0=1
+        # 25/100 - 0/100 = 25/100 = 1/4 → reduced numerator = 1
+        # v_5(1) = 0 < k0=1 → no bifurcation (fraction reduces away the factor of 5)
         from fractions import Fraction
-        w1 = float(Fraction(105, 1000))
-        w2 = float(Fraction(100, 1000))  # diff = 5/1000 = 1/200 → num=1
-        pi = {"A": w1, "B": w2}
-        # 5/1000 = 1/200 after reduction → v_5(1) = 0 < 1
-        # To get v_5(numerator) = 1 we need numerator divisible by 5
-        # Let's use 5/100 which reduces to 1/20 — numerator 1
-        # Instead try 25/1000 = 1/40 → no
-        # Best: use exact fractions
         w1b = float(Fraction(25, 100))
         w2b = float(Fraction(0, 100))
         pi2 = {"A": w1b, "B": w2b}
