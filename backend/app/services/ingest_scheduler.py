@@ -102,8 +102,9 @@ def _run_once() -> dict:
     # NewsAggregator request that would trigger another 200-article LLM burst.
     result = AssessmentGenerator().generate_from_news(
         hours=48,
-        articles=articles,   # reuse already-fetched articles; skip second aggregation
-        max_articles=30,     # limit EventExtractor to at most 30 articles
+        articles=articles,       # reuse already-fetched articles; skip second aggregation
+        max_articles=30,         # limit EventExtractor to at most 30 articles
+        max_total_assessments=20,  # global cap to keep store bounded
     )
     elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
     logger.info(

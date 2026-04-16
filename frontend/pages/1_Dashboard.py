@@ -45,6 +45,7 @@ from utils.api_client import (  # noqa: E402
     get_triggers,
     get_attractors,
     get_delta,
+    api_client as _api_client,
 )
 
 # ---------------------------------------------------------------------------
@@ -279,7 +280,17 @@ def _load_assessment_data(assessment_id: str) -> Dict[str, Any]:
     }
 
 
-def _is_stub_data(regime: Dict[str, Any]) -> bool:
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
+def _load_padic_data(assessment_id: str) -> Dict[str, Any]:
+    """Load p-adic probability tree data for one assessment, cached 5 min."""
+    try:
+        result = _api_client.get_probability_tree_for_assessment(assessment_id)
+        return result if isinstance(result, dict) else {}
+    except Exception:
+        return {}
+
+
+
     """Return True if this looks like offline stub data (assessment_id == ae-204)."""
     return regime.get("assessment_id") == "ae-204"
 
@@ -335,14 +346,15 @@ def _fmt_updated(updated_at: str) -> str:
 
 
 def _thresh_bar_html(threshold_distance: float, regime: str) -> str:
-    fill = max(0.0, min(1.0, 1.0 - threshold_distance))
-    pct = int(fill * 100)
+    # Display threshold_distance directly as percentage.
+    # Lower value = closer to threshold = more dangerous.
+    pct = int(round(max(0.0, min(1.0, threshold_distance)) * 100))
     color = _THRESH_BAR_COLOR.get(regime, "#4A8FD4")
     return (
         f'<div class="thresh-wrap">'
         f'<div class="thresh-bar" style="width:{pct}%;background:{color};"></div>'
         f'</div>'
-        f'<span style="font-size:11px;color:#D4DDE6;">{pct}%</span>'
+        f'<span style="font-size:11px;color:#D4DDE6;" title="Distance to threshold — lower = more dangerous">{pct}%</span>'
     )
 
 
@@ -377,6 +389,7 @@ for asm in assessments_raw:
         "attractors": attractors_data.get("attractors", []),
         "delta": delta,
         "updated_at": regime.get("updated_at") or asm.get("updated_at", ""),
+        "padic": _load_padic_data(aid) if aid else {},
     })
 
 # ---------------------------------------------------------------------------
@@ -409,7 +422,7 @@ _HIGH_RISK_REGIMES = ("Nonlinear Escalation", "Cascade Risk", "Attractor Lock-in
 
 # Threshold_distance above which the engine's value is considered too conservative
 # to trust when the stored regime indicates high risk.
-_ENGINE_TD_OVERRIDE_THRESHOLD = 0.25  # same as the NEAR_THRESHOLD cutoff
+_ENGINE_TD_OVERRIDE_THRESHOLD = 0.90  # only override when engine returns obviously wrong value
 
 # Regimes that definitively indicate a structural regime change has occurred.
 _REGIME_SHIFTED_REGIMES = ("Nonlinear Escalation", "Cascade Risk")
@@ -582,7 +595,7 @@ if not enriched:
 else:
     # Table header
     hdr_cols = st.columns([3, 2, 2, 3, 2, 2, 1])
-    labels = ["Assessment", "Regime", "Threshold", "Top Trigger (amp)", "Top Attractor", "Delta", ""]
+    labels = ["Assessment", "Regime", "Threshold ↓danger", "Top Trigger (amp)", "Top Attractor", "Delta", ""]
     for col, lbl in zip(hdr_cols, labels):
         with col:
             st.markdown(
@@ -598,10 +611,15 @@ else:
         delta = e["delta"]
         triggers = e["triggers"]
         attractors = e["attractors"]
+        padic = e.get("padic", {})
         aid = asm.get("assessment_id", "")
         title = asm.get("title", "—")
         regime_label = regime.get("current_regime", "Linear")
         thresh_dist = regime.get("threshold_distance", 1.0)
+
+        # p-adic phase transition indicator
+        is_phase_transition = padic.get("is_phase_transition", False) if padic else False
+        phase_icon = ' <span title="p-adic phase transition step">⚡</span>' if is_phase_transition else ""
 
         # Top trigger
         top_trig = triggers[0] if triggers else None
@@ -648,7 +666,7 @@ else:
         with row_cols[2]:
             thresh_html = _thresh_bar_html(thresh_dist, regime_label)
             st.markdown(
-                f'<div style="padding:6px 0;">{thresh_html}</div>',
+                f'<div style="padding:6px 0;">{thresh_html}{phase_icon}</div>',
                 unsafe_allow_html=True,
             )
 

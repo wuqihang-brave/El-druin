@@ -262,6 +262,49 @@ class AssessmentStore:
             conn.commit()
         return cursor.rowcount > 0
 
+    def count(self) -> int:
+        """Return the total number of assessments in the store."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM assessments").fetchone()
+        return int(row[0]) if row else 0
+
+    def delete_oldest(self, n: int) -> int:
+        """Delete the *n* oldest assessments (by created_at ASC).
+
+        Returns the number of rows actually deleted.
+        """
+        if n <= 0:
+            return 0
+        with self._connect() as conn:
+            # Fetch the IDs of the n oldest assessments
+            rows = conn.execute(
+                "SELECT assessment_id FROM assessments ORDER BY created_at ASC LIMIT ?",
+                (n,),
+            ).fetchall()
+            ids = [r[0] for r in rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" * len(ids))
+            cursor = conn.execute(
+                f"DELETE FROM assessments WHERE assessment_id IN ({placeholders})",  # noqa: S608
+                ids,
+            )
+            conn.commit()
+        deleted = cursor.rowcount
+        logger.info("AssessmentStore: deleted %d oldest assessment(s)", deleted)
+        return deleted
+
+    def find_by_title(self, title: str) -> Optional[Assessment]:
+        """Return an assessment with an exactly matching title, or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM assessments WHERE title = ? LIMIT 1",
+                (title,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _row_to_assessment(row)
+
     def upsert_assessment(self, assessment: Assessment) -> Assessment:
         """Insert or replace an assessment record (used by the auto-generation service)."""
         with self._connect() as conn:

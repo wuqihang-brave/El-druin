@@ -13,7 +13,7 @@ Algorithm
 1. Fetch recent articles via NewsAggregator().aggregate(limit=50, hours=N)
    (or accept a pre-fetched list to avoid a redundant HTTP round-trip).
 2. Extract events via EventExtractor().extract_from_articles(articles).
-3. Cluster events that share >=2 domain/region keywords.
+3. Cluster events that share >=3 domain/region keywords.
 4. For each cluster with >= min_events_per_cluster events:
    - Derive title from most common entity mentions + domain.
    - Set domain_tags = top-3 domains in the cluster.
@@ -350,8 +350,10 @@ def _cluster_events(
     """
     Cluster events by (domain_tags, region_tags) similarity.
 
-    Two events belong to the same cluster if they share >= 2 domain or
-    region keywords. Uses a greedy union-find approach.
+    Two events belong to the same cluster if they share >= 3 domain or
+    region keywords. Using a higher threshold (3 vs the previous 2) reduces
+    over-splitting and duplicate assessment generation.  Uses a greedy
+    union-find approach.
     """
     n = len(events)
     parent = list(range(n))
@@ -373,7 +375,7 @@ def _cluster_events(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if len(tags[i] & tags[j]) >= 2:
+            if len(tags[i] & tags[j]) >= 3:
                 union(i, j)
 
     clusters: dict[int, list[dict[str, Any]]] = {}
@@ -443,6 +445,7 @@ class AssessmentGenerator:
         hours: int = 48,
         min_events_per_cluster: int = 3,
         max_assessments: int = 10,
+        max_total_assessments: int = 20,
         articles: Optional[list[dict[str, Any]]] = None,
         max_articles: int = 30,
     ) -> dict[str, Any]:
@@ -453,6 +456,10 @@ class AssessmentGenerator:
             hours: Look-back window in hours for news articles.
             min_events_per_cluster: Minimum events needed to form a cluster.
             max_assessments: Cap on newly generated assessments per run.
+            max_total_assessments: Global cap on total assessments in the store.
+                When the store already contains this many assessments the oldest
+                ones are pruned before new ones are inserted, preventing
+                unbounded growth from repeated "Generate Assessments" clicks.
             articles: Optional pre-fetched article list.  When provided the
                 NewsAggregator fetch is skipped (avoids a redundant round-trip
                 and a second large article batch hitting the LLM).
@@ -517,21 +524,65 @@ class AssessmentGenerator:
                 for r in _extract_regions_from_event(ev):
                     region_counter[r] += 1
 
+            # Use top-2 domains and top-2 regions for stable cluster_key,
+            # reducing random ordering variation that causes duplicate IDs.
             top_domains = [d for d, _ in domain_counter.most_common(3)]
             top_regions = [r for r, _ in region_counter.most_common(3)]
-            cluster_key = "|".join(sorted(top_domains)) + ";" + "|".join(sorted(top_regions))
+            top_domains_key = sorted(top_domains[:2])
+            top_regions_key = sorted(top_regions[:2])
+            cluster_key = "|".join(top_domains_key) + ";" + "|".join(top_regions_key)
             assessment_id = _stable_id(cluster_key)
             title = _derive_title(cluster, top_domains)
 
+            # Title dedup: skip if an assessment with the same title already
+            # exists under a different ID (prevents near-duplicate entries).
+            existing = assessment_store.get_assessment(assessment_id)
+            if existing is None:
+                title_duplicate = assessment_store.find_by_title(title)
+                if title_duplicate is not None:
+                    # Refresh the existing record's updated_at and alert_count
+                    # instead of creating a near-duplicate entry.
+                    logger.info(
+                        "AssessmentGenerator: skipping duplicate title %r "
+                        "(existing id=%s)",
+                        title,
+                        title_duplicate.assessment_id,
+                    )
+                    assessment_ids.append(title_duplicate.assessment_id)
+                    updated += 1
+                    continue
+
+            # Enforce global total cap: prune oldest assessments when needed
+            # so repeated runs don't accumulate unbounded entries.
+            if existing is None:
+                current_total = assessment_store.count()
+                if current_total >= max_total_assessments:
+                    to_delete = current_total - max_total_assessments + 1
+                    assessment_store.delete_oldest(to_delete)
+                    logger.info(
+                        "AssessmentGenerator: pruned %d oldest assessment(s) "
+                        "to enforce max_total=%d",
+                        to_delete,
+                        max_total_assessments,
+                    )
+
             domains_str = ", ".join(top_domains) if top_domains else "unknown"
             regions_str = ", ".join(top_regions) if top_regions else "unknown"
+            # Include top event descriptions so trigger_engine has
+            # differentiated input per assessment.
+            top_events_preview = "; ".join(
+                ev.get("description", ev.get("title", ""))[:80]
+                for ev in cluster[:3]
+                if ev.get("description") or ev.get("title")
+            )
             analyst_notes = (
                 f"Auto-generated from {len(cluster)} events in "
                 f"domains: {domains_str} / regions: {regions_str}"
             )
+            if top_events_preview:
+                analyst_notes += f". Key events: {top_events_preview}"
 
             now = datetime.now(tz=timezone.utc)
-            existing = assessment_store.get_assessment(assessment_id)
 
             # Infer last_confidence from cluster size so engines produce
             # differentiated probability outputs instead of the fallback 0.52.

@@ -44,6 +44,7 @@ from utils.api_client import (  # noqa: E402
     get_delta,
     get_evidence,
     get_coupling,
+    api_client as _api_client,
 )
 from components.forecast_brief import render_forecast_brief  # noqa: E402
 from components.regime_view import render_regime_view  # noqa: E402
@@ -341,6 +342,16 @@ _brief_data = get_brief(_assessment_id) if _assessment_id else {}
 _ev_data = get_evidence(_assessment_id) if _assessment_id else {}
 _coupling_data = get_coupling(_assessment_id) if _assessment_id else {}
 
+# p-adic probability tree (backward compatible: {} if unavailable)
+_padic_data: Dict[str, Any] = {}
+if _assessment_id:
+    try:
+        _result = _api_client.get_probability_tree_for_assessment(_assessment_id)
+        if isinstance(_result, dict) and "error" not in _result:
+            _padic_data = _result
+    except Exception:
+        _padic_data = {}
+
 _regime_name = _regime_data.get("current_regime", "\u2014") if isinstance(_regime_data, dict) else "\u2014"
 _regime_thresh = float(_regime_data.get("threshold_distance", 0)) if isinstance(_regime_data, dict) else 0.0
 _regime_color = _REGIME_COLORS.get(_regime_name, "#6b7280")
@@ -486,6 +497,111 @@ with _center_col:
             '<div class="aw-callout">No regime data for this assessment.</div>',
             unsafe_allow_html=True,
         )
+
+    st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # P-ADIC CONFIDENCE (collapsed)
+    # -----------------------------------------------------------------------
+    with st.expander("P-ADIC CONFIDENCE", expanded=False):
+        if not _padic_data:
+            st.markdown(
+                '<div style="font-size:12px;color:#7A8FA6;font-style:italic">'
+                'P-adic confidence data unavailable for this assessment.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            _step_t = _padic_data.get("step_t", 1)
+            _prime_p = _padic_data.get("prime_p", 7)
+            _is_phase = _padic_data.get("is_phase_transition", False)
+            _branches = _padic_data.get("interpretation_branches", [])
+
+            # Header metrics
+            _ph_color = "#C8A84B" if _is_phase else "#7A8FA6"
+            _ph_label = "⚡ Phase Transition" if _is_phase else "Stable"
+            _t_abs_p = _prime_p ** (
+                -sum(1 for _ in iter(lambda: _step_t % _prime_p == 0 and False or True, True))
+            ) if _step_t else 1.0
+            # Compute |t|_p properly
+            _tv = _step_t
+            _vp = 0
+            while _tv and _tv % _prime_p == 0:
+                _tv //= _prime_p
+                _vp += 1
+            _t_abs_p_val = float(_prime_p) ** (-_vp) if _vp > 0 else 1.0
+
+            _pm1, _pm2, _pm3, _pm4 = st.columns(4)
+            with _pm1:
+                st.markdown(
+                    f'<div class="aw-metric-card">'
+                    f'<div class="aw-metric-label">Step t</div>'
+                    f'<div class="aw-metric-value">{_step_t}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pm2:
+                st.markdown(
+                    f'<div class="aw-metric-card">'
+                    f'<div class="aw-metric-label">Prime p</div>'
+                    f'<div class="aw-metric-value">{_prime_p}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pm3:
+                st.markdown(
+                    f'<div class="aw-metric-card">'
+                    f'<div class="aw-metric-label">|t|_p</div>'
+                    f'<div class="aw-metric-value">{_t_abs_p_val:.4f}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pm4:
+                st.markdown(
+                    f'<div class="aw-metric-card">'
+                    f'<div class="aw-metric-label">Phase State</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:{_ph_color}">{_ph_label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if _branches:
+                st.markdown(
+                    '<div class="aw-metric-label" style="margin-top:10px">Interpretation Branches</div>',
+                    unsafe_allow_html=True,
+                )
+                for _br in _branches:
+                    _br_id = _br.get("branch_id", "?")
+                    _br_interp = _br.get("interpretation", "—")
+                    _br_weight = float(_br.get("p_adic_weight", 0))
+                    _br_conf = float(_br.get("confidence", 0))
+                    _br_domain = _br.get("domain", "")
+                    _br_mode = _br.get("mode", "")
+                    _br_calc = float(_br.get("calculated_weight", 0))
+                    _br_norm = float(_br.get("weight", 0))
+                    _w_bar = min(int(round(_br_norm * 100)), 100)
+                    st.markdown(
+                        f'<div class="aw-card-compact" style="margin-bottom:6px">'
+                        f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+                        f'<div style="font-size:11px;color:#D4DDE6;font-weight:600;flex:1">'
+                        f'Branch {_br_id}: {_br_interp}</div>'
+                        f'<div style="font-size:10px;color:#7A8FA6;margin-left:8px">'
+                        f'|t|_p weight: <span style="color:#C8A84B;font-weight:700">{_br_weight:.4f}</span>'
+                        f'</div></div>'
+                        f'<div style="margin-top:6px;display:flex;gap:12px">'
+                        f'<span style="font-size:10px;color:#7A8FA6">Confidence: '
+                        f'<span style="color:#D4DDE6;font-weight:600">{_br_conf:.0%}</span></span>'
+                        f'<span style="font-size:10px;color:#7A8FA6">Normalised weight: '
+                        f'<span style="color:#D4DDE6;font-weight:600">{_br_norm:.3f}</span></span>'
+                        + (f'<span class="aw-domain-badge">{_br_domain}</span>' if _br_domain else "")
+                        + (f'<span class="aw-domain-badge">{_br_mode}</span>' if _br_mode else "")
+                        + f'</div>'
+                        f'<div style="background:#2D3F52;border-radius:2px;height:4px;'
+                        f'overflow:hidden;margin-top:6px;max-width:200px">'
+                        f'<div style="width:{_w_bar}%;background:#4A8FD4;height:100%"></div>'
+                        f'</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
     st.markdown('<div class="aw-divider"></div>', unsafe_allow_html=True)
 

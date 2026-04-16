@@ -110,9 +110,69 @@ def get_probability_tree(report_id: str) -> Dict[str, Any]:
     return tree.model_dump()
 
 
-# ---------------------------------------------------------------------------
-# CLAW Integration – Tool registry and dispatch
-# ---------------------------------------------------------------------------
+@router.get("/probability-tree-for-assessment/{assessment_id}")
+def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
+    """Build or retrieve a probability tree keyed by assessment ID.
+
+    Uses the assessment's ``analyst_notes`` as source text.  The tree is
+    stored with ``assessment_id`` as the ``report_id`` so repeated requests
+    return the cached result without rebuilding.
+
+    Args:
+        assessment_id: The assessment's stable identifier (e.g. "ae-204").
+
+    Returns:
+        Serialised ``ProbabilityTree`` dict.  Returns ``is_phase_transition``,
+        ``step_t``, ``prime_p``, and ``interpretation_branches`` fields that
+        the frontend uses for the p-adic confidence panel.
+    """
+    _ensure_intelligence_importable()
+    builder = _get_builder()
+
+    # Return cached tree if already built for this assessment
+    existing = builder.get_tree(assessment_id)
+    if existing is not None:
+        return existing.model_dump()
+
+    # Load assessment text from store
+    try:
+        from app.core.assessment_store import assessment_store  # noqa: PLC0415
+        assessment = assessment_store.get_assessment(assessment_id)
+    except Exception as exc:
+        logger.warning("Could not load assessment %s: %s", assessment_id, exc)
+        assessment = None
+
+    if assessment is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Assessment {assessment_id!r} not found",
+        )
+
+    source_text = assessment.analyst_notes or assessment.title or ""
+    source_reliability = {
+        "High": 0.85,
+        "Medium": 0.65,
+        "Low": 0.40,
+    }.get(str(assessment.last_confidence), 0.60)
+
+    try:
+        tree = builder.build_tree(
+            text=source_text,
+            source_reliability=source_reliability,
+            report_id=assessment_id,
+        )
+        builder.store_tree(tree)
+        return tree.model_dump()
+    except Exception as exc:
+        logger.error(
+            "Failed to build probability tree for assessment %s: %s",
+            assessment_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 
 class ToolDispatchRequest(BaseModel):
     """Request body for dispatching a single registered CLAW tool."""

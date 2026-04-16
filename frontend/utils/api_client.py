@@ -436,6 +436,23 @@ class APIClient:
         """
         return self._get(f"/intelligence/probability-tree/{report_id}")
 
+    def get_probability_tree_for_assessment(self, assessment_id: str) -> Dict[str, Any]:
+        """Build or retrieve a probability tree for a given assessment.
+
+        Unlike :meth:`get_probability_tree`, this method accepts a stable
+        assessment ID and builds the tree on demand using the assessment's
+        analyst notes as source text.  The result is cached server-side so
+        repeated calls are inexpensive.
+
+        Args:
+            assessment_id: Stable assessment identifier (e.g. ``"ae-204"``).
+
+        Returns:
+            Serialised ``ProbabilityTree`` dict including ``is_phase_transition``,
+            ``step_t``, ``prime_p`` and ``interpretation_branches`` fields.
+        """
+        return self._get(f"/intelligence/probability-tree-for-assessment/{assessment_id}")
+
     def get_audit_log(self, limit: int = 20) -> Dict[str, Any]:
         """Return the most recent completed reasoning paths.
 
