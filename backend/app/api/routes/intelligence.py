@@ -134,16 +134,13 @@ def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
                 detail=f"Assessment {assessment_id!r} not found",
             )
 
-        # Build a structured text description for the probability tree builder.
-        # Use explicit labels and sentence separators to aid keyword parsing.
-        text_parts = [assessment.title or ""]
-        if assessment.analyst_notes:
-            text_parts.append(assessment.analyst_notes)
-        if assessment.domain_tags:
-            text_parts.append("Domains: " + ", ".join(assessment.domain_tags) + ".")
-        if assessment.region_tags:
-            text_parts.append("Regions: " + ", ".join(assessment.region_tags) + ".")
-        text = " ".join(text_parts)
+        # PATCHED: use rich text builder so ProbabilityTreeBuilder keywords fire
+        import sys as _sys, os as _os  # noqa: PLC0415
+        _backend_dir = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+        if _backend_dir not in _sys.path:
+            _sys.path.insert(0, _backend_dir)
+        from assessments_patch import build_probability_tree_text  # noqa: PLC0415
+        text = build_probability_tree_text(assessment)
 
         # Use last_confidence to derive source_reliability (High→0.85, Medium→0.70, Low→0.55)
         _reliability_map = {"High": 0.85, "Medium": 0.70, "Low": 0.55}

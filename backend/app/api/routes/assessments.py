@@ -40,6 +40,7 @@ from app.schemas.assessment import (
     AssessmentUpdate,
 )
 from app.core.assessment_store import assessment_store
+from assessments_patch import fetch_assessment_context_v2, build_regime_implication  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -1345,95 +1346,8 @@ async def _fetch_assessment_context(assessment_id: str) -> dict[str, Any]:
             },
         }
 
-    # For real assessments, fetch from store and build a usable context
-    assessment = assessment_store.get_assessment(assessment_id)
-    if assessment is None:
-        return {}
-
-    domain_tags = list(assessment.domain_tags or [])
-    region_tags = list(assessment.region_tags or [])
-    analyst_notes = assessment.analyst_notes or ""
-
-    # Derive base velocity from last_confidence and alert_count
-    base_velocity = _CONFIDENCE_VELOCITY.get(assessment.last_confidence or "", 0.52)
-    alert_boost = min(0.15, (assessment.alert_count or 0) * 0.03)
-
-    # Synthesise events from assessment metadata
-    events: list[dict[str, Any]] = []
-    event_confidence = round(min(0.90, base_velocity + alert_boost), 2)
-    if analyst_notes:
-        events.append(
-            {
-                "name": assessment.title,
-                "title": assessment.title,
-                "text": analyst_notes,
-                "domains": domain_tags,
-                "entities": region_tags,
-                "source_reliability": round(min(0.90, base_velocity + 0.05), 2),
-                "causal_weight": round(min(0.85, base_velocity + alert_boost), 2),
-                "confidence": event_confidence,
-            }
-        )
-    if domain_tags and region_tags:
-        summary_text = (
-            f"Structural activity detected across {', '.join(domain_tags)} domains "
-            f"in {', '.join(region_tags)} regions."
-        )
-        events.append(
-            {
-                "name": f"{assessment.title} – structural signal",
-                "title": f"{assessment.title} – structural signal",
-                "text": summary_text,
-                "domains": domain_tags,
-                "entities": region_tags,
-                "source_reliability": round(min(0.85, base_velocity), 2),
-                "causal_weight": round(min(0.80, base_velocity + alert_boost - 0.05), 2),
-                "confidence": round(min(0.85, event_confidence - 0.05), 2),
-            }
-        )
-
-    # Build velocity data varying by domain priority and assessment confidence
-    velocity_data = {}
-    for i, d in enumerate(domain_tags):
-        v = base_velocity + alert_boost - (i * 0.06)
-        velocity_data[d] = round(max(0.20, min(0.95, v)), 2)
-
-    # Populate ontology_activations with domain-appropriate patterns
-    ontology_activations: dict[str, float] = {}
-    for i, d in enumerate(domain_tags[:3]):
-        patterns = _DOMAIN_ONTOLOGY_PATTERNS.get(d, [f"{d.title()} Structural Pattern"])
-        activation = base_velocity + alert_boost - (i * 0.08)
-        ontology_activations[patterns[0]] = round(max(0.35, min(0.90, activation)), 2)
-
-    # Build KG paths between domain pairs
-    kg_paths: list[dict[str, Any]] = []
-    for i in range(len(domain_tags) - 1):
-        kg_paths.append({
-            "from_entity": f"{domain_tags[i].title()} Sector",
-            "to_entity": f"{domain_tags[i + 1].title()} Sector",
-            "relation": "AFFECTS",
-            "domain": domain_tags[i],
-            "strength": round(max(0.40, 0.75 - i * 0.10), 2),
-        })
-
-    # Build regime_state from assessment's last_regime
-    last_regime = assessment.last_regime or "Stress Accumulation"
-    regime_defaults = _REGIME_STATE_DEFAULTS.get(last_regime, _REGIME_STATE_DEFAULTS["Stress Accumulation"])
-    regime_state = {
-        "regime": last_regime,
-        "damping_capacity": round(max(0.10, regime_defaults["damping_capacity"] - alert_boost), 2),
-        "reversibility_index": round(max(0.10, regime_defaults["reversibility_index"] - alert_boost * 0.5), 2),
-        "threshold_distance": round(max(0.05, regime_defaults["threshold_distance"] - alert_boost), 2),
-    }
-
-    return {
-        "events": events,
-        "kg_paths": kg_paths,
-        "causal_weights": {ev["name"]: ev["causal_weight"] for ev in events},
-        "velocity_data": velocity_data,
-        "ontology_activations": ontology_activations,
-        "regime_state": regime_state,
-    }
+    # PATCHED: delegate to rich context builder (assessments_patch.py)
+    return await fetch_assessment_context_v2(assessment_id)
 
 
 def _build_assessment_context(assessment_id: str) -> dict:
