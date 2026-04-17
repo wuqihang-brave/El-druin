@@ -135,10 +135,7 @@ def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
             )
 
         # PATCHED: use rich text builder so ProbabilityTreeBuilder keywords fire
-        import sys as _sys, os as _os  # noqa: PLC0415
-        _backend_dir = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
-        if _backend_dir not in _sys.path:
-            _sys.path.insert(0, _backend_dir)
+        _ensure_intelligence_importable()
         from assessments_patch import build_probability_tree_text  # noqa: PLC0415
         text = build_probability_tree_text(assessment)
 

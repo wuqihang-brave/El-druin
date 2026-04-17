@@ -242,14 +242,6 @@ _FALLBACK_EVENT_TEMPLATE: tuple[str, str] = (
     ),
 )
 
-_AVAILABLE_PRIMES = [3, 5, 7, 11, 13]
-
-
-def _select_prime(assessment_id: str, domain_count: int, alert_count: int) -> int:
-    seed = hash(assessment_id) ^ (domain_count * 31) ^ (alert_count * 17)
-    return _AVAILABLE_PRIMES[abs(seed) % len(_AVAILABLE_PRIMES)]
-
-
 _REGIME_IMPLICATION_TEMPLATES: dict[str, str] = {
     "Nonlinear Escalation": (
         "System is within the nonlinear escalation band for {domains} dynamics "
