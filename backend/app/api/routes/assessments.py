@@ -87,6 +87,7 @@ async def _run_generation_job(job_id: str, hours: int, min_events: int, max_asse
             hours=hours,
             min_events_per_cluster=min_events,
             max_assessments=max_assessments,
+            max_total_assessments=20,
         )
         _jobs[job_id].update({"status": "completed", "result": result})
         logger.info("Job %s completed: %s", job_id, result)
@@ -1532,6 +1533,7 @@ async def generate_assessments_from_news(
                 min_events_per_cluster=min_events,
                 max_assessments=max_assessments,
                 max_articles=max_articles,
+                max_total_assessments=20,
             ),
             timeout=55.0,  # 55s: Railway default HTTP timeout is 60s; 5s margin for response overhead
         )

@@ -45,6 +45,7 @@ from utils.api_client import (  # noqa: E402
     get_triggers,
     get_attractors,
     get_delta,
+    get_probability_tree,
 )
 
 # ---------------------------------------------------------------------------
@@ -276,6 +277,7 @@ def _load_assessment_data(assessment_id: str) -> Dict[str, Any]:
         "triggers": get_triggers(assessment_id),
         "attractors": get_attractors(assessment_id),
         "delta": get_delta(assessment_id),
+        "probability_tree": get_probability_tree(assessment_id),
     }
 
 
@@ -335,14 +337,17 @@ def _fmt_updated(updated_at: str) -> str:
 
 
 def _thresh_bar_html(threshold_distance: float, regime: str) -> str:
+    # Bar fill shows "how much headroom remains" (higher fill = farther from threshold)
     fill = max(0.0, min(1.0, 1.0 - threshold_distance))
-    pct = int(fill * 100)
+    fill_pct = int(fill * 100)
+    # Label shows threshold_distance directly: lower % = closer to tipping point
+    label_pct = int(round(max(0.0, min(1.0, threshold_distance)) * 100))
     color = _THRESH_BAR_COLOR.get(regime, "#4A8FD4")
     return (
         f'<div class="thresh-wrap">'
-        f'<div class="thresh-bar" style="width:{pct}%;background:{color};"></div>'
+        f'<div class="thresh-bar" style="width:{fill_pct}%;background:{color};"></div>'
         f'</div>'
-        f'<span style="font-size:11px;color:#D4DDE6;">{pct}%</span>'
+        f'<span style="font-size:11px;color:#D4DDE6;" title="distance to threshold — lower = more dangerous">{label_pct}%↓</span>'
     )
 
 
@@ -360,12 +365,13 @@ all_offline = True
 for asm in assessments_raw:
     aid = asm.get("assessment_id", "")
     data = _load_assessment_data(aid) if aid else {
-        "regime": {}, "triggers": {}, "attractors": {}, "delta": {}
+        "regime": {}, "triggers": {}, "attractors": {}, "delta": {}, "probability_tree": {}
     }
     regime = data["regime"]
     triggers_data = data["triggers"]
     attractors_data = data["attractors"]
     delta = data["delta"]
+    probability_tree = data.get("probability_tree", {})
 
     if not _is_stub_data(regime):
         all_offline = False
@@ -376,6 +382,7 @@ for asm in assessments_raw:
         "triggers": triggers_data.get("triggers", []),
         "attractors": attractors_data.get("attractors", []),
         "delta": delta,
+        "probability_tree": probability_tree,
         "updated_at": regime.get("updated_at") or asm.get("updated_at", ""),
     })
 
@@ -409,7 +416,7 @@ _HIGH_RISK_REGIMES = ("Nonlinear Escalation", "Cascade Risk", "Attractor Lock-in
 
 # Threshold_distance above which the engine's value is considered too conservative
 # to trust when the stored regime indicates high risk.
-_ENGINE_TD_OVERRIDE_THRESHOLD = 0.25  # same as the NEAR_THRESHOLD cutoff
+_ENGINE_TD_OVERRIDE_THRESHOLD = 0.90  # only override clearly erroneous values (> 90%)
 
 # Regimes that definitively indicate a structural regime change has occurred.
 _REGIME_SHIFTED_REGIMES = ("Nonlinear Escalation", "Cascade Risk")
@@ -598,10 +605,12 @@ else:
         delta = e["delta"]
         triggers = e["triggers"]
         attractors = e["attractors"]
+        probability_tree = e.get("probability_tree", {})
         aid = asm.get("assessment_id", "")
         title = asm.get("title", "—")
         regime_label = regime.get("current_regime", "Linear")
         thresh_dist = regime.get("threshold_distance", 1.0)
+        is_phase_transition = bool(probability_tree.get("is_phase_transition", False))
 
         # Top trigger
         top_trig = triggers[0] if triggers else None
@@ -647,8 +656,9 @@ else:
 
         with row_cols[2]:
             thresh_html = _thresh_bar_html(thresh_dist, regime_label)
+            phase_icon = ' <span title="P-adic phase transition detected" style="color:#FFD700;">⚡</span>' if is_phase_transition else ""
             st.markdown(
-                f'<div style="padding:6px 0;">{thresh_html}</div>',
+                f'<div style="padding:6px 0;">{thresh_html}{phase_icon}</div>',
                 unsafe_allow_html=True,
             )
 
