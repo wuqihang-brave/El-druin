@@ -40,7 +40,7 @@ from app.schemas.assessment import (
     AssessmentUpdate,
 )
 from app.core.assessment_store import assessment_store
-from assessments_patch import fetch_assessment_context_v2  # noqa: E402
+from assessments_patch import fetch_assessment_context_v2
 
 logger = logging.getLogger(__name__)
 

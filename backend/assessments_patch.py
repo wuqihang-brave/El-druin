@@ -371,7 +371,7 @@ async def fetch_assessment_context_v2(assessment_id: str) -> dict[str, Any]:
     Generates 5-8 rich events (vs. 2 skeleton stubs) with causal/contradiction
     keywords so downstream engine classifiers produce differentiated outputs.
     """
-    from app.core.assessment_store import assessment_store  # noqa: PLC0415
+    from app.core.assessment_store import assessment_store  # noqa: PLC0415 — local import avoids circular dependency at module load
 
     assessment = assessment_store.get_assessment(assessment_id)
     if assessment is None:
