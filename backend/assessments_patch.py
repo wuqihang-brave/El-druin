@@ -229,6 +229,17 @@ _RICH_EVENT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+_PRIMES: list[int] = [3, 5, 7, 11, 13]
+
+
+def _select_prime(assessment_id: str, domain_count: int, alert_count: int) -> int:
+    """Select a deterministic prime base for p-adic calculation from assessment metadata."""
+    id_hash = sum(ord(c) for c in assessment_id) % len(_PRIMES)
+    domain_bias = min(domain_count, len(_PRIMES) - 1)
+    idx = (id_hash + domain_bias) % len(_PRIMES)
+    return _PRIMES[idx]
+
+
 _FALLBACK_EVENT_TEMPLATE: tuple[str, str] = (
     "Structural stress indicators confirmed",
     (

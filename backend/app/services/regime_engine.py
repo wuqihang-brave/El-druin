@@ -148,10 +148,48 @@ class RegimeEngine:
                 "damping_capacity":    self._compute_damping_capacity(raw),
             }
 
-            dominant_axis       = self._derive_dominant_axis(raw.get("mechanisms", []))
-            forecast_implication = self._generate_forecast_implication(
-                current_regime, metrics
-            )
+            dominant_axis = self._derive_dominant_axis(raw.get("mechanisms", []))
+
+            # PATCHED: use build_regime_implication from assessments_patch.py so the
+            # forecast_implication is personalised with domain/region tags rather than
+            # always returning the same generic string from _FORECAST_TEMPLATES.
+            try:
+                import sys as _sys
+                import os as _os
+                _backend_dir = _os.path.dirname(
+                    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+                )
+                if _backend_dir not in _sys.path:
+                    _sys.path.insert(0, _backend_dir)
+                from assessments_patch import build_regime_implication  # noqa: PLC0415
+
+                # Resolve domain/region tags from context or assessment store
+                domain_tags: List[str] = list(context.get("domain_tags") or [])
+                region_tags: List[str] = list(context.get("region_tags") or [])
+                if not domain_tags or not region_tags:
+                    try:
+                        from app.core.assessment_store import assessment_store as _store  # noqa: PLC0415
+                        _assessment = _store.get_assessment(assessment_id)
+                        if _assessment is not None:
+                            domain_tags = domain_tags or list(_assessment.domain_tags or [])
+                            region_tags = region_tags or list(_assessment.region_tags or [])
+                    except Exception:
+                        pass
+
+                forecast_implication = build_regime_implication(
+                    current_regime,
+                    domain_tags,
+                    region_tags,
+                    metrics["damping_capacity"],
+                )
+            except Exception as _patch_exc:
+                logger.debug(
+                    "build_regime_implication unavailable (%s); using fallback template",
+                    _patch_exc,
+                )
+                forecast_implication = self._generate_forecast_implication(
+                    current_regime, metrics
+                )
 
             return RegimeOutput(
                 assessment_id=assessment_id,
