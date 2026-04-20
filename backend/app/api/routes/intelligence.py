@@ -134,15 +134,20 @@ def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
                 detail=f"Assessment {assessment_id!r} not found",
             )
 
-        # PATCHED: use rich text builder so ProbabilityTreeBuilder keywords fire.
-        # Import is deferred because assessments_patch lives in the backend root;
-        # _ensure_intelligence_importable() must run first to add that dir to sys.path.
+        # PATCHED: use rich keyword-laden text builder (assessments_patch.py)
+        # so root-based keyword scanners in ProbabilityTreeBuilder v2 fire correctly.
         _ensure_intelligence_importable()
-        from assessments_patch import build_probability_tree_text  # noqa: PLC0415
+        from assessments_patch import build_probability_tree_text, _select_prime  # noqa: PLC0415
         text = build_probability_tree_text(assessment)
 
-        # Use last_confidence to derive source_reliability (High→0.85, Medium→0.70, Low→0.55)
-        _reliability_map = {"High": 0.85, "Medium": 0.70, "Low": 0.55}
+        # Derive t and p from assessment metadata so |t|_p varies per assessment
+        alert_count = assessment.alert_count or 0
+        domain_count = len(assessment.domain_tags or [])
+        t_step = max(1, alert_count)
+        p_prime = _select_prime(assessment_id, domain_count, alert_count)
+
+        # Source reliability from last_confidence
+        _reliability_map = {"Very High": 0.92, "High": 0.85, "Medium": 0.70, "Low": 0.55}
         source_reliability = _reliability_map.get(assessment.last_confidence or "", 0.70)
 
         builder = _get_builder()
@@ -150,6 +155,8 @@ def get_probability_tree_for_assessment(assessment_id: str) -> Dict[str, Any]:
             text=text,
             source_reliability=source_reliability,
             report_id=assessment_id,
+            t=t_step,
+            p=p_prime,
         )
         return tree.model_dump()
     except HTTPException:

@@ -15,13 +15,22 @@ from __future__ import annotations
 
 import logging
 import math
+import sys
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.schemas.structural_forecast import RegimeOutput, RegimeState
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_backend_on_path() -> None:
+    """Add the backend root directory to sys.path so assessments_patch is importable."""
+    backend_dir = str(Path(__file__).parent.parent.parent)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
 
 # ---------------------------------------------------------------------------
 # Regime boundary thresholds
@@ -148,10 +157,42 @@ class RegimeEngine:
                 "damping_capacity":    self._compute_damping_capacity(raw),
             }
 
-            dominant_axis       = self._derive_dominant_axis(raw.get("mechanisms", []))
-            forecast_implication = self._generate_forecast_implication(
-                current_regime, metrics
-            )
+            dominant_axis = self._derive_dominant_axis(raw.get("mechanisms", []))
+
+            # PATCHED: use build_regime_implication from assessments_patch.py so the
+            # forecast_implication is personalised with domain/region tags rather than
+            # always returning the same generic string from _FORECAST_TEMPLATES.
+            try:
+                _ensure_backend_on_path()
+                from assessments_patch import build_regime_implication  # noqa: PLC0415
+
+                # Resolve domain/region tags from context or assessment store
+                domain_tags: List[str] = list(context.get("domain_tags") or [])
+                region_tags: List[str] = list(context.get("region_tags") or [])
+                if not domain_tags or not region_tags:
+                    try:
+                        from app.core.assessment_store import assessment_store as _store  # noqa: PLC0415
+                        _assessment = _store.get_assessment(assessment_id)
+                        if _assessment is not None:
+                            domain_tags = domain_tags or list(_assessment.domain_tags or [])
+                            region_tags = region_tags or list(_assessment.region_tags or [])
+                    except Exception:
+                        pass
+
+                forecast_implication = build_regime_implication(
+                    current_regime,
+                    domain_tags,
+                    region_tags,
+                    metrics["damping_capacity"],
+                )
+            except Exception as _patch_exc:
+                logger.debug(
+                    "build_regime_implication unavailable (%s); using fallback template",
+                    _patch_exc,
+                )
+                forecast_implication = self._generate_forecast_implication(
+                    current_regime, metrics
+                )
 
             return RegimeOutput(
                 assessment_id=assessment_id,
