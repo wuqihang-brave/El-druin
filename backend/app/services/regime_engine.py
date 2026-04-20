@@ -15,13 +15,22 @@ from __future__ import annotations
 
 import logging
 import math
+import sys
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.schemas.structural_forecast import RegimeOutput, RegimeState
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_backend_on_path() -> None:
+    """Add the backend root directory to sys.path so assessments_patch is importable."""
+    backend_dir = str(Path(__file__).parent.parent.parent)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
 
 # ---------------------------------------------------------------------------
 # Regime boundary thresholds
@@ -154,13 +163,7 @@ class RegimeEngine:
             # forecast_implication is personalised with domain/region tags rather than
             # always returning the same generic string from _FORECAST_TEMPLATES.
             try:
-                import sys as _sys
-                import os as _os
-                _backend_dir = _os.path.dirname(
-                    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-                )
-                if _backend_dir not in _sys.path:
-                    _sys.path.insert(0, _backend_dir)
+                _ensure_backend_on_path()
                 from assessments_patch import build_regime_implication  # noqa: PLC0415
 
                 # Resolve domain/region tags from context or assessment store
