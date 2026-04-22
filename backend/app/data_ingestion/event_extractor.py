@@ -36,7 +36,7 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_LLM_TIMEOUT_SECONDS = 30   # hard cap per LLM call – mirrors entity_extractor.py
+_LLM_TIMEOUT_SECONDS = 60   # hard cap per LLM call – mirrors entity_extractor.py
 
 # ---------------------------------------------------------------------------
 # Circuit-breaker: if Groq returns 403 we open the circuit for the rest of the
