@@ -507,7 +507,7 @@ def _llm_extract(text: str) -> List[Dict[str, Any]]:
                 "  description: 1-2 sentence factual summary\n"
                 "  causal_chain: what directly caused or triggered this event (max 100 chars)\n"
                 "  location: country or region where the event occurs\n"
-                "  entities: {ORG: [...], GPE: [...], PERSON: [...]} — only entities in the text\n"
+                "  entities: {{ORG: [...], GPE: [...], PERSON: [...]}} — only entities in the text\n"
                 "  confidence: 0.0-1.0\n"
                 "Only include entities that actually appear in the text. "
                 "Return [] if no significant events found. "
