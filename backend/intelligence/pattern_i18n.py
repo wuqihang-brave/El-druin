@@ -83,6 +83,10 @@ PATTERN_DISPLAY_EN: Dict[str, str] = {
     "市場壟斷 / 競爭消解模式":             "Market Monopoly / Competition Dissolution",
     "創作者平台分散模式":                  "Creator Platform Fragmentation",
     "技術瓶頸 / 任務失敗模式":             "Technology Bottleneck / Mission Failure",
+    # ── Legal / Social ──────────────────────────────────────────────────────
+    "法律主權 / 司法管轄衝突模式":           "Legal Sovereignty / Jurisdictional Conflict",
+    "社會動員 / 民族主義壓力模式":           "Social Mobilisation / Nationalist Pressure",
+    "社會穩定 / 凝聚力模式":                 "Social Stability / Cohesion",
 }
 
 # ---------------------------------------------------------------------------

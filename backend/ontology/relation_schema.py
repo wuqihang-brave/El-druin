@@ -882,6 +882,60 @@ _reg(
 )
 
 
+# ---------------------------------------------------------------------------
+# 4.7 法律 / 社會類（新增，完成7領域 Sylow-7 結構）
+# Legal / Social patterns — added to complete the 7-domain Sylow-7 structure
+# ---------------------------------------------------------------------------
+
+_reg(
+    EntityType.INSTITUTION, RelationType.COERCE, EntityType.STATE,
+    pattern_name="法律主權 / 司法管轄衝突模式",
+    domain="legal",
+    typical_outcomes=[
+        "jurisdictional_arbitrage",         # 司法管轄套利
+        "regulatory_forum_shopping",        # 監管論壇選擇
+        "extraterritorial_enforcement",     # 域外執法衝突
+        "bilateral_legal_standoff",         # 雙邊法律僵局
+    ],
+    mechanism_class="jurisdictional_coercion",
+    inverse_pattern=None,
+    composition_hints=["跨國監管 / 合規約束模式", "霸權制裁模式"],
+    confidence_prior=0.72,
+)
+
+_reg(
+    EntityType.IDEOLOGY, RelationType.COERCE, EntityType.STATE,
+    pattern_name="社會動員 / 民族主義壓力模式",
+    domain="social",
+    typical_outcomes=[
+        "nationalist_protest_escalation",   # 民族主義抗議升級
+        "political_elite_constraint",       # 政治精英決策約束
+        "populist_foreign_policy_push",     # 民粹主義外交政策壓力
+        "inter_ethnic_tension_spike",       # 族群緊張度上升
+    ],
+    mechanism_class="social_mobilisation",
+    inverse_pattern="社會穩定 / 凝聚力模式",
+    composition_hints=["霸權制裁模式", "國家間武力衝突模式"],
+    confidence_prior=0.65,
+)
+
+_reg(
+    EntityType.IDEOLOGY, RelationType.LEGITIMIZE, EntityType.STATE,
+    pattern_name="社會穩定 / 凝聚力模式",
+    domain="social",
+    typical_outcomes=[
+        "social_trust_reinforcement",       # 社會信任鞏固
+        "political_legitimacy_boost",       # 政治合法性提升
+        "conflict_de_escalation",           # 衝突降級
+        "inter_group_cooperation",          # 跨群體合作
+    ],
+    mechanism_class="social_cohesion",
+    inverse_pattern="社會動員 / 民族主義壓力模式",
+    composition_hints=["正式軍事同盟模式", "多邊聯盟制裁模式"],
+    confidence_prior=0.67,
+)
+
+
 # ===========================================================================
 # 5. 查詢 API
 # ===========================================================================
@@ -1294,6 +1348,16 @@ composition_table: Dict[Tuple[str, str], str] = {
     ("創作者經濟整合模式", "平台競爭 / 生態位擴張模式"): "跨國監管 / 合規約束模式",
     # 技術突破 + 技術封鎖 → 科技脫鉤
     ("技術突破 / 太空探索模式", "實體清單技術封鎖模式"): "科技脫鉤 / 技術鐵幕模式",
+    # 社會動員 + 霸權制裁 → 多邊聯盟制裁
+    ("社會動員 / 民族主義壓力模式", "霸權制裁模式"): "多邊聯盟制裁模式",
+    # 社會動員 + 武力衝突 → 代理衝突
+    ("社會動員 / 民族主義壓力模式", "國家間武力衝突模式"): "非國家武裝代理衝突模式",
+    # 法律主權 + 技術封鎖 → 技術標準主導
+    ("法律主權 / 司法管轄衝突模式", "實體清單技術封鎖模式"): "技術標準主導模式",
+    # 法律主權 + 霸權制裁 → 跨國監管
+    ("法律主權 / 司法管轄衝突模式", "霸權制裁模式"): "跨國監管 / 合規約束模式",
+    # 社會穩定 + 軍事同盟 → 多邊聯盟制裁
+    ("社會穩定 / 凝聚力模式", "正式軍事同盟模式"): "多邊聯盟制裁模式",
 }
 
 
@@ -1429,3 +1493,115 @@ def run_ontology_validation(strict: bool = False) -> bool:
 # Initialize inverse_table after all patterns are registered
 # ---------------------------------------------------------------------------
 inverse_table.update(_build_inverse_table())
+
+
+# ===========================================================================
+# 10. Sylow 分解映射（群論結構：|S| = 21 = 3 × 7）
+# Sylow decomposition maps for the Z_7 ⋊ Z_3 group structure
+# ===========================================================================
+
+# Sylow-7 normal subgroup H₇ coset index by domain
+# domain → coset index (0–6)
+_DOMAIN_TO_H7: Dict[str, int] = {
+    "geopolitics": 0,
+    "economics":   1,
+    "technology":  2,
+    "military":    3,
+    "information": 4,
+    "legal":       5,
+    "social":      6,
+    "business":    1,  # legacy "business" patterns pre-date the 7-domain Sylow structure;
+                       # mapped to economics (1) as the closest structural match.
+                       # Future work should migrate business patterns to use "economics" domain.
+}
+
+# Sylow-3 subgroup H₃ coset index by mechanism class
+# mechanism_class → coset index (0=structural, 1=coercive, 2=cooperative)
+SYLOW3_MECHANISM_MAP: Dict[str, int] = {
+    # structural: 0
+    "economic_interdependence":      0,
+    "monetary_transmission":         0,
+    "supply_chain_resilience":       0,
+    "oligopoly_supply":              0,
+    "product_expansion":             0,
+    "creator_economy":               0,
+    "technology_frontier":           0,
+    "product_contraction":           0,
+    "market_monopoly":               0,
+    "creator_fragmentation":         0,
+    "tech_failure":                  0,
+    "market_competition":            0,
+    # coercive: 1
+    "coercive_leverage":             1,
+    "kinetic_escalation":            1,
+    "proxy_warfare":                 1,
+    "multilateral_pressure":         1,
+    "tech_denial":                   1,
+    "financial_exclusion":           1,
+    "resource_leverage":             1,
+    "regulatory_pressure":           1,
+    "epistemic_warfare":             1,
+    "jurisdictional_coercion":       1,
+    "social_mobilisation":           1,
+    "economic_decoupling":           1,
+    "tech_decoupling":               1,
+    "alliance_dissolution":          1,
+    "norm_erosion":                  1,
+    "standard_disruption":           1,
+    "competitive_disruption":        1,
+    # cooperative: 2
+    "tech_governance":               2,
+    "alliance_dynamics":             2,
+    "norm_diffusion":                2,
+    "diplomatic_normalization":      2,
+    "tech_normalization":            2,
+    "conflict_resolution":           2,
+    "de_escalation":                 2,
+    "multilateral_normalization":    2,
+    "proxy_disarmament":             2,
+    "monetary_easing":               2,
+    "financial_normalization":       2,
+    "supply_chain_diversification":  2,
+    "energy_diversification":        2,
+    "tech_reintegration":            2,
+    "information_repair":            2,
+    "deregulation":                  2,
+    "legal_cooperation":             2,
+    "social_cohesion":               2,
+}
+
+
+def _build_sylow7_domain_map() -> Dict[str, int]:
+    """Build SYLOW7_DOMAIN_MAP from CARTESIAN_PATTERN_REGISTRY at module load."""
+    result: Dict[str, int] = {}
+    for pat in CARTESIAN_PATTERN_REGISTRY.values():
+        result[pat.pattern_name] = _DOMAIN_TO_H7.get(pat.domain, 0)
+    return result
+
+
+# Pattern name → Sylow-7 coset index (H₇, determined by geopolitical domain)
+SYLOW7_DOMAIN_MAP: Dict[str, int] = _build_sylow7_domain_map()
+
+
+def get_sylow_coset(pattern_name: str) -> Tuple[int, int]:
+    """Return the (H₇ coset, H₃ coset) pair for a pattern name.
+
+    Each pattern is uniquely addressed by a (domain_coset, mechanism_coset)
+    pair derived from the Sylow decomposition of the pattern group S of order
+    21 = 3 × 7.
+
+    Args:
+        pattern_name: The CJK internal pattern name.
+
+    Returns:
+        Tuple (h7_coset, h3_coset) where:
+          h7_coset ∈ {0, …, 6} — Sylow-7 coset index (geopolitical domain)
+          h3_coset ∈ {0, 1, 2} — Sylow-3 coset index (mechanism class)
+    """
+    h7 = SYLOW7_DOMAIN_MAP.get(pattern_name, 0)
+    for pat in CARTESIAN_PATTERN_REGISTRY.values():
+        if pat.pattern_name == pattern_name:
+            h3 = SYLOW3_MECHANISM_MAP.get(pat.mechanism_class, 0)
+            return (h7, h3)
+    return (h7, 0)
+
