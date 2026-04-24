@@ -9,6 +9,7 @@ probability-tree text builder in assessments.py / intelligence.py.
 from __future__ import annotations
 
 from typing import Any
+from assessments_v3_patch import build_enriched_velocity_data
 
 _RICH_EVENT_TEMPLATES: dict[str, list[tuple[str, str]]] = {
     "energy": [
@@ -439,11 +440,8 @@ async def fetch_assessment_context_v2(assessment_id: str) -> dict[str, Any]:
             "domain_primary": domain_tags[0] if domain_tags else "general",
         })
 
-    # velocity_data
-    velocity_data: dict[str, float] = {}
-    for i, d in enumerate(domain_tags):
-        v = base_velocity + alert_boost - i * 0.06
-        velocity_data[d] = round(max(0.20, min(0.95, v)), 2)
+    # velocity_data — enriched with adjacent domains so RegimeEngine gets >= 3 entries
+    velocity_data = build_enriched_velocity_data(assessment)
 
     # ontology_activations: 2 patterns per domain
     ontology_activations: dict[str, float] = {}

@@ -41,6 +41,11 @@ from app.schemas.assessment import (
 )
 from app.core.assessment_store import assessment_store
 from assessments_patch import fetch_assessment_context_v2
+from assessments_v3_patch import (
+    build_evidence_items,
+    derive_active_pairs_from_assessment,
+    build_enriched_velocity_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1107,48 +1112,21 @@ def _build_assessment_specific_outputs(assessment_id: str) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # Evidence — synthesised from region sources and domain context
     # ------------------------------------------------------------------
-    # Pick sources for the first known region, falling back to generic
-    _default_sources = [
-        "Regional security monitor",
-        "Financial news wire",
-        "Academic / think-tank analysis",
-        "Analyst synthesis — internal assessment",
+    raw_items = build_evidence_items(assessment)
+    from datetime import timedelta  # noqa: PLC0415
+    evidence_items: list[EvidenceItem] = [
+        EvidenceItem(
+            evidence_id=item["evidence_id"],
+            source=item["source"],
+            timestamp=item["timestamp"],
+            source_quality=item["source_quality"],  # type: ignore[arg-type]
+            impacted_area=item["impacted_area"],
+            structural_novelty=item["structural_novelty"],
+            confidence_contribution=item["confidence_contribution"],
+            provenance_link=item.get("provenance_link"),
+        )
+        for item in raw_items
     ]
-    first_region = region_tags[0] if region_tags else ""
-    sources = _REGION_SOURCE_MAP.get(first_region, _default_sources)
-
-    _quality_order = ["Primary", "High", "High", "Medium"]
-    evidence_items: list[EvidenceItem] = []
-    from datetime import timedelta  # noqa: PLC0415 – local import avoids top-level cost
-    for i, domain in enumerate(domain_tags[:4]):
-        src = sources[i % len(sources)]
-        area_domains = domain_tags[max(0, i - 1): i + 2]
-        evidence_items.append(
-            EvidenceItem(
-                evidence_id=f"ev-{assessment_id[:8]}-{i + 1:03d}",
-                source=src,
-                timestamp=now - timedelta(hours=(i + 1) * 6),
-                source_quality=_quality_order[i % 4],  # type: ignore[arg-type]
-                impacted_area=" / ".join(area_domains),
-                structural_novelty=round(max(0.20, 0.78 - i * 0.10), 2),
-                confidence_contribution=round(max(0.04, 0.18 - i * 0.04), 2),
-                provenance_link=f"/api/v1/provenance/entity/ev-{assessment_id[:8]}-{i + 1:03d}",
-            )
-        )
-    # Append an analyst-synthesis item when notes are present
-    if analyst_notes and len(evidence_items) < 4:
-        evidence_items.append(
-            EvidenceItem(
-                evidence_id=f"ev-{assessment_id[:8]}-{len(evidence_items) + 1:03d}",
-                source="Analyst synthesis — internal assessment",
-                timestamp=now - timedelta(hours=2),
-                source_quality="Medium",
-                impacted_area=" / ".join(domain_tags[:2]) if domain_tags else "general",
-                structural_novelty=0.45,
-                confidence_contribution=0.08,
-                provenance_link=None,
-            )
-        )
 
     evidence = EvidenceOutput(
         assessment_id=assessment_id,
@@ -1796,7 +1774,8 @@ def get_coupling(assessment_id: str) -> CouplingOutput:
                 ("Financial Isolation Pattern", "Energy Disruption Pattern"),
             ]
         else:
-            active_pairs = []
+            assessment_obj = assessment_store.get_assessment(assessment_id)
+            active_pairs = derive_active_pairs_from_assessment(assessment_obj) if assessment_obj else []
 
         detector = CouplingDetector()
         result = detector.compute_coupling(assessment_id, active_pairs)
