@@ -721,36 +721,87 @@ Numeric consistency & Locked by deterministic pipeline & Self-reported; may vary
 
 \section{Related Work}
 
-EL-DRUIN is related to several lines of research, from which it is
-distinguished by its algebraic grounding.
+EL-DRUIN sits at the intersection of four research areas: ontology-based knowledge
+graph reasoning, political event coding and geopolitical analysis systems,
+explainable neuro-symbolic AI, and LLM-augmented ontology and KG systems.
 
-\textbf{Event-based political forecasting.}
-GDELT~\cite{leetaru2013gdelt} encodes political events using CAMEO codes
-and aggregates them for trend analysis. ICEWS~\cite{boschee2015icews}
-provides a structured event database. These systems aggregate events
-statistically; they do not model pattern composition or produce
-algebraically grounded trajectory predictions.
+\subsection{Ontology and Knowledge Graph Reasoning}
 
-\textbf{Knowledge graphs for geopolitical reasoning.}
-Wikidata and DBpedia provide entity-relation triples but lack the
-mechanism-class and confidence-prior annotations required for the
-transition system described here. Agent-OM~\cite{fathallah2023agentom} and
-LLMs4OM~\cite{babaei2024llms4om} apply LLMs to ontology matching;
-EL-DRUIN borrows the syntactic/lexical/semantic three-layer entity
-grounding approach from these works.
+Formal ontologies represented in OWL~\cite{grau2008owl2} provide the foundation for
+semantic web reasoning, enabling inference over typed entities and relations. Large
+knowledge graphs such as DBpedia~\cite{bizer2009dbpedia}, Wikidata~\cite{vrandecic2014wikidata},
+and YAGO~\cite{suchanek2007yago} demonstrate the scale at which entity-relation triples
+can be curated and queried. Hogan et al.~\cite{hogan2021knowledge} provide a
+comprehensive survey of knowledge graph construction, representation, and reasoning.
+Ji et al.~\cite{ji2021survey} survey representation learning approaches for knowledge
+graphs, including embedding methods such as RotatE~\cite{sun2019rotate} that capture
+relational structure geometrically.
 
-\textbf{Formal methods for political analysis.}
+Temporal knowledge graphs extend static KGs with time-stamped facts and require
+reasoning about relational change over time~\cite{trivedi2017know,lacroix2020tensor}.
+Allen's interval algebra~\cite{allen1983maintaining} provides a foundational formalism
+for temporal relation reasoning. EL-DRUIN addresses temporal trajectory reasoning
+differently: rather than learning embeddings from historical triples, it applies
+ontology-registered composition rules to derive forward-projected attractor states,
+without requiring labelled training data.
+
+\subsection{Political Event Coding and Geopolitical Analysis Systems}
+
+Computational political science has developed structured event coding schemes to
+represent political interactions as typed actor-action-target triples.
+CAMEO~\cite{schrodt2012cameo} provides a widely used controlled vocabulary for
+political event types. GDELT~\cite{leetaru2013gdelt} and ICEWS~\cite{boschee2015icews}
+are large-scale event databases built on CAMEO coding, enabling statistical analysis
+of political trends at global scale. These systems aggregate events statistically;
+they do not model pattern composition or produce algebraically grounded trajectory
+predictions with provenance traces.
+
 Probabilistic graphical models have been applied to conflict
-prediction~\cite{ward2010perils}, but these require labelled training data
-and do not provide symbolic interpretability of the composition
-structure. EL-DRUIN requires no training data; its inference is entirely
-symbolic and determined by the manually curated pattern registry.
+prediction~\cite{ward2010perils}, but these require labelled training data and do
+not provide symbolic interpretability of the composition structure. EL-DRUIN requires
+no training data; its inference is entirely symbolic and determined by the manually
+curated pattern registry, making its reasoning process fully auditable.
 
-\textbf{Lie algebras in ML.}
-Continuous Lie group symmetries have been applied to equivariant neural
-networks~\cite{cohen2016group} and geometric deep learning. The application
-of Lie algebra structure to discrete political event patterns is, to our
-knowledge, novel in the literature.
+\subsection{Explainable Neuro-Symbolic AI}
+
+The neuro-symbolic AI research programme~\cite{besold2017neural,garcez2019neural}
+aims to combine the pattern recognition strengths of neural networks with the
+interpretability and compositionality of symbolic reasoning. DeepProbLog~\cite{manhaeve2018deepproblog}
+integrates probabilistic logic programming with neural networks, enabling
+differentiable learning over structured symbolic programs. EL-DRUIN is inspired by
+this separation of concerns: symbolic inference governs all numerical outputs while
+a neural component (the LLM) handles natural-language rendering only.
+
+Knowledge-guided trajectory prediction~\cite{dong2023beatrix} uses symbolic
+programs to constrain neural predictions; EL-DRUIN applies an analogous principle
+to geopolitical reasoning, where ontology-defined composition rules constrain the
+space of valid trajectory transitions. Our system's constrained LLM verbalization
+mechanism extends this idea by structurally prohibiting the LLM from modifying
+pre-computed fields, ensuring that explanation fidelity is enforced at the
+architecture level rather than by prompt engineering alone.
+
+\subsection{LLMs for Ontology and Knowledge Graph Analysis}
+
+The intersection of LLMs and knowledge graphs is an active research frontier.
+Pan et al.~\cite{pan2023unifying} provide a roadmap for unifying LLMs and KGs,
+identifying complementary strengths: LLMs contribute linguistic flexibility and
+world knowledge, while KGs contribute structured, auditable, and provenance-rich
+representations. Agent-OM~\cite{fathallah2023agentom} and
+LLMs4OM~\cite{babaei2024llms4om} apply LLM agents to ontology matching, using
+syntactic, lexical, and semantic matching layers. EL-DRUIN borrows the multi-layer
+entity grounding approach from these works for its pattern activation stage.
+
+Maedche and Staab~\cite{maedche2001ontology} established ontology learning from
+text as a research direction; recent work~\cite{zhang2023making} has revisited this
+using LLMs for structured extraction. In EL-DRUIN, the LLM is not used for ontology
+construction or numerical inference, but exclusively for natural-language
+verbalization of pre-computed structured results---a deliberate architectural
+constraint that separates concerns and ensures reproducibility.
+
+Noy et al.~\cite{noy2019industry} document lessons from deploying industry-scale
+knowledge graphs, highlighting the importance of provenance tracking and
+schema governance---properties that EL-DRUIN builds in at the ontology layer
+through its typed pattern registry and compute trace mechanism.
 
 \section{Limitations and Future Work}
 
