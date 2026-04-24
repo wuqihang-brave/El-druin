@@ -13,8 +13,8 @@
 \usepackage{amsmath,amssymb}
 \usepackage[T1]{fontenc}
 
-\title{Ontological Trajectory Forecasting via Finite Group Algebra\\
-and p-Adic Confidence in Geopolitical Knowledge Graphs}
+\title{An Ontology-Guided, Explainable Reasoning Framework\\
+for Geopolitical Trajectory Analysis}
 \author{Qihang Wu\\
 Department of Industrial and Systems Engineering, The Hong Kong Polytechnic University\\
 \texttt{qihang.wu@connect.polyu.hk}\\
@@ -25,84 +25,72 @@ Department of Industrial and Systems Engineering, The Hong Kong Polytechnic Univ
 \maketitle
 
 \begin{abstract}
-We present \textbf{EL-DRUIN}, an ontological reasoning system for
-geopolitical intelligence analysis that combines formal ontology, finite
-group algebra, and Lie algebra approximation to forecast long-run
-relationship trajectories. We upgrade the pattern registry from a partial
-semigroup to a group of order $|S| = 21 = 3 \times 7$ whose Sylow-7
-normal subgroup $H_7$ partitions the 21 patterns across seven geopolitical
-domains (geopolitics, economics, technology, military, information, legal,
-social), and whose Sylow-3 subgroup $H_3$ encodes three cross-domain
-mechanism classes (coercive, cooperative, structural). Each pattern is
-uniquely located in a $(H_7, H_3)$ coset. Temporal confidence replaces
-the geometric step-decay $\lambda^t$ with a 7-adic valuation
-$|t|_7 = 7^{-v_7(t)}$, grounding confidence in the ultrametric topology
-of the pattern space: phase transitions occur at structurally significant
-steps $t \in \{7, 14, 21, \ldots\}$ rather than uniformly. The pattern
-space is equipped with a 7-adic ultrametric $d_7(A,B) = 7^{-v_7(\mathrm{graph\_dist}(A,B))}$
-under which intra-domain propagation has small distance ($7^{-k}$,
-$k \geq 1$) and inter-domain propagation has maximum distance ($1$),
-formalising the intuition that crises propagate easily within a domain
-and require phase transitions to cross domain boundaries. Bifurcation is
-redefined via the p-adic valuation of the posterior weight gap:
-$v_7(\pi_t(p_{\mathrm{top}1}) - \pi_t(p_{\mathrm{top}2})) \geq k_0$,
-detecting structural instability more precisely than a real-valued
-threshold. We demonstrate the framework on six geopolitical scenarios.
-The architecture is publicly available as an open-source system.
+We present \textbf{EL-DRUIN}, an ontology-guided reasoning system for geopolitical
+trajectory analysis that combines a typed pattern registry, rule-based composition
+semantics, vector-space compatibility scoring, provenance-preserving posterior
+computation, and constrained LLM explanation generation. The 21 registered patterns
+are organized into a finite algebraic transition structure with a $7 \times 3$
+domain--mechanism factorization, motivated by a seven-domain geopolitical ontology
+(geopolitics, economics, technology, military, information, legal, social) and three
+cross-domain mechanism classes (coercive, cooperative, structural). This factorization
+provides a canonical address for each pattern and supports structured confidence
+calibration. We explore a non-Archimedean confidence calibration scheme, using a
+7-based valuation motivated by the seven-domain partition, which produces
+domain-boundary-sensitive confidence updates rather than uniform geometric decay.
+Pattern similarity is scored via an 8-dimensional Lie algebra approximation; a
+constrained LLM renders all pre-computed numerical outputs into natural-language
+explanations without modifying any numerical field. We demonstrate the framework on
+fourteen geopolitical news scenarios and compare against an LLM-only baseline,
+showing that EL-DRUIN produces fully traceable, deterministic, auditable assessments
+with complete provenance chains. The system is fully open-source.
 \end{abstract}
 
-\textbf{Keywords:} ontology engineering; finite group algebra; Sylow decomposition; p-adic confidence; ultrametric; Lie algebra; Bayesian inference; geopolitical forecasting; knowledge graphs
+\textbf{Keywords:} ontology engineering; ontology-guided reasoning; explainable AI; knowledge graphs; geopolitical trajectory analysis; algebraic transition structure; non-Archimedean confidence; Lie algebra approximation; Bayesian inference; provenance
 
 \section{Introduction}
 
 Large language models have achieved impressive performance on political
-text summarisation and question answering. However, their fundamental
-operation---next-token prediction conditioned on input context---renders
-them incapable of reasoning beyond the statistical patterns encoded in
-training data. A model asked to assess the long-run trajectory of
-US-China technology competition will produce output proportional to the
-frequency and framing of that topic in its training corpus, not from a
-principled traversal of a causal structure.
+text summarisation and question answering. While LLMs are highly effective
+for summarization and linguistic interpretation, their confidence estimates
+are typically not grounded in explicit symbolic assumptions, provenance
+chains, or domain ontologies~\cite{pan2023unifying}. A model asked to assess the
+long-run trajectory of US-China technology competition will produce output
+shaped by its training distribution rather than from a principled traversal
+of an explicit causal or ontological structure.
 
-This limitation is not merely technical: it has epistemic consequences.
-When an LLM produces a confidence score for a geopolitical prediction,
-that number has no interpretable derivation. It cannot be traced to
-specific structural assumptions, algebraic constraints, or prior
-beliefs. The number is, in a precise sense, a \emph{confabulation}.
+This gap has practical epistemic consequences. When an LLM produces a
+confidence score for a geopolitical assessment, that number lacks an
+auditable derivation: it cannot be traced to specific structural assumptions,
+ontology-defined priors, or algebraic constraints. EL-DRUIN addresses this
+gap by combining formal ontology with symbolic inference, retaining the LLM
+only as a \emph{constrained natural-language renderer} of pre-computed
+structured outputs.
 
-EL-DRUIN addresses this by treating geopolitical reasoning as a problem
-in \textbf{formal ontology} and \textbf{algebraic topology} rather than language
-modelling. The key insight is:
-
-\begin{itemize}
-\item A geopolitical relationship can be modelled as a state in a finite set
-  of named Dynamic Patterns, each corresponding to a triple
-  (\textit{entity\_src}, \textit{relation}, \textit{entity\_tgt}) registered in a
-  Cartesian pattern registry.
-\item Transitions between patterns are governed by a partial binary
-  operation (composition) whose rules are defined declaratively, forming
-  a finite semigroup.
-\item Forward-iterating this semigroup from an initial state yields a
-  reachable set that converges to idempotent elements---the algebraically
-  grounded attractors of the system.
-\item Continuous relationship intensity is modelled by embedding each
-  pattern as a vector in an 8-dimensional Lie algebra approximation,
-  allowing Lie similarity to weight the plausibility of each composition
-  step.
-\end{itemize}
-
-The LLM is not removed from the system; it is demoted to a \textbf{constrained
-interpreter}: given fully pre-computed structural fields (patterns,
-attractors, transition probabilities, bifurcation points), the LLM
-writes only a natural-language explanation. It is structurally
-prohibited from modifying numerical outputs.
+The key contributions of this paper are:
+\begin{enumerate}
+  \item \textbf{Ontology-guided reasoning framework}: A typed pattern registry with
+    $7 \times 3$ domain--mechanism factorization that enables compositional
+    symbolic inference for geopolitical trajectory analysis, without requiring
+    labelled training data.
+  \item \textbf{Hybrid reasoning pipeline}: A five-stage pipeline combining
+    ontology-typed pattern activation, rule-based composition, 8-dimensional Lie
+    algebra similarity scoring, and provenance-preserving Bayesian posterior
+    computation.
+  \item \textbf{Constrained LLM verbalization}: A mechanism that structurally
+    separates numerical reasoning from natural-language explanation: the LLM
+    receives all numerical fields as locked inputs and is prohibited from modifying
+    them; if the LLM call fails, a template fallback preserves all numerical outputs.
+  \item \textbf{Open-source implementation and empirical evaluation}: A publicly
+    available system with full computation traces, evaluated on fourteen geopolitical
+    news scenarios with an LLM-only baseline and ablation study.
+\end{enumerate}
 
 The remainder of the paper is organised as follows. Section~2 provides
 background on relevant ontology and algebra formalisms. Section~3
 describes the system architecture. Sections~4 and~5 present the
 mathematical formalisation. Section~6 describes the full five-stage
-reasoning pipeline. Section~7 presents experiments on six geopolitical
-scenarios. Section~8 discusses related work and Section~9 concludes.
+reasoning pipeline. Section~7 presents experiments. Section~8 discusses
+related work and Section~9 concludes.
 
 \section{Background}
 
@@ -194,8 +182,9 @@ frontend. The system has four functional layers:
 \item \textbf{Ontology Layer}: \texttt{CARTESIAN\_PATTERN\_REGISTRY} (21 named
   patterns across geopolitics, economics, technology, military, information,
   legal, and social domains), \texttt{composition\_table} (16 composition rules),
-  \texttt{inverse\_table} (21 inverse pairs), \texttt{SYLOW7\_DOMAIN\_MAP},
-  \texttt{SYLOW3\_MECHANISM\_MAP}, and \texttt{EntityType} / \texttt{RelationType} enumerations.
+  \texttt{inverse\_table} (21 inverse pairs), \texttt{DOMAIN\_MAP} (7-partition
+  of patterns by geopolitical domain), \texttt{MECHANISM\_MAP} (3-partition of
+  patterns by mechanism class), and \texttt{EntityType} / \texttt{RelationType} enumerations.
 \item \textbf{Lie Algebra Layer} (\texttt{lie\_algebra\_space.py}): 8-dimensional
   pattern vectors, \texttt{LieAlgebraSpace.add()}, \texttt{bracket()},
   \texttt{project()}, and \texttt{phase\_detect()} operations, PCA projection
@@ -308,28 +297,33 @@ is active.}
 
 \section{Mathematical Formalisation}
 
-\subsection{The Pattern Group and Sylow Decomposition}
-\label{sec:pattern-group}
+\subsection{Algebraic Organization of the Pattern Space}
+\label{sec:pattern-algebra}
 
-Let $S = \{p_1, \ldots, p_{21}\}$ be the set of 21 registered patterns equipped
-with the total binary operation $\cdot : S \times S \to S$ defined by the
-composition table (closed, associative, with identity element $e$ and inverses
-defined by \texttt{inverse\_table}). Then $(S, \cdot)$ is a \textbf{group} of
-order $|S| = 21 = 3 \times 7$.
+We organize the 21 registered patterns into a \textbf{finite algebraic transition
+structure} with a $7 \times 3$ domain--mechanism factorization. This factorization
+is \emph{motivated by} the structure of groups of order $21 = 3 \times 7$, and we
+use the corresponding Sylow-inspired partition as a \emph{design heuristic} rather
+than claiming that the composition table satisfies full group axioms: the current
+composition table contains 16 defined rules, covering approximately $3.6\%$ of all
+$21 \times 21$ pattern pairs, and full Cayley table completion is future work
+(Section~9).
 
-By the Sylow theorems, since $21 = 3 \times 7$ with $\gcd(3,7) = 1$:
-\begin{itemize}
-  \item The \textbf{Sylow-7 subgroup} $H_7$ (order 7) is \emph{unique} and
-    therefore normal: $H_7 \trianglelefteq S$. It partitions $S$ into 3 left
-    cosets of size 7, each corresponding to one mechanism class.
-  \item The \textbf{Sylow-3 subgroup} $H_3$ (order 3) partitions $S$ into 7
-    cosets of size 3, each corresponding to one geopolitical domain
-    (geopolitics, economics, technology, military, information, legal, social).
-\end{itemize}
+Let $S = \{p_1, \ldots, p_{21}\}$ be the set of 21 registered patterns. The
+\textbf{domain partition} assigns each pattern to one of seven geopolitical domains
+(geopolitics, economics, technology, military, information, legal, social),
+forming seven groups of size 3. The \textbf{mechanism partition} assigns each
+pattern to one of three cross-domain mechanism classes (coercive, cooperative,
+structural), forming three groups of size 7. Together, these two partitions
+provide a \textbf{canonical domain $\times$ mechanism address} for each pattern,
+supporting structured confidence calibration and ontology-guided traversal.
 
-Each pattern $p_i$ is uniquely located in a coset pair $(g_i H_7,\, g_i H_3)$,
-providing a \textbf{canonical domain $\times$ mechanism address} that is not an
-external label but a structural consequence of the group law.
+This $7 \times 3$ factorization is inspired by the algebraic structure of groups
+of order $21 = 3 \times 7$ (specifically, the semidirect product $\mathbb{Z}_7
+\rtimes \mathbb{Z}_3$), in which the order-7 and order-3 subgroups partition
+elements in exactly this way. We use this structure as an \emph{organizational
+scheme}, not as a claim that $(S, \cdot)$ with the partial composition table
+satisfies all group axioms.
 
 We also retain the original power-set operation for forward simulation:
 define the partial binary operation
@@ -399,8 +393,14 @@ Bayesian system.
 \label{sec:padic}
 
 We replace the geometric step-decay $\lambda^t$ (where $\lambda = 0.85$ was
-an ad hoc constant) with the 7-adic absolute value, selecting prime $p = 7$
-to match the number of Sylow-7 domains:
+an ad hoc constant) with a 7-based non-Archimedean calibration motivated by
+the seven-domain ontology partition. Selecting $p = 7$ to match the number of
+domain classes imposes \emph{domain-boundary-sensitive} confidence updates:
+confidence is stable within a domain-aligned reasoning horizon and drops sharply
+at multiples of 7, where a cross-domain phase transition is structurally
+plausible. This is a design-motivated choice rather than a claim of formal
+p-adic geometry; we use the 7-adic absolute value as a principled
+non-Archimedean alternative to the arbitrary constant $\lambda = 0.85$:
 \[
   c(P, t) = c_0^{(P)} \cdot |t|_7 = c_0^{(P)} \cdot 7^{-v_7(t)}
 \]
@@ -415,10 +415,10 @@ The revised \textbf{posterior weight} of transition $(A, B) \to C$ at step $t$ i
   w_t(A, B \to C)
     = \pi_t(A) \cdot \pi_t(B) \cdot \mathit{lie\_sim}(A, B, C) \cdot |t|_p
 \]
-replacing the previous $\lambda^t$ factor. This grounds temporal confidence
-in the ultrametric topology of the pattern space rather than an arbitrary
-decay constant, and gives an algebraic reason for the phase-transition
-period: it is the order of the Sylow-7 subgroup.
+replacing the previous $\lambda^t$ factor. This provides a principled,
+domain-sensitive alternative to the arbitrary decay constant, with confidence
+updates sharpening at multiples of 7 where cross-domain phase transitions are
+structurally plausible.
 
 The \textbf{aggregate confidence} of the forecast is:
 \[
@@ -467,10 +467,10 @@ Under this metric:
 \end{itemize}
 
 The ultrametric inequality $d_7(A,C) \leq \max(d_7(A,B),\, d_7(B,C))$ (stronger
-than the triangle inequality) formalises the observation that geopolitical
-crises are either fully contained within a domain or fully cross domain
-boundaries --- there is no ``partial'' cross-domain contagion in the algebraic
-structure.
+than the triangle inequality) \emph{models} the design intuition that geopolitical
+crises tend to be either fully contained within a domain or to fully cross domain
+boundaries. We use this metric structure as a design-motivated formalisation of
+domain-boundary sensitivity, not as an empirical claim about geopolitical dynamics.
 
 \subsection{Attractor Detection}
 
@@ -515,10 +515,10 @@ structurally motivated p-adic condition:
 where $k_0 = 1$ is the minimum valuation threshold and $p = 7$.  A large
 valuation means the posterior weight difference is divisible by a high power
 of 7, making the two leading attractors \emph{p-adically indistinguishable}.
-This is a more structurally precise notion of near-tie than a real-valued
-threshold: it detects when the system is at a bifurcation point \emph{at the
-resolution of the Sylow-7 structure}, not merely when two real numbers happen
-to be close.
+This provides a domain-structure-aligned notion of near-tie: it detects when
+the system is at a bifurcation point \emph{at the granularity of the 7-domain
+partition}, complementing the real-valued threshold with a structurally motivated
+discrete criterion.
 
 Implementation uses exact rational arithmetic (\texttt{fractions.Fraction}) to
 avoid floating-point artefacts in the valuation computation.
@@ -765,12 +765,11 @@ possible pairs). The vast majority of compositions are undefined ($\bot$).
 Completeness could be improved by inferring additional rules from
 historical event co-occurrence data.
 
-\textbf{Group structure completeness.} The algebraic upgrade from partial
-semigroup to a group of order $|S| = 21 = 3 \times 7$ provides a formally
-sound Sylow decomposition. The group structure is implemented in
-\texttt{group\_structure.py} (Z₇ ⋊ Z₃) and is verified by unit tests. The
-composition table coverage of the full $21 \times 21$ Cayley table remains
-partial and is an area for future completeness work.
+\textbf{Algebraic structure completeness.} The $7 \times 3$ domain--mechanism
+factorization is used as a design heuristic inspired by the structure of groups of
+order $21 = 3 \times 7$. The composition table currently contains 16 rules, covering
+approximately $3.6\%$ of all $21 \times 21$ pattern pairs; full Cayley table
+completion, and formal verification of group axioms, remain areas for future work.
 
 \textbf{Empirical validation.} The presented results are structural
 predictions from the composition algebra, not forecasts validated
@@ -780,38 +779,42 @@ ground-truth resolution dates.
 
 \section{Conclusion}
 
-We have presented EL-DRUIN, a system that grounds geopolitical
-relationship trajectory forecasting in formal ontology and algebraic
-structures. The central contribution is the \textbf{finite group forward
-simulation}: starting from a specified initial pattern set, the system
-iterates a composition operation defined by an explicit, algebraically
-validated table, converging to idempotent attractor states that
-constitute the long-run prediction. The pattern registry is organised as
-a group of order $|S| = 21 = 3 \times 7$ with a Sylow-7 normal subgroup
-$H_7$ partitioning 21 patterns across seven geopolitical domains, and a
-Sylow-3 subgroup $H_3$ encoding three mechanism classes. The \textbf{Lie algebra embedding}
+We have presented EL-DRUIN, an ontology-guided reasoning system for
+geopolitical trajectory analysis that combines formal ontology, symbolic
+composition inference, and constrained LLM explanation generation. The
+central contribution is a \textbf{provenance-preserving reasoning pipeline}:
+starting from typed event extraction, the system activates ontology-registered
+patterns, applies rule-based composition to derive trajectory transitions,
+scores transitions via Lie algebra similarity, and computes a fully auditable
+Bayesian posterior—converging to attractor states that constitute the
+long-run structural prediction. The 21 patterns are organized in a
+$7 \times 3$ domain--mechanism factorization that provides a canonical
+address for each pattern and grounds confidence calibration in the
+ontology structure. The \textbf{Lie algebra embedding}
 provides a continuous-valued plausibility weight ($\mathit{lie\_similarity}$)
 for each discrete composition step, coupling the discrete algebraic
-structure with a continuous geometric one. \textbf{p-Adic confidence}
-replaces the ad hoc geometric decay $\lambda^t$ with the 7-adic absolute
-value $|t|_7$, grounding temporal uncertainty in the ultrametric topology
-of the pattern space: phase transitions occur precisely at multiples of 7,
-the order of the Sylow-7 subgroup. \textbf{p-Adic bifurcation detection}
-identifies structural instability via valuation of the posterior weight
-gap, providing a more precise notion of near-tie than a real-valued
-threshold. The system is fully open-source, with a working frontend that exposes
+structure with a continuous geometric one. \textbf{Non-Archimedean confidence calibration}
+replaces the ad hoc geometric decay $\lambda^t$ with a 7-based valuation
+$|t|_7$, motivated by the seven-domain ontology partition: confidence
+remains stable within a domain-aligned horizon and updates sharply at
+domain-boundary multiples of 7. \textbf{Structured bifurcation detection}
+identifies instability via the 7-adic valuation of the posterior weight
+gap, providing a domain-granularity-aligned criterion for near-tie detection. The system is fully open-source, with a working frontend that exposes
 all computation traces. We believe this architecture---algebraic
 structure as the primary reasoning engine, language model as a
 constrained interpreter---represents a promising direction for the next
 generation of AI-assisted geopolitical analysis systems.
 
 \paragraph{Positioning.}
-We frame the p-adic and ultrametric components as \emph{p-adic inspired}: the
-formal connection to Scholze's perfectoid theory lies far beyond the scope of
-this work. What we implement is a non-Archimedean metric structure on a finite
-pattern space, motivated by the algebraic periodicity of the Sylow-7 subgroup.
-This provides a theoretically grounded alternative to the ad hoc decay constant
-$\lambda = 0.85$, without claiming the full machinery of p-adic geometry.
+We frame the non-Archimedean confidence and ultrametric components as
+\emph{design-motivated formalizations}: the formal connection to p-adic geometry
+lies beyond the scope of this work, and we make no claim that the partial
+composition table constitutes a full group structure. What we implement is a
+7-based non-Archimedean calibration on a finite ontology-partitioned pattern
+space, providing a principled, domain-sensitive alternative to the ad hoc decay
+constant $\lambda = 0.85$. The $7 \times 3$ factorization and the Sylow-inspired
+organizational scheme are best understood as a \emph{structured design heuristic}
+that makes confidence calibration interpretable and auditable.
 
 \bibliographystyle{plain}
 \bibliography{main}
