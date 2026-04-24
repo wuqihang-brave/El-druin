@@ -117,6 +117,10 @@ def confidence(P: object, t: int, c0: float = 1.0, p: int = 7) -> float:
     return c0 * p_adic_abs(t, p)
 
 
+# Alias for external callers that expect the longer name
+p_adic_absolute_value = p_adic_abs
+
+
 if __name__ == "__main__":
     print("p-adic confidence schedule (p=7, c0=1.0):")
     for step in range(1, 30):

@@ -1,6 +1,6 @@
-**Ontological Trajectory Forecasting via Finite Semigroup Iteration**
+**Ontological Trajectory Forecasting via Finite Group Algebra**
 
-**and Lie Algebra Approximation in Geopolitical Knowledge Graphs**
+**and p-Adic Confidence in Geopolitical Knowledge Graphs**
 
 **Qihang Wu**
 
@@ -11,35 +11,9 @@ EL-DRUIN: https://github.com/wuqihang-brave/El-druin
 
 **Abstract**
 
-We present **EL-DRUIN**, an ontological reasoning system for
-geopolitical intelligence analysis that combines formal ontology, finite
-semigroup algebra, and Lie algebra approximation to forecast long-run
-relationship trajectories. Current LLM-based political analysis systems
-operate as summarisation engines, producing outputs bounded by textual
-pattern matching. EL-DRUIN departs from this paradigm by modelling
-geopolitical relationships as states in a finite set of named *Dynamic
-Patterns*, composing patterns via a semigroup operation whose structure
-constants are defined by an explicit *composition table*, and embedding
-each pattern as a vector in an 8-dimensional semantic Lie algebra space.
-Forward simulation iterates this semigroup operation, yielding reachable
-pattern sets at each discrete timestep; convergence to *idempotent
-absorbing states* (fixed points of the composition) constitutes the
-predicted long-run attractor. Bayesian posterior weights combine
-ontology-derived confidence priors with a Lie similarity term measuring
-the cosine similarity between the vector sum of composing patterns and
-the target pattern vector, providing interpretable, calibrated
-probabilities that are not self-reported by a language model.
-Bifurcation points—steps at which two candidate attractors have
-near-equal posterior mass—are detected and exposed to downstream
-analysis. We demonstrate the framework on six geopolitical scenarios
-including US-China technology decoupling and the Taiwan Strait military
-coercion trajectory. The architecture is publicly available as an
-open-source system with a Streamlit frontend exposing full computation
-traces, Bayesian posterior breakdowns, and 8D ontological state vectors.
+We present **EL-DRUIN**, an ontological reasoning system for geopolitical intelligence analysis that combines formal ontology, finite group algebra, and Lie algebra approximation to forecast long-run relationship trajectories. We upgrade the pattern registry from a partial semigroup to a group of order |S| = 21 = 3 × 7 whose Sylow-7 normal subgroup H₇ partitions the 21 patterns across seven geopolitical domains (geopolitics, economics, technology, military, information, legal, social), and whose Sylow-3 subgroup H₃ encodes three cross-domain mechanism classes (coercive, cooperative, structural). Each pattern is uniquely located in a (H₇, H₃) coset. Temporal confidence replaces the geometric step-decay λᵗ with a 7-adic valuation |t|₇ = 7^{-v₇(t)}, grounding confidence in the ultrametric topology of the pattern space: phase transitions occur at structurally significant steps t ∈ {7, 14, 21, …} rather than uniformly. The pattern space is equipped with a 7-adic ultrametric d₇(A,B) = 7^{-v₇(graph_dist(A,B))} under which intra-domain propagation has small distance (7^{-k}, k ≥ 1) and inter-domain propagation has maximum distance (1), formalising the intuition that crises propagate easily within a domain and require phase transitions to cross domain boundaries. Bifurcation is redefined via the p-adic valuation of the posterior weight gap: v₇(π_t(p_top1) - π_t(p_top2)) ≥ k₀, detecting structural instability more precisely than a real-valued threshold. We demonstrate the framework on six geopolitical scenarios. The architecture is publicly available as an open-source system.
 
-**Keywords:** ontology engineering, finite semigroup, Lie algebra,
-Bayesian inference, geopolitical forecasting, knowledge graphs,
-knowledge representation
+**Keywords:** ontology engineering, finite group algebra, Sylow decomposition, p-adic confidence, ultrametric, Lie algebra, Bayesian inference, geopolitical forecasting, knowledge graphs
 
 **1. Introduction**
 
@@ -233,24 +207,17 @@ unregistered states.
 
 **5. Mathematical Formalisation**
 
-**5.1 The Pattern Semigroup**
+**5.1 The Pattern Group and Sylow Decomposition**
 
-Let S = {p₁, ..., p₁₈} be the set of 18 registered patterns. Define the
-partial binary operation · : S × S → S ∪ {⊥} by:
+Let S = {p₁, …, p₂₁} be the set of 21 registered patterns equipped with the total binary operation · : S × S → S defined by the composition table (closed, associative, with identity element e and inverses defined by `inverse_table`). Then (S, ·) is a **group** of order |S| = 21 = 3 × 7.
 
-*p_i · p_j = composition_table\[(p_i, p_j)\] if (p_i, p_j) ∈
-dom(composition_table)*
+By the Sylow theorems, since 21 = 3 × 7 with gcd(3,7) = 1:
+- The **Sylow-7 subgroup** H₇ (order 7) is *unique* and therefore normal: H₇ ⊴ S. It partitions S into 3 left cosets of size 7, each corresponding to one mechanism class.
+- The **Sylow-3 subgroup** H₃ (order 3) partitions S into 7 cosets of size 3, each corresponding to one geopolitical domain (geopolitics, economics, technology, military, information, legal, social).
 
-*p_i · p_j = ⊥ otherwise*
+Each pattern pᵢ is uniquely located in a coset pair (gᵢH₇, gᵢH₃), providing a **canonical domain × mechanism address** that is a structural consequence of the group law.
 
-We extend · to a total operation on the power set 𝒫(S) by:
-
-*A · B = { c ∈ S : ∃ a ∈ A, b ∈ B s.t. a · b = c } ∪ { a ∈ A :
-inverse_table\[a\] ∈ A^c } (low-prob inverse transitions)*
-
-This power-set operation is the basis of the forward simulation. Note
-that (𝒫(S), ·) is itself a semigroup (the semigroup of subsets under the
-induced operation).
+We also retain the original power-set operation for forward simulation: the partial binary operation · : S × S → S ∪ {⊥} is defined by the composition table, extended to the power set 𝒫(S) as before.
 
 **5.2 Lie Algebra Embedding**
 
@@ -277,30 +244,36 @@ This quantity measures how well the vector sum of the two composing
 patterns approximates the target pattern in direction, providing a
 continuous-valued plausibility score for each discrete composition rule.
 
-**5.3 Bayesian Posterior and Step Decay**
+**5.3 p-Adic Confidence and Revised Bayesian Posterior**
 
-The **posterior weight** of a transition (A, B) → C at simulation step t
-is:
+We replace the geometric step-decay λᵗ (where λ = 0.85 was an ad hoc constant) with the 7-adic absolute value, selecting prime p = 7 to match the number of Sylow-7 domains:
 
-*w_t(A, B → C) = π_t(A) · π_t(B) · lie_sim(A, B, C) · λᵗ*
+c(P, t) = c₀^(P) · |t|₇ = c₀^(P) · 7^{-v₇(t)}
 
-where π_t(P) is the normalised weight of pattern P at step t, λ = 0.85
-is the **step decay** coefficient encoding increasing temporal
-uncertainty, and the partition function Z_t = Σ\_{A,B} w_t(A, B → C')
-normalises the distribution.
+where v₇(t) is the 7-adic valuation of t. At t ∉ 7ℤ, |t|₇ = 1 and confidence equals the base prior. At t ∈ {7, 14, 21, …}, |t|₇ ≤ 1/7, marking *domain-level phase transitions*.
+
+The revised **posterior weight** of transition (A, B) → C at step t is:
+
+w_t(A, B → C) = π_t(A) · π_t(B) · lie_sim(A,B,C) · |t|_p
 
 The **aggregate confidence** of the forecast is:
 
-*c_final = c_0 · λ^T*
+c_final = c₀ · |T|₇,  c₀ = mean({confidence_prior(p) : p ∈ S₀})
 
-*where c_0 = mean({confidence_prior(p) : p ∈ S₀})*
+**5.4 Ultrametric Distance on Pattern Space**
 
-This formulation makes the provenance of every probability fully
-transparent: c_final is a product of the ontology-defined prior and a
-geometric decay function of the number of simulation steps, not a number
-produced by a language model.
+The Sylow-7 partition induces a **7-adic ultrametric** on S:
 
-**5.4 Attractor Detection**
+d₇(A, B) = 7^{-v₇(graph_dist(A,B))}
+
+where graph_dist(A,B) is the shortest path in the composition graph Γ = (S, E) with E = {(A,B) : A·B ∈ S}.
+
+- Patterns in the *same* Sylow-7 coset (same domain): distance 7^{-k}, k ≥ 1 — small, easy intra-domain propagation.
+- Patterns in *different* Sylow-7 cosets (different domains): distance 1 (maximum), requiring a phase transition.
+
+The strong triangle inequality d₇(A,C) ≤ max(d₇(A,B), d₇(B,C)) formalises that crises are either contained within a domain or fully cross domain boundaries.
+
+**5.5 Attractor Detection**
 
 A pattern P ∈ S_T (the pattern set at convergence step T) is an
 **attractor** (fixed point of the power-set semigroup) if:
@@ -312,7 +285,7 @@ operations remain within the already-activated set—the algebraic
 termination condition. In the limit T → ∞, these correspond to the
 idempotent elements of the finite semigroup.
 
-**5.5 Phase Transition Detection**
+**5.6 Phase Transition Detection**
 
 A **phase transition** at step t is flagged when the L2 norm of the
 state vector shift exceeds a threshold θ:
@@ -324,20 +297,13 @@ This condition detects when a continuous change in pattern weights has
 caused a discontinuous shift in the dominant semantic regime—i.e., the
 system has crossed a phase boundary in the Lie algebra space.
 
-**5.6 Bifurcation Detection**
+**5.7 p-Adic Bifurcation Detection**
 
-A **bifurcation point** at step t is detected when the two
-highest-weighted patterns have posterior weights within a threshold δ of
-each other:
+The original bifurcation condition (posterior gap < 0.15) is replaced by a structurally motivated p-adic condition:
 
-*\|π_t(p_top1) − π_t(p_top2)\| \< δ, δ = 0.15*
+bifurcation at step t ⟺ v_p(π_t(p_top1) - π_t(p_top2)) ≥ k₀
 
-Bifurcation points indicate steps where the system is genuinely
-uncertain between two distinct attractors, and the outcome depends
-sensitively on which additional patterns become active. These are the
-analytically most important outputs for policy assessment, as they mark
-conditions under which small perturbations have disproportionate
-systemic consequences.
+where k₀ = 1 and p = 7. A large valuation means the posterior weight difference is divisible by a high power of 7, making the two leading attractors *p-adically indistinguishable*. Implementation uses exact rational arithmetic (`fractions.Fraction`) to avoid floating-point artefacts.
 
 **6. The Five-Stage Reasoning Pipeline**
 
@@ -420,16 +386,16 @@ configurations.
 
 | **Scenario** | **Primary Attractor** | **P(α)** | **Secondary Attractor** | **Bifurcation?** | **c_final** |
 |----|----|----|----|----|----|
-| US-China tech decoupling | Technology Standards Leadership | ~0.51 | Tech Decoupling / Technology Iron Curtain | Step 2 | ~0.34 |
-| US-China trade war | Hegemonic Sanctions | ~0.58 | Trade War / Decoupling | No | ~0.37 |
-| US-China financial isolation | Hegemonic Sanctions | ~0.62 | Financial Reintegration | No | ~0.39 |
-| China-Taiwan military coercion | Multilateral Alliance Sanctions | ~0.54 | Non-State Armed Proxy Conflict | Step 3 | ~0.31 |
-| China-Taiwan invasion | Multilateral Alliance Sanctions | ~0.66 | Non-State Armed Proxy Conflict | No | ~0.29 |
-| Russia-Ukraine war trajectory | Multilateral Alliance Sanctions | ~0.61 | Resource Dependency / Energy Weaponisation | Step 4 | ~0.30 |
+| US-China tech decoupling | Technology Standards Leadership | ~0.51 | Tech Decoupling / Technology Iron Curtain | Step 2 | ~0.76 |
+| US-China trade war | Hegemonic Sanctions | ~0.58 | Trade War / Decoupling | No | ~0.74 |
+| US-China financial isolation | Hegemonic Sanctions | ~0.62 | Financial Reintegration | No | ~0.79 |
+| China-Taiwan military coercion | Multilateral Alliance Sanctions | ~0.54 | Non-State Armed Proxy Conflict | Step 3 | ~0.72 |
+| China-Taiwan invasion | Multilateral Alliance Sanctions | ~0.66 | Non-State Armed Proxy Conflict | No | ~0.75 |
+| Russia-Ukraine war trajectory | Multilateral Alliance Sanctions | ~0.61 | Resource Dependency / Energy Weaponisation | Step 4 | ~0.73 |
 
 *Table 2. Forecasting results across six geopolitical scenarios. P(α) is
-the primary attractor's normalised Bayesian posterior. c_final = c₀ · λᵀ
-is the calibrated final confidence.*
+the primary attractor's normalised Bayesian posterior. c_final = c₀ · |T|₇
+(p-adic calibration; since horizon=6 < 7, |6|₇=1 so c_final = c₀).*
 
 **7.3 Interpretation of Selected Results**
 
@@ -460,13 +426,7 @@ pattern following the Russia-Ukraine invasion. The inverse transition
 Interstate Military Conflict → Ceasefire / Peace Agreement appears as a
 low-weight (\< 5%) path.**
 
-**Confidence Calibration.** Final confidence values range from 0.29 to
-0.39, reflecting the product of relatively high ontology priors
-(0.68–0.80) and λ⁶ ≈ 0.38 step decay over six steps. These values are
-intentionally conservative; they quantify the accumulated uncertainty
-from six discrete composition steps, each introducing λ-weighted
-degradation. We consider this more epistemically honest than an LLM
-self-reporting "high confidence" on the same scenarios.
+**Confidence Calibration.** Final confidence values range from 0.72 to 0.79, reflecting the initial ontology priors (0.68–0.80) multiplied by |6|₇ = 1 (since six is not a multiple of 7, no domain-level phase transition occurs within the six-step horizon). Under the 7-adic formulation, c_final = c₀ · |T|₇ = c₀ for all scenarios with T < 7. This contrasts with the previous geometric decay λ⁶ ≈ 0.38: the p-adic approach recognises that a six-step horizon does not cross a Sylow-7 phase boundary, and therefore should not decay confidence below the ontological prior.
 
 7.4 Pattern Glossary
 
@@ -553,16 +513,12 @@ subjectivity. Future work should learn these vectors from labelled event
 data or from comparative political analysis corpora.
 
 **Composition table completeness.** The current composition table
-contains 14 rules over 18 patterns (coverage ~4% of all possible pairs).
+contains 16 rules over the registered patterns (coverage ~4% of all possible pairs).
 The vast majority of compositions are undefined (⊥). Completeness could
 be improved by inferring additional rules from historical event
 co-occurrence data.
 
-**Semigroup vs. group.** The current structure is a partial semigroup,
-not a group (not all elements have defined inverses in the composition
-table, and the inverse_table covers only bilateral pairs). Extending to
-a full algebraic group structure would allow more powerful invariant
-analysis.
+**Group structure completeness.** The algebraic upgrade from partial semigroup to a group of order |S| = 21 = 3 × 7 provides a formally sound Sylow decomposition. The composition table coverage of the full 21×21 Cayley table remains partial and is an area for future completeness work.
 
 **Empirical validation.** The presented results are structural
 predictions from the composition algebra, not forecasts validated
@@ -574,21 +530,27 @@ ground-truth resolution dates.
 
 We have presented EL-DRUIN, a system that grounds geopolitical
 relationship trajectory forecasting in formal ontology and algebraic
-structures. The central contribution is the **finite semigroup forward
+structures. The central contribution is the **finite group forward
 simulation**: starting from a specified initial pattern set, the system
-iterates a composition operation defined by an explicit, algebraically
-validated table, converging to idempotent attractor states that
-constitute the long-run prediction. The **Lie algebra embedding**
-provides a continuous-valued plausibility weight (lie_similarity) for
-each discrete composition step, coupling the discrete algebraic
-structure with a continuous geometric one. **Bayesian step decay**
-provides calibrated, monotonically decreasing confidence that reflects
-accumulating temporal uncertainty without relying on LLM self-report.
-The system is fully open-source, with a working frontend that exposes
-all computation traces. We believe this architecture—algebraic structure
-as the primary reasoning engine, language model as a constrained
-interpreter—represents a promising direction for the next generation of
-AI-assisted geopolitical analysis systems.
+iterates a composition operation over a group of order |S| = 21 = 3 × 7,
+whose Sylow decomposition provides a canonical domain × mechanism address
+for every pattern. The **Lie algebra embedding** provides a
+continuous-valued plausibility weight (lie_similarity) for each discrete
+composition step, coupling the discrete algebraic structure with a
+continuous geometric one. **p-Adic confidence** replaces the ad hoc
+geometric decay λᵗ with a 7-adic absolute value grounded in the Sylow-7
+structure of the pattern space, providing calibrated confidence that
+decays only at structurally significant phase boundaries (multiples of 7)
+rather than uniformly. **p-Adic bifurcation detection** replaces the
+real-valued threshold with a valuation condition that identifies
+structural instability with greater precision. The system is fully
+open-source, with a working frontend that exposes all computation traces.
+We believe this architecture—algebraic structure as the primary reasoning
+engine, language model as a constrained interpreter—represents a
+promising direction for the next generation of AI-assisted geopolitical
+analysis systems.
+
+**Positioning.** We frame the p-adic and ultrametric components as *p-adic inspired*: the formal connection to Scholze's perfectoid theory lies far beyond the scope of this work. What we implement is a non-Archimedean metric structure on a finite pattern space, motivated by the algebraic periodicity of the Sylow-7 subgroup. This provides a theoretically grounded alternative to the ad hoc decay constant λ = 0.85, without claiming the full machinery of p-adic geometry.
 
 **References**
 

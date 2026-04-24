@@ -24,11 +24,18 @@ compose(P, P) = P is explicitly defined in the composition_table.  Patterns
 not covered by the table are excluded from attractor candidates; this is
 conservative but honest given the table's partial coverage.
 
-Bayesian confidence decay:
-    confidence_t = initial_confidence × decay^t   (decay = 0.85 per step)
+Bayesian confidence (p-adic):
+    confidence_t = initial_confidence × |t|_7 = initial_confidence × 7^{−v_7(t)}
 
-Phase transitions:
-    Flagged when ‖v_t - v_{t-1}‖ > 0.25 in the 8-D Lie algebra state space.
+    Replaces the previous geometric decay λ^t (λ=0.85). Phase transitions
+    occur at structurally significant steps t ∈ {7, 14, 21, …} (multiples
+    of 7 = |H₇|, the Sylow-7 subgroup order), grounding temporal confidence
+    in the ultrametric topology of the pattern space.
+
+Phase transitions / bifurcation:
+    Detected via p-adic bifurcation: v_7(π_t(p_top1) − π_t(p_top2)) ≥ k₀=1.
+    Falls back to ||Δv|| > 0.25 in 8-D Lie algebra space when p-adic module
+    is unavailable.
 
 contract_version: "forecast.v1"
 mode: "forecast"
@@ -57,9 +64,35 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_DECAY: float = 0.85           # Bayesian step-wise confidence decay
-_PHASE_THRESHOLD: float = 0.25  # ||Δv|| threshold for phase transition
+# _DECAY: float = 0.85  # replaced by p-adic confidence (see below)
+_PHASE_THRESHOLD: float = 0.25  # ||Δv|| threshold for phase transition (kept for reference)
 _MAX_STEPS: int = 15           # Safety cap on simulation steps
+
+try:
+    from intelligence.p_adic_confidence import confidence as _p_adic_conf  # type: ignore
+    from intelligence.p_adic_confidence import p_adic_absolute_value as _p_adic_abs  # type: ignore
+    _PADIC_AVAILABLE = True
+except ImportError:
+    _PADIC_AVAILABLE = False
+    _DECAY_FALLBACK: float = 0.85
+
+try:
+    from intelligence.bifurcation import bifurcation_detected as _bifurcation_detected  # type: ignore
+    _BIFURCATION_AVAILABLE = True
+except ImportError:
+    _BIFURCATION_AVAILABLE = False
+
+
+def _step_confidence(init_conf: float, step: int, p: int = 7) -> float:
+    """Return the p-adic step confidence c0 · |step|_p.
+
+    Replaces the geometric decay c0 · λ^step (λ=0.85).
+    Phase transitions occur at steps divisible by p (multiples of 7).
+    """
+    if _PADIC_AVAILABLE:
+        return round(_p_adic_conf("", step, c0=init_conf, p=p), 4)
+    # Fallback: geometric decay if p_adic module unavailable
+    return round(init_conf * (_DECAY_FALLBACK ** step), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -220,13 +253,20 @@ def run_forecast(
 
     for step in range(1, min(horizon_steps, _MAX_STEPS) + 1):
         new_active = _compose_step(active, composition_table)
-        step_conf  = round(init_conf * (_DECAY ** step), 4)
+        step_conf  = _step_confidence(init_conf, step, p=7)
 
         curr_vector  = _get_state_vector(new_active)
         delta_norm   = float(np.linalg.norm(curr_vector - prev_vector))
 
-        # Phase transition check
-        if delta_norm > _PHASE_THRESHOLD:
+        # Phase transition check: use p-adic bifurcation when available,
+        # else fall back to Lie-space delta norm threshold
+        if _BIFURCATION_AVAILABLE and new_active:
+            pattern_weights = {p_name: _get_pattern_confidence(p_name) for p_name in new_active}
+            total_w = sum(pattern_weights.values()) or 1.0
+            pi_t = {k: v / total_w for k, v in pattern_weights.items()}
+            if _bifurcation_detected(pi_t, k0=1, p=7):
+                bifurcation_points.append(step)
+        elif delta_norm > _PHASE_THRESHOLD:
             bifurcation_points.append(step)
 
         # Attractor check: patterns that compose with themselves to produce themselves
@@ -262,7 +302,7 @@ def run_forecast(
     # Build attractor list
     all_attractors = []
     for pat_name, first_step in sorted(attractor_candidates.items(), key=lambda x: x[1]):
-        conf = round(init_conf * (_DECAY ** first_step), 4)
+        conf = _step_confidence(init_conf, first_step, p=7)
         all_attractors.append({
             "name":            _display_pattern(pat_name),
             "domain":          _get_pattern_domain(pat_name),
@@ -279,7 +319,7 @@ def run_forecast(
             "name":              _display_pattern(active[0]) if active else "unknown",
             "domain":            _get_pattern_domain(active[0]) if active else "general",
             "first_step":        len(simulation_steps),
-            "final_probability": round(init_conf * (_DECAY ** len(simulation_steps)), 4),
+            "final_probability": _step_confidence(init_conf, len(simulation_steps), p=7),
             "description":       "Terminal state after exhausting the specified horizon.",
         }
     )
