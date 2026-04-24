@@ -1113,7 +1113,6 @@ def _build_assessment_specific_outputs(assessment_id: str) -> dict[str, Any]:
     # Evidence — synthesised from region sources and domain context
     # ------------------------------------------------------------------
     raw_items = build_evidence_items(assessment)
-    from datetime import timedelta  # noqa: PLC0415
     evidence_items: list[EvidenceItem] = [
         EvidenceItem(
             evidence_id=item["evidence_id"],
