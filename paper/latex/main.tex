@@ -592,18 +592,58 @@ sentences of strategic-language interpretation. If the LLM call fails,
 a template fallback produces the text field without degrading any
 numerical output.
 
-\section{Forecasting Experiments}
+\section{Evaluation}
 
-\subsection{Methodology}
+\subsection{Dataset and Setup}
+\label{sec:methodology}
 
-For each scenario, the forecaster runs with
-$\mathtt{horizon\_steps} = 6$ (convergence typically occurs at step
-3--5). The partition function $Z = \sum w_t$ normalises posterior
-weights to probabilities. We report the primary attractor (highest
-posterior), secondary attractor, whether a bifurcation point was
-detected, and the final confidence. The initial pattern set for each
-scenario is drawn from \texttt{NAMED\_SCENARIOS}, a predefined library of
-geopolitically significant starting configurations.
+We evaluate EL-DRUIN on two complementary experimental protocols:
+
+\textbf{(A) News analysis and baseline comparison.}
+Fourteen geopolitical news excerpts drawn from publicly accessible sources
+(Reuters, BBC News, Financial Times, Brookings Institution, CSIS, NATO, Wall
+Street Journal) are processed by the EL-DRUIN pipeline and by a GPT-4o
+baseline~\cite{pan2023unifying}. The excerpts span nine thematic categories
+(technology export control, trade war, financial isolation, military coercion,
+energy weaponisation, military alliance, multilateral sanctions, supply-chain
+dependency, information warfare) and cover events from 2018 to 2024. EL-DRUIN
+is run in fully deterministic mode ($\sigma = 0$ across repeated runs). GPT-4o
+is queried $N = 5$ times per excerpt with identical prompts to measure output
+variance. The full dataset, collection protocol, and raw results are available
+in \texttt{experiments/news\_samples.jsonl} and
+\texttt{experiments/gpt\_manual\_data.py}.
+
+\textbf{(B) Historical backtesting.}
+We evaluate trajectory prediction against 8 curated historical events with known
+realized outcomes, using the framework in \texttt{experiments/backtest\_evaluator.py}.
+For each event, the pipeline is run on a contemporaneous news excerpt (i.e., text
+available at the time of the event); the predicted primary attractor is compared
+against the curated realized direction. We report direction accuracy (exact match
+= 1.0, same ontology domain = 0.5, miss = 0.0), Brier score
+$(p - \text{outcome})^2$, attractor identification score, and a composite weighted
+score $0.4 \times \text{direction} + 0.3 \times (1 - \text{Brier}) + 0.3 \times
+\text{attractor}$.
+
+\textbf{(C) Ablation study.}
+We compare four configurations to isolate the contribution of each pipeline
+component:
+\begin{itemize}
+  \item \textbf{Baseline 1 (LLM-only)}: GPT-4o receives the same news excerpt
+    and outputs a trajectory judgment directly, without ontology grounding.
+  \item \textbf{Baseline 2 (KG-retrieval)}: Pattern activation via graph
+    neighborhood and prior frequency only; no composition rules.
+  \item \textbf{Baseline 3 (Rule-only)}: Ontology + composition rules; Lie
+    algebra similarity forced to uniform weight ($\mathit{lie\_sim} = 1.0$
+    for all transitions); no p-adic calibration.
+  \item \textbf{Baseline 4 (Geometric decay)}: Full symbolic pipeline with
+    Lie similarity, but temporal confidence uses $\lambda^t$ ($\lambda = 0.85$)
+    instead of the 7-based non-Archimedean calibration.
+  \item \textbf{EL-DRUIN (Full)}: Complete system as described in Sections 4--6.
+\end{itemize}
+Baselines 3 and 4 are implemented via the \texttt{--ablation-mode} flag in
+\texttt{experiments/run\_baseline.py}. The primary comparison metric is
+traceability (whether a full compute trace can be produced) and stability
+($\sigma$ across repeated runs).
 
 \subsection{Results}
 % --- Table 2 (from your markdown) ---
@@ -629,6 +669,44 @@ Russia-Ukraine war trajectory & Multilateral Alliance Sanctions & 0.61 & Resourc
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Historical Backtesting Results}
+
+Table~\ref{tab:backtest} reports direction accuracy, Brier scores, and composite
+weighted scores across 8 curated historical events. The pipeline is run in
+deterministic mode without LLM calls (\texttt{llm\_service=None}), so all
+results are fully reproducible from the open-source repository.
+
+\begin{table}[h]
+\centering
+\caption{Historical backtesting results ($N=8$ events). Direction score: 1.0 = exact
+pattern match, 0.5 = same ontology domain, 0.0 = miss. Brier score: lower is better.
+Composite = $0.4 \times \text{dir} + 0.3 \times (1 - \text{Brier}) + 0.3 \times
+\text{attractor}$.}
+\label{tab:backtest}
+\begin{tabular}{@{}p{0.30\linewidth}p{0.22\linewidth}p{0.10\linewidth}p{0.10\linewidth}p{0.10\linewidth}p{0.10\linewidth}@{}}
+\toprule
+Event & Realized Direction & Dir & Brier & Att & Combined \\
+\midrule
+HK protests 2019 & Great-Power Coercion & --- & --- & --- & --- \\
+Wuhan COVID 2019 & Supply Chain Dependency & --- & --- & --- & --- \\
+Russia-Ukraine invasion 2022 & Interstate Military Conflict & --- & --- & --- & --- \\
+US chip controls 2023 & Entity-List Tech Blockade & --- & --- & --- & --- \\
+Huawei entity list 2019 & Entity-List Tech Blockade & --- & --- & --- & --- \\
+Taiwan drills 2022 & Great-Power Coercion & --- & --- & --- & --- \\
+Brexit withdrawal 2020 & Trade War / Decoupling & --- & --- & --- & --- \\
+SCO expansion 2023 & Formal Military Alliance & --- & --- & --- & --- \\
+\midrule
+\textbf{Average (8 events)} & --- & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textit{Note: backtesting scores are populated by running
+\texttt{python experiments/backtest\_evaluator.py} from the repository root.
+The ``---'' placeholders will be replaced with actual scores upon execution;
+all ground-truth labels and scoring logic are version-controlled in
+\texttt{experiments/backtest\_evaluator.py}.}
 
 \subsection{Interpretation of Selected Results}
 
@@ -699,22 +777,33 @@ Information Warfare / Narrative Control & Information Warfare / Narrative Contro
 \bottomrule
 \end{longtable}
 
-\subsection{Baseline Comparison}
-% --- Table 3 ---
+\subsection{Baseline Comparison and Ablation}
+
+Table~\ref{tab:baseline} summarises the qualitative comparison between EL-DRUIN
+and the GPT-4o baseline on the properties most relevant to ontology-guided
+reasoning: traceability, auditability, stability, and constraint compliance.
+Baselines 3 and 4 (rule-only and geometric decay) are described in
+Section~\ref{sec:methodology}; their quantitative ablation results on the
+news-analysis dataset are available in the repository under
+\texttt{experiments/results/}.
+
 \begin{table}[h]
 \centering
-\caption{Baseline comparison metrics. EL-DRUIN vs GPT-4 ($N=5$). $\sigma$ denotes standard deviation across runs.}
+\caption{System comparison across five configurations. EL-DRUIN (Full) vs
+GPT-4o ($N=5$, OpenAI, April 2026) vs ablation variants. $\sigma$ denotes
+standard deviation across repeated runs on the same input.}
 \label{tab:baseline}
-\begin{tabular}{@{}p{0.35\linewidth}p{0.28\linewidth}p{0.31\linewidth}@{}}
+\begin{tabular}{@{}p{0.28\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}@{}}
 \toprule
-Metric & EL-DRUIN & GPT-4 ($N=5$) \\
+Metric & EL-DRUIN (Full) & B3: Rule-only & B4: Geom.\ decay & B1: LLM-only (GPT-4o) \\
 \midrule
-Confidence source & Ontology priors $\times$ Bayesian posterior (deterministic) & Self-reported by LLM (no auditable derivation) \\
-Confidence verifiable & Yes --- compute trace anchors every value & No --- free-text assertion \\
-Stability ($\sigma$) & 0.000 (deterministic) & $>0$ (stochastic variance) \\
-Traceability & Full compute trace (prior $\times$ similarity $\times$ decay) & None (no computable trace) \\
-Entity invention guard & Enforced (invented proper nouns trigger fallback) & Not enforced by default \\
-Numeric consistency & Locked by deterministic pipeline & Self-reported; may vary \\
+Confidence source & Ontology prior $\times$ Bayes (deterministic) & Same & Same & Self-reported \\
+Compute trace & Full & Full & Full & None \\
+Verifiable & Yes & Yes & Yes & No \\
+Stability $\sigma$ & 0.000 & 0.000 & 0.000 & $>0$ \\
+Lie similarity & \checkmark & $\times$ (uniform) & \checkmark & N/A \\
+7-adic calibration & \checkmark & $\times$ & $\times$ & N/A \\
+Entity invention guard & Enforced & Enforced & Enforced & Not enforced \\
 \bottomrule
 \end{tabular}
 \end{table}
