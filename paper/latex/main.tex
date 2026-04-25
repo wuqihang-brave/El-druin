@@ -12,6 +12,9 @@
 \usepackage{array}
 \usepackage{amsmath,amssymb}
 \usepackage[T1]{fontenc}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds}
+\usepackage{xcolor}
 
 \title{An Ontology-Guided, Explainable Reasoning Framework\\
 for Geopolitical Trajectory Analysis}
@@ -209,6 +212,66 @@ $\mathit{prior}_A \times \mathit{prior}_B \times \mathit{lie\_similarity} / Z$;
 
 \section{Ontology Schema and Pattern Registry}
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=1.4cm and 2.0cm,
+    every node/.style={font=\small},
+    class/.style={draw, rectangle, rounded corners=4pt, fill=blue!10,
+                  minimum width=2.6cm, minimum height=0.7cm, align=center},
+    abstract/.style={draw, rectangle, rounded corners=4pt, fill=gray!15,
+                     minimum width=2.6cm, minimum height=0.7cm,
+                     align=center, dashed},
+    rel/.style={-{Stealth[length=6pt]}, thick},
+    partof/.style={-{Diamond[open,length=6pt]}, thick, dashed},
+    label/.style={font=\footnotesize\itshape, midway},
+]
+
+%% Core classes
+\node[class] (event)    {Event};
+\node[class] (entity)   [below left=of event]   {EntityType};
+\node[class] (reltype)  [below right=of event]  {RelationType};
+\node[class] (pattern)  [below=2.2cm of event]  {\textbf{DynamicPattern}};
+\node[class] (domain)   [below left=of pattern] {Domain (×7)};
+\node[class] (mech)     [below right=of pattern]{MechanismClass (×3)};
+\node[abstract](traj)   [below=1.8cm of pattern]{Trajectory};
+\node[class] (prov)     [right=2.5cm of pattern]{ProvenanceRecord};
+
+%% Relations: Event → EntityType / RelationType
+\draw[rel] (event) -- node[label, left]{src/tgt type} (entity);
+\draw[rel] (event) -- node[label, right]{rel type}    (reltype);
+
+%% Event → DynamicPattern (grounding)
+\draw[rel, bend left=15] (event) to
+    node[label, right]{activates} (pattern);
+
+%% DynamicPattern → Domain / MechanismClass (factorization)
+\draw[rel] (pattern) -- node[label, left]{domain} (domain);
+\draw[rel] (pattern) -- node[label, right]{mechanism} (mech);
+
+%% DynamicPattern → Trajectory (composition chain)
+\draw[rel, dashed] (pattern) to
+    node[label, right]{composition$^*$} (traj);
+
+%% DynamicPattern → ProvenanceRecord
+\draw[partof] (prov) -- node[label, above]{compute\_trace\_ref} (pattern);
+
+%% Ontology-typed confidence prior annotation
+\node[font=\footnotesize, draw=none, text=gray, right=0.2cm of mech]
+    {\textit{confidence\_prior}};
+
+\end{tikzpicture}
+\caption{EL-DRUIN ontology schema. \textbf{DynamicPattern} is the central
+mid-level semantic unit bridging event-level data (top) and trajectory-level
+reasoning (bottom). Each pattern carries a \emph{domain} assignment (one of
+seven geopolitical domains) and a \emph{MechanismClass} assignment (one of
+three cross-domain mechanism types), providing a $7 \times 3$ factorization
+that grounds compositional inference and confidence calibration in the ontology
+structure. The \emph{ProvenanceRecord} links every numerical output to its
+derivation via \texttt{compute\_trace\_ref}.}
+\label{fig:ontology-schema}
+\end{figure}
+
 \subsection{Entity and Relation Type Enumerations}
 
 The entity type set $E$ contains 18 elements spanning geopolitical
@@ -294,6 +357,72 @@ normalised against a fixed domain baseline of $n_d = 8$ (the total
 number of semantic domains in the ontology), not against the count of
 currently active domains, to avoid division by zero when a single domain
 is active.}
+
+\subsection{Ontology Design Pattern: Trajectory Reasoning}
+\label{sec:design-pattern}
+
+Figure~\ref{fig:ontology-schema} illustrates the central ontology design
+decision in EL-DRUIN. Rather than merely enumerating entities and relations,
+we introduce a \textbf{trajectory reasoning design pattern} in which
+\emph{DynamicPattern} objects serve as typed mid-level semantic units that
+bridge event-level observations and trajectory-level reasoning.
+
+\paragraph{Why this is more than a pattern list.}
+Existing political event coding schemes (CAMEO, GDELT, ICEWS) register events
+as typed actor-action-target triples and aggregate them statistically. EL-DRUIN
+differs in three ways:
+\begin{enumerate}
+  \item \textbf{Composition semantics.} Each \texttt{DynamicPattern} participates
+    in a composition table that defines how pairs of active patterns interact to
+    produce derived patterns. This elevates patterns from database entries to
+    active inference nodes in a symbolic reasoning graph.
+  \item \textbf{Ontology-grounded confidence.} Each pattern carries a
+    \texttt{confidence\_prior} that is an ontology-defined belief about the
+    base rate of that pattern type, not a learned parameter or an arbitrary
+    constant. The prior participates directly in the Bayesian posterior
+    computation, making every confidence value traceable to an explicit
+    ontological assumption.
+  \item \textbf{Provenance-preserving structure.} Every numerical output is
+    anchored to a \texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}.
+    If the system changes a confidence value, the record changes too. This
+    satisfies the ISWC community's standard for auditable and reproducible
+    ontological inference.
+\end{enumerate}
+
+\paragraph{Why LLM is needed, and where.}
+The LLM plays a strictly bounded role in EL-DRUIN:
+\begin{itemize}
+  \item \textbf{Not responsible for}: numerical reasoning, confidence computation,
+    pattern activation, composition, or attractor detection. These are entirely
+    determined by the ontology and the symbolic pipeline.
+  \item \textbf{Responsible for}: rendering the pre-computed structured output
+    into natural-language strategic interpretation (2--3 sentences).
+  \item \textbf{Locked fields}: the LLM prompt presents all numerical fields as
+    locked values that must not be changed. Any output that modifies a numerical
+    field, introduces an entity not present in the structured output, or produces
+    CJK characters triggers a guardrail fallback to template-based rendering.
+  \item \textbf{Failure isolation}: if the LLM call fails entirely, a template
+    fallback produces the \texttt{conclusion.text} field using pre-computed
+    driving-factor statements. No numerical output is degraded.
+\end{itemize}
+
+This architecture is a deliberate design choice: it ensures that the system's
+\emph{analytical conclusions} --- the patterns, transitions, posteriors, and
+attractor predictions --- are fully reproducible and auditable even in the absence
+of any LLM, while the LLM provides the linguistic fluency that makes those
+conclusions accessible to non-specialist users.
+
+\paragraph{The $7 \times 3$ factorization as reasoning semantics.}
+The \texttt{domain} $\times$ \texttt{mechanism\_class} factorization is not an
+external label applied post-hoc; it is a structural design choice with reasoning
+consequences. Patterns in the same domain share a confidence-calibration
+baseline (the 7-based valuation period), while patterns of the same mechanism
+class tend to compose into predictable transition chains (coercive patterns
+escalate into sanctions or military action; cooperative patterns de-escalate into
+normalization). This factorization makes cross-domain and cross-mechanism
+propagation explicit, which is essential for explainability: when the system
+predicts a cross-domain transition (e.g., from economic sanctions to military
+coercion), the analyst can inspect exactly which composition rules fired and why.
 
 \section{Mathematical Formalisation}
 
@@ -892,30 +1021,85 @@ knowledge graphs, highlighting the importance of provenance tracking and
 schema governance---properties that EL-DRUIN builds in at the ontology layer
 through its typed pattern registry and compute trace mechanism.
 
-\section{Limitations and Future Work}
+\section{Discussion}
+\label{sec:discussion}
 
-\textbf{Pattern vector assignment.} The 8-dimensional vectors $\varphi(p)$
-are currently assigned by expert annotation, introducing potential
-subjectivity. Future work should learn these vectors from labelled event
-data or from comparative political analysis corpora.
+\subsection{What EL-DRUIN Can and Cannot Claim}
 
-\textbf{Composition table completeness.} The current composition table
-contains 16 rules over the registered patterns (coverage $\approx 4\%$ of all
-possible pairs). The vast majority of compositions are undefined ($\bot$).
-Completeness could be improved by inferring additional rules from
-historical event co-occurrence data.
+EL-DRUIN is a \textbf{system demonstration} paper: its primary contribution is a
+working, open-source, ontology-guided reasoning pipeline with demonstrable
+properties (determinism, provenance, auditability, constrained LLM verbalization).
+It is not a claim that geopolitical trajectories are fully predictable, nor that
+the algebraic structures described are the uniquely correct formalization of
+geopolitical dynamics.
 
-\textbf{Algebraic structure completeness.} The $7 \times 3$ domain--mechanism
-factorization is used as a design heuristic inspired by the structure of groups of
-order $21 = 3 \times 7$. The composition table currently contains 16 rules, covering
-approximately $3.6\%$ of all $21 \times 21$ pattern pairs; full Cayley table
-completion, and formal verification of group axioms, remain areas for future work.
+Specifically:
+\begin{itemize}
+  \item \textbf{The $7 \times 3$ factorization} is a principled design choice, not
+    an empirical discovery. A different ontology designer might choose a different
+    partition. The factorization's value lies in its organizational clarity and
+    reasoning consequences, not in any claim that geopolitical reality has exactly
+    21 fundamental patterns.
+  \item \textbf{The non-Archimedean confidence calibration} is a design-motivated
+    formalization. We do not claim that geopolitical confidence follows the formal
+    theory of p-adic numbers, nor that the composition table constitutes a
+    mathematically complete group. The 7-based valuation is a principled
+    alternative to the ad hoc constant $\lambda = 0.85$, motivated by the domain
+    partition structure.
+  \item \textbf{The Lie algebra approximation} provides a continuous-valued
+    plausibility score for discrete composition steps, but the 8-dimensional
+    vectors are manually annotated and introduce expert subjectivity. The
+    commutator structure provides a mathematically well-defined path-independence
+    diagnostic; its geopolitical interpretation is heuristic.
+  \item \textbf{The backtesting results} use curated ground-truth labels assigned
+    by the authors based on historical record. While the events are well-documented
+    and the labels are defensible, they are not the product of a blind annotation
+    process with inter-annotator agreement measurement.
+\end{itemize}
 
-\textbf{Empirical validation.} The presented results are structural
-predictions from the composition algebra, not forecasts validated
-against historical outcomes. A rigorous evaluation would require
-backtesting against documented geopolitical trajectories with
-ground-truth resolution dates.
+\subsection{Limitations and Future Work}
+
+\textbf{Pattern vector assignment.}
+The 8-dimensional vectors $\varphi(p)$ are currently assigned by expert annotation,
+introducing potential subjectivity. Future work should learn these vectors from
+labelled event data or from comparative political analysis corpora, and measure
+inter-annotator agreement on the annotations.
+
+\textbf{Composition table completeness.}
+The current composition table contains 16 rules over the registered patterns
+(coverage $\approx 3.6\%$ of all possible pairs). The vast majority of compositions
+are undefined ($\bot$). Completeness could be improved by inferring additional
+rules from historical event co-occurrence data. Until the table is substantially
+more complete, forward simulation results should be interpreted as indicative
+rather than exhaustive.
+
+\textbf{Ontology curation subjectivity.}
+The pattern registry, domain assignments, mechanism classes, and confidence priors
+are all manually curated. Different domain experts might curate different registries.
+A rigorous ontology evaluation would require independent expert validation of the
+21 patterns and their properties.
+
+\textbf{No claim of geopolitical certainty.}
+EL-DRUIN produces attractor predictions with calibrated confidence values, but
+these should be understood as structured scenario projections from a symbolic
+model, not as probabilistic forecasts validated against historical base rates.
+The system does not model the full complexity of geopolitical systems; it provides
+a structured analytical scaffold.
+
+\textbf{Algebraic completeness.}
+As noted in Section~\ref{sec:pattern-algebra}, the composition table does not
+constitute a full group structure (only 16 of 441 possible pairs are defined). The
+$7 \times 3$ factorization and the Sylow-inspired organizational scheme are best
+understood as structured design heuristics. A rigorous algebraic treatment would
+require either (a) completing the Cayley table to fully define the group operation
+or (b) formally characterizing the partial algebra as a specific algebraic structure
+(e.g., a partial groupoid or a semigroup with zero).
+
+\textbf{Evaluation scope.}
+The current evaluation covers 14 news excerpts and 8 backtesting events. A more
+rigorous evaluation would use a larger, independently curated dataset, involve
+domain expert assessment of the structured outputs, and include human evaluation
+of explanation quality. We consider this a priority for future work.
 
 \section{Conclusion}
 
