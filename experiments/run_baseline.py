@@ -80,20 +80,36 @@ _GPT_USER_TEMPLATE = (
 # EL-DRUIN runner
 # ---------------------------------------------------------------------------
 
-def run_eldruin(excerpt: str) -> Dict[str, Any]:
-    """Run the EL-DRUIN evented pipeline on *excerpt* and return serialisable output."""
+def run_eldruin(excerpt: str, ablation_mode: str = "full") -> Dict[str, Any]:
+    """Run the EL-DRUIN evented pipeline on *excerpt* and return serialisable output.
+
+    Parameters
+    ----------
+    ablation_mode:
+        'full'            — full pipeline (Lie similarity + p-adic confidence)
+        'rule-only'       — composition rules only; Lie similarity forced to uniform 1.0
+        'geometric-decay' — rules + Lie similarity, but temporal confidence uses λ^t (λ=0.85)
+                            instead of the 7-based non-Archimedean calibration
+    """
     from intelligence.evented_pipeline import run_evented_pipeline
 
-    result = run_evented_pipeline(excerpt, llm_service=None)
+    # Build ablation kwargs understood by run_evented_pipeline.
+    # The pipeline checks for these optional overrides when present.
+    ablation_kwargs: Dict[str, Any] = {}
+    if ablation_mode == "rule-only":
+        ablation_kwargs["lie_similarity_override"] = 1.0   # uniform weight (1.0 for all) removes differential Lie similarity contribution → composition rules dominate
+    elif ablation_mode == "geometric-decay":
+        ablation_kwargs["confidence_decay_mode"] = "geometric"  # λ^t decay instead of 7-adic
 
-    # Collect only the fields needed for the comparison table
+    result = run_evented_pipeline(excerpt, llm_service=None, **ablation_kwargs)
+
     return {
+        "ablation_mode": ablation_mode,
         "events": result.events,
         "active_patterns": result.active_patterns,
         "top_transitions": result.top_transitions,
         "conclusion": result.conclusion,
         "credibility": result.credibility,
-        # Compute-trace reference — the key auditability field
         "compute_trace_ref": result.conclusion.get("final", {}).get(
             "compute_trace_ref", "N/A"
         ),
@@ -236,6 +252,18 @@ def main() -> None:
         "--ids", nargs="*",
         help="Only process samples with these IDs (default: all)"
     )
+    parser.add_argument(
+        "--ablation-mode",
+        choices=["full", "rule-only", "geometric-decay"],
+        default="full",
+        help=(
+            "Ablation mode for EL-DRUIN pipeline:\n"
+            "  full            — full pipeline (Lie similarity + p-adic confidence) [default]\n"
+            "  rule-only       — composition rules only; Lie similarity weights set to uniform 1.0\n"
+            "  geometric-decay — composition rules + Lie similarity, but use λ^t geometric "
+            "decay (λ=0.85) instead of 7-adic confidence calibration"
+        ),
+    )
     args = parser.parse_args()
 
     samples_path = Path(args.samples)
@@ -260,8 +288,9 @@ def main() -> None:
     for sample in samples:
         sid     = sample["id"]
         excerpt = sample["excerpt"]
-        print(f"\n[{sid}] Running EL-DRUIN…", end=" ", flush=True)
-        eldruin_result = run_eldruin(excerpt)
+        ablation_label = args.ablation_mode
+        print(f"\n[{sid}] Running EL-DRUIN [{ablation_label}]…", end=" ", flush=True)
+        eldruin_result = run_eldruin(excerpt, ablation_mode=ablation_label)
         print("done.", flush=True)
 
         gpt_results: List[Dict[str, Any]] = []
@@ -289,7 +318,8 @@ def main() -> None:
             "gpt_baseline":  gpt_results,
         }
 
-        out_path = output_dir / f"{sid}.json"
+        suffix = f"_{args.ablation_mode}" if args.ablation_mode != "full" else ""
+        out_path = output_dir / f"{sid}{suffix}.json"
         with out_path.open("w", encoding="utf-8") as fh:
             json.dump(combined, fh, ensure_ascii=False, indent=2)
         print(f"[{sid}] Saved → {out_path}", flush=True)

@@ -80,6 +80,29 @@ python experiments/run_baseline.py
 
 ---
 
+### Run ablation baselines
+
+EL-DRUIN supports three ablation modes for the paper's ablation study:
+
+```bash
+# Baseline 3 — Rule-only (no Lie algebra similarity weighting)
+python experiments/run_baseline.py --skip-gpt --ablation-mode rule-only
+
+# Baseline 4 — Geometric decay (λ^t decay instead of 7-adic calibration)
+python experiments/run_baseline.py --skip-gpt --ablation-mode geometric-decay
+
+# Full system (default)
+python experiments/run_baseline.py --skip-gpt --ablation-mode full
+```
+
+Results are saved with a mode suffix: `{sample_id}_rule-only.json`, `{sample_id}_geometric-decay.json`.
+
+The ablation study tests whether the Lie algebra similarity component and the
+non-Archimedean confidence calibration each contribute independently to the
+system's traceability and coverage scores.
+
+---
+
 ## Dataset: `news_samples.jsonl`
 
 Each line is a JSON object with the following fields:
