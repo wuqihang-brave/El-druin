@@ -30,9 +30,10 @@ EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces 
 
 ## 🎯 Key Features
 
-- [x] **Finite Semigroup Forward Simulation** — 18 named dynamic patterns with a declarative composition table; forward iteration converges to fixed-point attractors
+- [x] **Finite Semigroup Forward Simulation** — 21 named dynamic patterns with a declarative composition table; forward iteration converges to fixed-point attractors
 - [x] **8D Lie Algebra State Vectors** — each pattern embedded as a vector; Lie-bracket similarity scores transition quality
-- [x] **Bayesian Posterior with Step Decay** — `w_t = π(A) · π(B) · lie_sim(A,B,C) · λᵗ`; fully auditable formula
+- [x] **7-adic Confidence Calibration** — domain-boundary-sensitive calibration (replacing ad hoc λ^t decay); fully auditable formula
+- [x] **OWL 2 Ontology Artifact** (`paper/ontology/eldruin_ontology.ttl`): Formal OWL 2 / Turtle serialisation of the 21-pattern registry, for use by semantic web tools and SPARQL endpoints.
 - [x] **Compute Trace Reference** — every output includes `compute_trace_ref: "bayesian_posterior|Z=…"` linking result to algebra
 - [x] **CJK Leakage Guard** — automated test suite prevents any CJK characters leaking into English user-facing outputs
 - [x] **Invented Entity Guard** — LLM rendering pass rejects outputs containing proper nouns not present in the input text
@@ -208,7 +209,7 @@ Transition Enumeration       State Vector        Driving Factors
     |
     v
 Stage 3: Bayesian Conclusion Generation
-  w_t = pi(A) * pi(B) * lie_sim(A,B,C) * lambda^t
+  w_t = pi(A) * pi(B) * lie_sim(A,B,C) * 7-adic_calibration(t)
   -> alpha/beta paths -> composite_confidence -> compute_trace_ref
   -> LLM rendering pass (with CJK / entity / numeric guardrails)
 ```
@@ -290,9 +291,9 @@ Results are saved to `experiments/results/` and a Markdown comparison table is w
 ## 📋 Feature Kanban
 
 ### Done
-- [x] 18-pattern CARTESIAN_PATTERN_REGISTRY with composition_table and inverse_table
+- [x] 21-pattern CARTESIAN_PATTERN_REGISTRY with composition_table and inverse_table
 - [x] Five-stage evented reasoning pipeline
-- [x] Bayesian posterior with step decay (compute_trace_ref in every output)
+- [x] 7-adic confidence calibration (domain-boundary-sensitive, replacing ad hoc λ^t decay)
 - [x] 8D Lie algebra state vectors and Lie-bracket transition scoring
 - [x] Attractor / fixed-point detection
 - [x] Phase transition and bifurcation detection

@@ -1,0 +1,283 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix eld:  <https://example.org/eldruin#> .
+
+# ── Ontology declaration ────────────────────────────────────────────────────
+<https://example.org/eldruin>
+    a owl:Ontology ;
+    rdfs:label "EL-DRUIN Geopolitical Pattern Ontology" ;
+    rdfs:comment """OWL 2 / Turtle serialisation of the EL-DRUIN 21-pattern
+    registry.  Corresponds to CARTESIAN_PATTERN_REGISTRY in
+    backend/intelligence/relation_schema.py (and pattern_i18n.py for i18n keys).
+    Generated for ISWC 2026 submission; see paper/latex/main.tex Section 4.""" .
+
+# ── Classes ─────────────────────────────────────────────────────────────────
+eld:DynamicPattern a owl:Class ;
+    rdfs:label "DynamicPattern" ;
+    rdfs:comment "A typed mid-level semantic unit bridging event-level observations and trajectory-level reasoning." .
+
+eld:GeopoliticalDomain a owl:Class ;
+    rdfs:label "GeopoliticalDomain" ;
+    rdfs:comment "One of seven geopolitical domain partitions." .
+
+eld:MechanismClass a owl:Class ;
+    rdfs:label "MechanismClass" ;
+    rdfs:comment "One of three cross-domain mechanism classes." .
+
+eld:EntityType a owl:Class ;
+    rdfs:label "EntityType" ;
+    rdfs:comment "Typed entity in the Cartesian registry." .
+
+eld:RelationType a owl:Class ;
+    rdfs:label "RelationType" ;
+    rdfs:comment "Typed relation in the Cartesian registry." .
+
+eld:ProvenanceRecord a owl:Class ;
+    rdfs:label "ProvenanceRecord" ;
+    rdfs:comment "Links numerical outputs to their derivation via compute_trace_ref." .
+
+eld:Trajectory a owl:Class ;
+    rdfs:label "Trajectory" ;
+    rdfs:comment "A sequence of DynamicPattern transitions leading to an attractor." .
+
+# Domain subclasses (7 domains)
+eld:Geopolitics   a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Geopolitics" .
+eld:Economics     a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Economics" .
+eld:Technology    a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Technology" .
+eld:Military      a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Military" .
+eld:Information   a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Information" .
+eld:Legal         a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Legal" .
+eld:Social        a owl:Class ; rdfs:subClassOf eld:GeopoliticalDomain ; rdfs:label "Social" .
+
+# Mechanism subclasses (3 mechanism classes)
+eld:CoerciveMechanism     a owl:Class ; rdfs:subClassOf eld:MechanismClass ; rdfs:label "Coercive" .
+eld:CooperativeMechanism  a owl:Class ; rdfs:subClassOf eld:MechanismClass ; rdfs:label "Cooperative" .
+eld:StructuralMechanism   a owl:Class ; rdfs:subClassOf eld:MechanismClass ; rdfs:label "Structural" .
+
+# ── Object Properties ────────────────────────────────────────────────────────
+eld:hasDomain a owl:ObjectProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  eld:GeopoliticalDomain ;
+    rdfs:label  "hasDomain" .
+
+eld:hasMechanismClass a owl:ObjectProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  eld:MechanismClass ;
+    rdfs:label  "hasMechanismClass" .
+
+eld:composedWith a owl:ObjectProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  eld:DynamicPattern ;
+    rdfs:label  "composedWith" ;
+    rdfs:comment "Encodes a composition rule: (A composedWith B) → target pattern C (reified in compositionTarget)." .
+
+eld:inversePattern a owl:ObjectProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  eld:DynamicPattern ;
+    owl:inverseOf eld:inversePattern ;
+    rdfs:label  "inversePattern" ;
+    rdfs:comment "Symmetric: inversePattern(A,B) ↔ inversePattern(B,A)." .
+
+eld:activates a owl:ObjectProperty ;
+    rdfs:domain eld:ProvenanceRecord ;
+    rdfs:range  eld:DynamicPattern ;
+    rdfs:label  "activates" .
+
+# ── Datatype Properties ──────────────────────────────────────────────────────
+eld:confidencePrior a owl:DatatypeProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "confidencePrior" ;
+    rdfs:comment "Ontology-defined base-rate belief; participates directly in Bayesian posterior." .
+
+eld:patternName a owl:DatatypeProperty ;
+    rdfs:domain eld:DynamicPattern ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "patternName" .
+
+# ── Named Individuals: 21 DynamicPatterns ────────────────────────────────────
+
+eld:HegemSanctions a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Hegemonic Sanctions" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.78"^^xsd:decimal ;
+    eld:inversePattern    eld:SanctionsRelief .
+
+eld:SanctionsRelief a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Sanctions Relief / Normalisation" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.55"^^xsd:decimal ;
+    eld:inversePattern    eld:HegemSanctions .
+
+eld:EntityListTechBlockade a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Entity-List Technology Blockade" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.80"^^xsd:decimal ;
+    eld:inversePattern    eld:TechLicenceUnblocking .
+
+eld:TechLicenceUnblocking a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Technology Licence / Unblocking" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.50"^^xsd:decimal ;
+    eld:inversePattern    eld:EntityListTechBlockade .
+
+eld:InterstateMillitaryConflict a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Interstate Military Conflict" ;
+    eld:hasDomain         eld:Military ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.75"^^xsd:decimal ;
+    eld:inversePattern    eld:CeasefirePeace .
+
+eld:CeasefirePeace a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Ceasefire / Peace Agreement" ;
+    eld:hasDomain         eld:Military ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.45"^^xsd:decimal ;
+    eld:inversePattern    eld:InterstateMillitaryConflict .
+
+eld:GreatPowerCoercion a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Great-Power Coercion/Deterrence" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.70"^^xsd:decimal ;
+    eld:inversePattern    eld:DiplomaticConcession .
+
+eld:DiplomaticConcession a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Diplomatic Concession / De-escalation" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.52"^^xsd:decimal ;
+    eld:inversePattern    eld:GreatPowerCoercion .
+
+eld:MultilateralAllianceSanctions a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Multilateral Alliance Sanctions" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.73"^^xsd:decimal ;
+    eld:inversePattern    eld:MultilateralSanctionsRelief .
+
+eld:MultilateralSanctionsRelief a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Multilateral Sanctions Relief" ;
+    eld:hasDomain         eld:Geopolitics ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.48"^^xsd:decimal ;
+    eld:inversePattern    eld:MultilateralAllianceSanctions .
+
+eld:TechDecoupling a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Tech Decoupling / Technology Iron Curtain" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:StructuralMechanism ;
+    eld:confidencePrior   "0.76"^^xsd:decimal ;
+    eld:inversePattern    eld:TechCoopReintegration .
+
+eld:TechCoopReintegration a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Technology Cooperation Reintegration" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.47"^^xsd:decimal ;
+    eld:inversePattern    eld:TechDecoupling .
+
+eld:FinancialIsolation a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Financial Isolation / SWIFT Cut-Off" ;
+    eld:hasDomain         eld:Economics ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.79"^^xsd:decimal ;
+    eld:inversePattern    eld:FinancialReintegration .
+
+eld:FinancialReintegration a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Financial Reintegration" ;
+    eld:hasDomain         eld:Economics ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.50"^^xsd:decimal ;
+    eld:inversePattern    eld:FinancialIsolation .
+
+eld:BilateralTradeDependency a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Bilateral Trade Dependency" ;
+    eld:hasDomain         eld:Economics ;
+    eld:hasMechanismClass eld:StructuralMechanism ;
+    eld:confidencePrior   "0.71"^^xsd:decimal ;
+    eld:inversePattern    eld:TradeWarDecoupling .
+
+eld:TradeWarDecoupling a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Trade War / Decoupling" ;
+    eld:hasDomain         eld:Economics ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.68"^^xsd:decimal ;
+    eld:inversePattern    eld:BilateralTradeDependency .
+
+eld:TechStandardsLeadership a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Technology Standards Leadership" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:StructuralMechanism ;
+    eld:confidencePrior   "0.72"^^xsd:decimal ;
+    eld:inversePattern    eld:StandardCompetitionFailure .
+
+eld:StandardCompetitionFailure a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Standard Competition Failure" ;
+    eld:hasDomain         eld:Technology ;
+    eld:hasMechanismClass eld:StructuralMechanism ;
+    eld:confidencePrior   "0.45"^^xsd:decimal ;
+    eld:inversePattern    eld:TechStandardsLeadership .
+
+eld:InformationWarfare a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Information Warfare / Narrative Control" ;
+    eld:hasDomain         eld:Information ;
+    eld:hasMechanismClass eld:CoerciveMechanism ;
+    eld:confidencePrior   "0.68"^^xsd:decimal ;
+    eld:inversePattern    eld:InformationRestoration .
+
+eld:InformationRestoration a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Information Environment Restoration" ;
+    eld:hasDomain         eld:Information ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.48"^^xsd:decimal ;
+    eld:inversePattern    eld:InformationWarfare .
+
+eld:FormalMilitaryAlliance a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Formal Military Alliance" ;
+    eld:hasDomain         eld:Military ;
+    eld:hasMechanismClass eld:CooperativeMechanism ;
+    eld:confidencePrior   "0.69"^^xsd:decimal ;
+    eld:inversePattern    eld:AllianceDisintegration .
+
+eld:AllianceDisintegration a owl:NamedIndividual, eld:DynamicPattern ;
+    eld:patternName       "Alliance Disintegration" ;
+    eld:hasDomain         eld:Military ;
+    eld:hasMechanismClass eld:StructuralMechanism ;
+    eld:confidencePrior   "0.42"^^xsd:decimal ;
+    eld:inversePattern    eld:FormalMilitaryAlliance .
+
+# ── Composition rules (16 rules as object property assertions) ────────────────
+# Format: pattern_A eld:composedWith pattern_B → annotated on A
+# The composition target is encoded as rdfs:comment for human readability;
+# a full reification would use rdf:Statement or SWRL rules.
+
+eld:HegemSanctions eld:composedWith eld:FormalMilitaryAlliance .
+# rule: HegemSanctions ∘ FormalMilitaryAlliance → MultilateralAllianceSanctions
+
+eld:EntityListTechBlockade eld:composedWith eld:TechDecoupling .
+# rule: EntityListTechBlockade ∘ TechDecoupling → TechStandardsLeadership
+
+eld:InterstateMillitaryConflict eld:composedWith eld:HegemSanctions .
+# rule: InterstateMillitaryConflict ∘ HegemSanctions → MultilateralAllianceSanctions
+
+eld:FinancialIsolation eld:composedWith eld:HegemSanctions .
+# rule: FinancialIsolation ∘ HegemSanctions → HegemSanctions
+
+eld:BilateralTradeDependency eld:composedWith eld:HegemSanctions .
+# rule: BilateralTradeDependency ∘ HegemSanctions → TradeWarDecoupling
+
+eld:InformationWarfare eld:composedWith eld:GreatPowerCoercion .
+# rule: InformationWarfare ∘ GreatPowerCoercion → GreatPowerCoercion
+
+eld:TechDecoupling eld:composedWith eld:FinancialIsolation .
+# rule: TechDecoupling ∘ FinancialIsolation → FinancialIsolation
+
+eld:MultilateralAllianceSanctions eld:composedWith eld:InterstateMillitaryConflict .
+# rule: MultilateralAllianceSanctions ∘ InterstateMillitaryConflict → InterstateMillitaryConflict

@@ -66,3 +66,12 @@ fill_*.py
 *.log
 extraction_debug.log
 
+# Debug and temporary logs
+*.debug.log
+debug_*.log
+
+# Temporary patch scripts (moved to tools/dev/)
+backend/assessments_patch.py
+backend/assessments_v3_patch.py
+backend/check_db.py
+
