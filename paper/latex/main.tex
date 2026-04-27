@@ -355,6 +355,51 @@ number of semantic domains in the ontology), not against the count of
 currently active domains, to avoid division by zero when a single domain
 is active.}
 
+\subsection{OWL 2 Formal Representation}
+\label{sec:owl-representation}
+
+The ontology schema described above is formally expressed in OWL~2~\cite{grau2008owl2,w3c2012owl2}
+using the following construct types:
+
+\begin{itemize}
+  \item \textbf{Classes}: \texttt{owl:Class} declarations for
+    \texttt{DynamicPattern}, \texttt{GeopoliticalDomain}, \texttt{MechanismClass},
+    \texttt{EntityType}, \texttt{RelationType}, \texttt{ProvenanceRecord},
+    \texttt{Trajectory}, and \texttt{CompositionRule}; with \texttt{rdfs:subClassOf}
+    hierarchies for the seven domain subclasses (Geopolitics, Economics, Technology,
+    Military, Information, Legal, Social) and three mechanism subclasses (Coercive,
+    Cooperative, Structural).
+  \item \textbf{Object Properties}: \texttt{owl:ObjectProperty} declarations for
+    \texttt{hasDomain}, \texttt{hasMechanismClass}, \texttt{inversePattern} (declared
+    \texttt{owl:inverseOf} itself, encoding the symmetric inverse relation),
+    \texttt{sourcePattern}, \texttt{contextPattern}, and \texttt{resultPattern}.
+  \item \textbf{Datatype Properties}: \texttt{owl:DatatypeProperty} declarations for
+    \texttt{confidencePrior} (\texttt{xsd:decimal}) and \texttt{patternName}
+    (\texttt{xsd:string}).
+  \item \textbf{Named Individuals}: 21 \texttt{owl:NamedIndividual} instances of
+    \texttt{DynamicPattern}, each with full property assertions for domain, mechanism
+    class, confidence prior, and inverse pattern. Additionally, 16
+    \texttt{CompositionRule} individuals encode the full composition table as
+    machine-readable ternary assertions \texttt{(sourcePattern, contextPattern,
+    resultPattern)}, bridging the limitation of OWL's binary property model via
+    standard reification.
+\end{itemize}
+
+The composition table---which defines how pairs of simultaneously active patterns
+compose to produce derived patterns---cannot be directly expressed as a binary
+OWL property, since each rule involves three pattern arguments. We address this using
+a standard OWL 2 reification approach: each composition rule is an instance of the
+\texttt{eld:CompositionRule} class with three object-property links
+(\texttt{sourcePattern}, \texttt{contextPattern}, \texttt{resultPattern}). This
+encoding is compatible with SPARQL reasoning and Protégé visualisation.
+
+A complete Turtle serialisation is provided in \texttt{paper/ontology/eldruin\_ontology.ttl}
+in the repository, using the namespace prefix \texttt{eld:}
+\url{https://example.org/eldruin\#}.
+This file corresponds to \texttt{CARTESIAN\_PATTERN\_REGISTRY} in
+\texttt{backend/ontology/relation\_schema.py} (and \texttt{pattern\_i18n.py}
+for internationalisation keys).
+
 \subsection{Ontology Design Pattern: Trajectory Reasoning}
 \label{sec:design-pattern}
 
