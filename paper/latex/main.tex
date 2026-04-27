@@ -3,25 +3,22 @@
 % They are represented here using their English transliterations, matching the
 % existing skeleton. The original CJK keys are documented in the open-source
 % repository under backend/intelligence/pattern_i18n.py.
-\documentclass[11pt]{article}
-
-\usepackage[a4paper,margin=1in]{geometry}
-\usepackage{hyperref}
+\documentclass{llncs}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{array}
 \usepackage{amsmath,amssymb}
-\usepackage[T1]{fontenc}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds}
 \usepackage{xcolor}
+\usepackage{hyperref}
 
 \title{An Ontology-Guided, Explainable Reasoning Framework\\
 for Geopolitical Trajectory Analysis}
-\author{Qihang Wu\\
-Department of Industrial and Systems Engineering, The Hong Kong Polytechnic University\\
-\texttt{qihang.wu@connect.polyu.hk}\\
-\url{https://github.com/wuqihang-brave/El-druin}}
+\author{Anonymous Author(s)}
+\institute{Anonymous Institution\\
+\email{anonymous@review.blind}\\
+\url{https://anonymous.4open.science/r/El-druin-BLIND}}
 \date{}
 
 \begin{document}
@@ -45,10 +42,10 @@ constrained LLM renders all pre-computed numerical outputs into natural-language
 explanations without modifying any numerical field. We demonstrate the framework on
 fourteen geopolitical news scenarios and compare against an LLM-only baseline,
 showing that EL-DRUIN produces fully traceable, deterministic, auditable assessments
-with complete provenance chains. The system is fully open-source.
+with complete provenance chains. The system is fully open-source; the repository link is anonymised for blind review.
 \end{abstract}
 
-\textbf{Keywords:} ontology engineering; ontology-guided reasoning; explainable AI; knowledge graphs; geopolitical trajectory analysis; algebraic transition structure; non-Archimedean confidence; Lie algebra approximation; Bayesian inference; provenance; symbolic reasoning; trajectory reasoning
+\textbf{Keywords:} ontology engineering; ontology-guided reasoning; explainable AI; knowledge graphs; geopolitical trajectory analysis; algebraic transition structure; non-Archimedean confidence; neuro-symbolic AI; provenance-preserving inference; p-adic valuation
 
 \section{Introduction}
 
@@ -426,6 +423,21 @@ coercion), the analyst can inspect exactly which composition rules fired and why
 
 \section{Mathematical Formalisation}
 
+\noindent\textbf{Note on mathematical structure.}
+Throughout this section, we borrow organizational principles from three mathematical
+structures---finite semigroup theory, Lie algebras over $\mathfrak{so}(8)$, and
+$p$-adic valuations---without claiming that our construction satisfies the complete
+axiomatic systems of these theories. Specifically: (1) we use semigroup idempotent
+theory as a \emph{termination criterion} for forward simulation, not as a claim that
+our partial composition table forms a full semigroup; (2) we embed patterns in
+$\mathfrak{so}(8)$ to compute a \emph{directional similarity score} (cosine of the
+vector sum), not to perform Lie group integration or claim differential-geometric
+properties; (3) we use the 7-adic absolute value as a \emph{domain-boundary-sensitive
+decay function} calibrated to the seven-domain ontology partition, not as a claim of
+formal $p$-adic geometry over $\mathbb{Q}_7$. We use the phrase
+``design-motivated formalization'' throughout to signal that a mathematical structure
+is being used for its organizational properties rather than its full theorem apparatus.
+
 \subsection{Algebraic Organization of the Pattern Space}
 \label{sec:pattern-algebra}
 
@@ -575,31 +587,17 @@ encoding prior skepticism that resolves only when paths converge. At
 $\mathit{consistency} = 1$, confidence is boosted by at most
 $\alpha / (1 + \alpha) \approx 23\%$.
 
-\subsection{Ultrametric Distance on Pattern Space}
+\paragraph{Ultrametric distance on pattern space.}
 \label{sec:ultrametric}
-
-The Sylow-7 partition induces a \textbf{7-adic ultrametric} on $S$:
-\[
-  d_7(A, B) = 7^{-v_7(\mathrm{graph\_dist}(A,B))}
-\]
-where $\mathrm{graph\_dist}(A,B)$ is the shortest path length in the
-composition graph $\Gamma = (S, E)$ with $E = \{(A,B) : A \cdot B \in S\}$.
-
-Under this metric:
-\begin{itemize}
-  \item Patterns in the \emph{same} Sylow-7 coset (same domain) have distance
-    $7^{-k}$ for $k \geq 1$ --- very small, reflecting easy intra-domain
-    propagation.
-  \item Patterns in \emph{different} Sylow-7 cosets (different domains) have
-    distance $1$ (maximum), reflecting that cross-domain propagation requires
-    a phase transition.
-\end{itemize}
-
-The ultrametric inequality $d_7(A,C) \leq \max(d_7(A,B),\, d_7(B,C))$ (stronger
-than the triangle inequality) \emph{models} the design intuition that geopolitical
-crises tend to be either fully contained within a domain or to fully cross domain
-boundaries. We use this metric structure as a design-motivated formalisation of
-domain-boundary sensitivity, not as an empirical claim about geopolitical dynamics.
+The Sylow-7 partition induces a 7-adic ultrametric
+$d_7(A, B) = 7^{-v_7(\mathrm{graph\_dist}(A,B))}$
+on $S$, where $\mathrm{graph\_dist}(A,B)$ is the shortest path length in the
+composition graph $\Gamma = (S, E)$. Patterns in the same domain have distance
+$7^{-k} \ll 1$ (easy intra-domain propagation); cross-domain patterns have
+distance $1$ (maximum, requiring a phase transition). The ultrametric inequality
+$d_7(A,C) \leq \max(d_7(A,B), d_7(B,C))$ models the design intuition that
+geopolitical crises are either domain-contained or fully cross-domain.
+We use this as a design-motivated formalisation, not an empirical claim.
 
 \subsection{Attractor Detection}
 
@@ -845,6 +843,22 @@ composition rules. The high composite score (0.841 average) is driven by high on
 meaning the Brier score is small whenever confidence is high. This result honestly indicates
 that EL-DRUIN performs well within its ontology coverage and degrades predictably outside it.
 
+\paragraph{On evaluation scope.}
+We acknowledge that 14 news excerpts and 8 historical events constitute a
+limited evaluation dataset by the standards of large-scale machine learning
+benchmarks. EL-DRUIN is not a statistical prediction system: its output is a
+deterministic, ontology-grounded symbolic trace, not a learned probability
+estimate. The evaluation demonstrates (1) that the symbolic pipeline produces
+interpretable, auditable outputs on representative geopolitical scenario types,
+and (2) that direction accuracy degrades predictably outside ontology coverage
+(the two misses correspond precisely to patterns absent from the 21-pattern
+registry). For these demonstration objectives, 22 scenarios spanning nine
+thematic categories provide sufficient coverage of the ontology's expressive
+range. Scaling to larger benchmarks---including GDELT historical outcomes or
+ICEWS event archives---is identified as future work (Section~9), where the
+bottleneck is the construction of ground-truth attractor labels rather than
+computational cost.
+
 \subsection{Interpretation of Selected Results}
 
 \textbf{US-China Technology Decoupling.}
@@ -888,31 +902,28 @@ should not decay the confidence below the ontological prior. We consider this
 more epistemically honest: decay should be \emph{structurally motivated}, not
 uniformly applied.
 
+\paragraph{Extended calibration comparison at $T \in \{7, 14\}$.}
+To illustrate the behavioral difference between 7-adic calibration and geometric
+decay on longer horizons (beyond the $T=6$ evaluation window), take $c_0 = 0.75$
+as the assumed initial confidence and consider:
+at $T=7$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0 \cdot |7|_7 = c_0/7 \approx 0.107$,
+whereas $c_{\mathrm{final}}^{\lambda} = 0.75 \cdot 0.85^7 \approx 0.268$.
+At $T=14$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0/7 \approx 0.107$ (unchanged since
+$v_7(14) = 1$), whereas $c_{\mathrm{final}}^{\lambda} \approx 0.095$.
+This reveals the fundamental behavioral distinction: geometric decay is
+\emph{monotone} (confidence always decreases), while 7-adic calibration is
+\emph{structurally punctuated}---flat within a domain-period, then sharply
+discounted at multiples of 7 where cross-domain phase transitions are
+structurally plausible. The current evaluation uses $T=6$ for all scenarios
+(within a single 7-domain period), so both formulas yield $c_{\mathrm{final}} = c_0$.
+A multi-week horizon experiment is deferred to future work.
+
 \subsection{Pattern Glossary}
-% --- Table: Pattern glossary ---
-\begin{longtable}{@{}p{0.36\linewidth}p{0.42\linewidth}p{0.18\linewidth}@{}}
-\caption{Pattern glossary. Internal keys are used in the codebase; English display names are used in all user-facing outputs and in this paper.}
-\label{tab:pattern-glossary}\\
-\toprule
-Internal key (code) & English display name & Domain \\
-\midrule
-\endfirsthead
-\toprule
-Internal key (code) & English display name & Domain \\
-\midrule
-\endhead
-Hegemonic Sanctions & Hegemonic Sanctions & geopolitics \\
-Entity-List Technology Blockade & Entity-List Technology Blockade & technology \\
-Interstate Military Conflict & Interstate Military Conflict & military \\
-Great-Power Coercion/Deterrence & Great-Power Coercion/Deterrence & geopolitics \\
-Multilateral Alliance Sanctions & Multilateral Alliance Sanctions & geopolitics \\
-Tech Decoupling / Technology Iron Curtain & Tech Decoupling / Technology Iron Curtain & technology \\
-Financial Isolation / SWIFT Cut-Off & Financial Isolation / SWIFT Cut-Off & economics \\
-Bilateral Trade Dependency & Bilateral Trade Dependency & economics \\
-Technology Standards Leadership & Technology Standards Leadership & technology \\
-Information Warfare / Narrative Control & Information Warfare / Narrative Control & information \\
-\bottomrule
-\end{longtable}
+
+The full glossary of all 21 registered patterns---mapping internal code keys to
+English display names and geopolitical domains---is available in the open-source
+repository at \texttt{backend/intelligence/pattern\_i18n.py}.
+Representative entries are shown in Table~\ref{tab:patterns} (Section~4).
 
 \subsection{Baseline Comparison and Ablation}
 
