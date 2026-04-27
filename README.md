@@ -7,9 +7,7 @@
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B.svg)](https://streamlit.io/)
 
-> Paper: *Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs*  
-> Author: Qihang Wu — The Hong Kong Polytechnic University  
-> Repository: [https://arxiv.org/abs/2604.10087]
+
 
 
 ## ⚡ 60-Second Overview
