@@ -271,20 +271,7 @@ derivation via \texttt{compute\_trace\_ref}.}
 
 \subsection{Entity and Relation Type Enumerations}
 
-The entity type set $E$ contains 18 elements spanning geopolitical
-(\texttt{STATE}, \texttt{ALLIANCE}, \texttt{PARAMILITARY}, \texttt{IDEOLOGY}),
-economic (\texttt{FIRM}, \texttt{FINANCIAL\_ORG}, \texttt{RESOURCE}, \texttt{CURRENCY},
-\texttt{SUPPLY\_CHAIN}), technological (\texttt{TECH}, \texttt{STANDARD}),
-social-cognitive (\texttt{PERSON}, \texttt{MEDIA}, \texttt{TRUST}, \texttt{INSTITUTION}),
-and event types (\texttt{CONFLICT}, \texttt{NORM}), plus the \texttt{UNKNOWN} sentinel
-for unresolvable types. The relation type set $R$ contains 20 elements
-across four categories: coercive/adversarial (\texttt{SANCTION},
-\texttt{MILITARY\_STRIKE}, \texttt{COERCE}, \texttt{BLOCKADE}), cooperative
-(\texttt{SUPPORT}, \texttt{ALLY}, \texttt{AID}, \texttt{AGREE}), dependency/flow
-(\texttt{DEPENDENCY}, \texttt{TRADE\_FLOW}, \texttt{SUPPLY}, \texttt{FINANCE}), and
-structural/institutional (\texttt{SIGNAL}, \texttt{PROPAGANDA}, \texttt{LEGITIMIZE},
-\texttt{DELEGITIMIZE}, \texttt{REGULATE}, \texttt{STANDARDIZE}, \texttt{EXCLUDE},
-\texttt{INTEGRATE}).
+The entity type set $E$ contains 18 elements spanning five categories: geopolitical actors (\texttt{STATE}, \texttt{ALLIANCE}, \texttt{PARAMILITARY}, \texttt{IDEOLOGY}), economic actors (\texttt{FIRM}, \texttt{FINANCIAL\_ORG}, \texttt{RESOURCE}, \texttt{CURRENCY}, \texttt{SUPPLY\_CHAIN}), technological (\texttt{TECH}, \texttt{STANDARD}), social-cognitive (\texttt{PERSON}, \texttt{MEDIA}, \texttt{TRUST}, \texttt{INSTITUTION}), and event types (\texttt{CONFLICT}, \texttt{NORM}), plus \texttt{UNKNOWN}. The relation type set $R$ contains 20 elements across four mechanism categories: coercive (\texttt{SANCTION}, \texttt{MILITARY\_STRIKE}, \texttt{COERCE}, \texttt{BLOCKADE}), cooperative (\texttt{SUPPORT}, \texttt{ALLY}, \texttt{AID}, \texttt{AGREE}), dependency/flow (\texttt{DEPENDENCY}, \texttt{TRADE\_FLOW}, \texttt{SUPPLY}, \texttt{FINANCE}), and structural (\texttt{SIGNAL}, \texttt{PROPAGANDA}, \texttt{LEGITIMIZE}, \texttt{DELEGITIMIZE}, \texttt{REGULATE}, \texttt{STANDARDIZE}, \texttt{EXCLUDE}, \texttt{INTEGRATE}). Full enumerations are provided in Appendix~A.
 
 \subsection{Dynamic Pattern Registration}
 
@@ -358,46 +345,7 @@ is active.}
 \subsection{OWL 2 Formal Representation}
 \label{sec:owl-representation}
 
-The ontology schema described above is formally expressed in OWL~2 \cite{grau2008owl2,w3c2012owl2}
-using the following construct types:
-
-\begin{itemize}
-  \item \textbf{Classes}: \texttt{owl:Class} declarations for
-    \texttt{DynamicPattern}, \texttt{GeopoliticalDomain}, \texttt{MechanismClass},
-    \texttt{EntityType}, \texttt{RelationType}, \texttt{ProvenanceRecord},
-    \texttt{Trajectory}, and \texttt{CompositionRule}; with \texttt{rdfs:subClassOf}
-    hierarchies for the seven domain subclasses (Geopolitics, Economics, Technology,
-    Military, Information, Legal, Social) and three mechanism subclasses (Coercive,
-    Cooperative, Structural).
-  \item \textbf{Object Properties}: \texttt{owl:ObjectProperty} declarations for
-    \texttt{hasDomain}, \texttt{hasMechanismClass}, \texttt{inversePattern} (declared \texttt{owl:SymmetricProperty}, encoding that if pattern $A$ is the inverse of pattern $B$, then $B$ is the inverse of $A$),
-    \texttt{sourcePattern}, \texttt{contextPattern}, and \texttt{resultPattern}.
-  \item \textbf{Datatype Properties}: \texttt{owl:DatatypeProperty} declarations for
-    \texttt{confidencePrior} (\texttt{xsd:decimal}) and \texttt{patternName}
-    (\texttt{xsd:string}).
-  \item \textbf{Named Individuals}: 21 \texttt{owl:NamedIndividual} instances of
-    \texttt{DynamicPattern}, each with full property assertions for domain, mechanism
-    class, confidence prior, and inverse pattern. Additionally, 16
-    \texttt{CompositionRule} individuals encode the full composition table as
-    machine-readable ternary assertions \texttt{(sourcePattern, contextPattern,
-    resultPattern)}, bridging the limitation of OWL's binary property model via
-    standard reification.
-\end{itemize}
-
-The composition table---which defines how pairs of simultaneously active patterns
-compose to produce derived patterns---cannot be directly expressed as a binary
-OWL property, since each rule involves three pattern arguments. We address this using
-a standard OWL 2 reification approach: each composition rule is an instance of the
-\texttt{eld:CompositionRule} class with three object-property links
-(\texttt{sourcePattern}, \texttt{contextPattern}, \texttt{resultPattern}). This
-encoding is compatible with SPARQL reasoning and Protégé visualisation.
-
-A complete Turtle serialisation is provided in \path{paper/ontology/eldruin_ontology.ttl}
-in the repository, using the namespace prefix \texttt{eld:}
-\url{https://example.org/eldruin\#}.
-This file corresponds to \texttt{CARTESIAN\_PATTERN\_REGISTRY} in
-\texttt{backend/ontology/relation\_schema.py} (and \texttt{pattern\_i18n.py}
-for internationalisation keys).
+The ontology schema is formally expressed in OWL~2 \cite{grau2008owl2,w3c2012owl2} using \texttt{owl:Class} declarations for the eight core classes, \texttt{owl:ObjectProperty} for six object properties (including \texttt{inversePattern} as \texttt{owl:SymmetricProperty}), and 21 \texttt{owl:NamedIndividual} instances of \texttt{DynamicPattern}. The 16 composition rules are encoded as \texttt{CompositionRule} individuals using standard OWL~2 reification (ternary assertions via \texttt{sourcePattern}, \texttt{contextPattern}, \texttt{resultPattern}), compatible with SPARQL reasoning and Prot\'{e}g\'{e} visualisation. A complete Turtle serialisation is provided in \path{paper/ontology/eldruin_ontology.ttl} in the repository; full OWL construct listings are in Appendix~A.
 
 \subsection{Ontology Design Pattern: Trajectory Reasoning}
 \label{sec:design-pattern}
@@ -468,19 +416,7 @@ coercion), the analyst can inspect exactly which composition rules fired and why
 \section{Mathematical Formalisation}
 
 \noindent\textbf{Note on mathematical structure.}
-Throughout this section, we borrow organizational principles from three mathematical
-structures---finite semigroup theory, Lie algebras over $\mathfrak{so}(8)$, and
-$p$-adic valuations---without claiming that our construction satisfies the complete
-axiomatic systems of these theories. Specifically: (1) we use semigroup idempotent
-theory as a \emph{termination criterion} for forward simulation, not as a claim that
-our partial composition table forms a full semigroup; (2) we embed patterns in
-$\mathfrak{so}(8)$ to compute a \emph{directional similarity score} (cosine of the
-vector sum), not to perform Lie group integration or claim differential-geometric
-properties; (3) we use the 7-adic absolute value as a \emph{domain-boundary-sensitive
-decay function} calibrated to the seven-domain ontology partition, not as a claim of
-formal $p$-adic geometry over $\mathbb{Q}_7$. We use the phrase
-``design-motivated formalization'' throughout to signal that a mathematical structure
-is being used for its organizational properties rather than its full theorem apparatus.
+We borrow organizational principles from finite semigroup theory, Lie algebras over $\mathfrak{so}(8)$, and $p$-adic valuations as \emph{design-motivated formalizations}---using each structure for its organizational properties without claiming our construction satisfies the full axiomatic system. Specifically: the partial composition table is not a full semigroup; the $\mathfrak{so}(8)$ embedding computes a directional similarity score, not Lie group integration; and the 7-adic absolute value is a domain-boundary-sensitive decay function, not formal $p$-adic geometry over $\mathbb{Q}_7$.
 
 \subsection{Algebraic Organization of the Pattern Space}
 \label{sec:pattern-algebra}
@@ -888,86 +824,21 @@ meaning the Brier score is small whenever confidence is high. This result honest
 that EL-DRUIN performs well within its ontology coverage and degrades predictably outside it.
 
 \paragraph{On evaluation scope.}
-We acknowledge that 14 news excerpts and 8 historical events constitute a
-limited evaluation dataset by the standards of large-scale machine learning
-benchmarks. EL-DRUIN is not a statistical prediction system: its output is a
-deterministic, ontology-grounded symbolic trace, not a learned probability
-estimate. The evaluation demonstrates (1) that the symbolic pipeline produces
-interpretable, auditable outputs on representative geopolitical scenario types,
-and (2) that direction accuracy degrades predictably outside ontology coverage
-(the two misses correspond precisely to patterns absent from the 21-pattern
-registry). For these demonstration objectives, 22 scenarios spanning nine
-thematic categories provide sufficient coverage of the ontology's expressive
-range. Scaling to larger benchmarks---including GDELT historical outcomes or
-ICEWS event archives---is identified as future work (Section~9), where the
-bottleneck is the construction of ground-truth attractor labels rather than
-computational cost.
+The 14 news excerpts and 8 historical events constitute a limited dataset by ML benchmark standards; EL-DRUIN is a deterministic symbolic system, not a statistical learner. The evaluation demonstrates (1) interpretable, auditable outputs across representative scenario types, and (2) predictable degradation outside ontology coverage. Scaling to GDELT/ICEWS archives is future work (Section~9).
 
 \subsection{Interpretation of Selected Results}
 
-\textbf{US-China Technology Decoupling.}
-Starting from \{Hegemonic Sanctions, Entity-List Technology Blockade,
-Tech Decoupling / Technology Iron Curtain\}, the composition
-(Entity-List Technology Blockade $\oplus$ Tech Decoupling / Technology
-Iron Curtain) $\to$ Technology Standards Leadership fires with high
-$\mathit{lie\_similarity}$ in Step~1, establishing technology standards
-fragmentation as the dominant attractor. A bifurcation at Step~2
-($P$ difference $< 0.15$) indicates genuine uncertainty between two
-structurally distinct terminal states: a two-standards world (Technology
-Standards Leadership) versus a full decoupling regime (Tech Decoupling /
-Technology Iron Curtain). This bifurcation is analytically significant:
-it corresponds to the empirically contested question of whether the
-US-China tech competition produces parallel ecosystems or complete
-systemic separation.
+\textbf{US-China Technology Decoupling.} The composition (Entity-List Technology Blockade $\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership fires in Step~1. A bifurcation at Step~2 ($P$ difference $< 0.15$) reflects genuine uncertainty between a two-standards world and full decoupling---the empirically contested outcome of US-China tech competition.
 
-\textbf{China-Taiwan Invasion Scenario.}
-Starting from \{Interstate Military Conflict, Non-State Armed Proxy
-Conflict, Hegemonic Sanctions, Multilateral Alliance Sanctions\}, the
-composition (Hegemonic Sanctions $\oplus$ Formal Military Alliance)
-$\to$ Multilateral Alliance Sanctions fires immediately via the
-composition rule, producing a high-probability ($P(\alpha) \approx 0.66$)
-attractor at Multilateral Alliance Sanctions. This result is
-substantively interpretable: the system predicts that a Taiwan invasion
-scenario converges toward a broad multilateral sanctions coalition
-rather than ongoing kinetic conflict---consistent with the historical
-pattern following the Russia-Ukraine invasion. The inverse transition
-Interstate Military Conflict $\to$ Ceasefire / Peace Agreement appears
-as a low-weight ($< 5\%$) path.
+\textbf{China-Taiwan Invasion.} (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$ Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$. The system predicts convergence toward a multilateral sanctions coalition rather than sustained kinetic conflict, consistent with the post-2022 Russia-Ukraine pattern.
 
-\textbf{Confidence Calibration.}
-Final confidence values range from 0.72 to 0.79, reflecting the initial
-ontology priors (0.68--0.80) multiplied by $|6|_7 = 1$ (since six is not a
-multiple of 7, no domain-level phase transition occurs within the six-step
-horizon). Under the 7-adic formulation, $c_{\mathrm{final}} = c_0 \cdot |T|_7 = c_0$
-for all scenarios with $T < 7$. This contrasts with the previous geometric
-decay $\lambda^6 \approx 0.38$: the p-adic approach recognises that a
-six-step horizon does not cross a Sylow-7 phase boundary, and therefore
-should not decay the confidence below the ontological prior. We consider this
-more epistemically honest: decay should be \emph{structurally motivated}, not
-uniformly applied.
+\textbf{Confidence Calibration.} All $c_{\mathrm{final}}$ values equal $c_0$ (range 0.72--0.79) since $T=6 < 7$: no domain-level phase transition occurs within the six-step horizon. This contrasts with the previous geometric decay $\lambda^6 \approx 0.38$; the 7-adic formulation avoids artificial decay within a single domain period.
 
-\paragraph{Extended calibration comparison at $T \in \{7, 14\}$.}
-To illustrate the behavioral difference between 7-adic calibration and geometric
-decay on longer horizons (beyond the $T=6$ evaluation window), take $c_0 = 0.75$
-as the assumed initial confidence and consider:
-at $T=7$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0 \cdot |7|_7 = c_0/7 \approx 0.107$,
-whereas $c_{\mathrm{final}}^{\lambda} = 0.75 \cdot 0.85^7 \approx 0.268$.
-At $T=14$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0/7 \approx 0.107$ (unchanged since
-$v_7(14) = 1$), whereas $c_{\mathrm{final}}^{\lambda} \approx 0.095$.
-This reveals the fundamental behavioral distinction: geometric decay is
-\emph{monotone} (confidence always decreases), while 7-adic calibration is
-\emph{structurally punctuated}---flat within a domain-period, then sharply
-discounted at multiples of 7 where cross-domain phase transitions are
-structurally plausible. The current evaluation uses $T=6$ for all scenarios
-(within a single 7-domain period), so both formulas yield $c_{\mathrm{final}} = c_0$.
-A multi-week horizon experiment is deferred to future work.
+Extended numerical comparison between 7-adic and geometric-decay calibration at horizons $T \in \{7, 14\}$ is provided in Appendix~B, illustrating the structurally punctuated behavior of the non-Archimedean formulation.
 
 \subsection{Pattern Glossary}
 
-The full glossary of all 21 registered patterns---mapping internal code keys to
-English display names and geopolitical domains---is available in the open-source
-repository at \texttt{backend/intelligence/pattern\_i18n.py}.
-Representative entries are shown in Table~\ref{tab:patterns} (Section~4).
+The full glossary of all 21 registered patterns is available in the open-source repository at \texttt{backend/intelligence/pattern\_i18n.py}. Representative entries are shown in Table~\ref{tab:patterns}.
 
 \subsection{Baseline Comparison and Ablation}
 
@@ -1284,5 +1155,30 @@ The authors used large language model assistance (GPT-4o) solely as a constraine
 
 \bibliographystyle{splncs04}
 \bibliography{main}
+
+\newpage
+\appendix
+
+\section{Entity, Relation, and OWL 2 Construct Details}
+\label{app:schema}
+
+\subsection*{Entity Type Enumeration}
+The full entity type set $E$ (18 elements): \texttt{STATE}, \texttt{ALLIANCE}, \texttt{PARAMILITARY}, \texttt{IDEOLOGY} (geopolitical); \texttt{FIRM}, \texttt{FINANCIAL\_ORG}, \texttt{RESOURCE}, \texttt{CURRENCY}, \texttt{SUPPLY\_CHAIN} (economic); \texttt{TECH}, \texttt{STANDARD} (technological); \texttt{PERSON}, \texttt{MEDIA}, \texttt{TRUST}, \texttt{INSTITUTION} (social-cognitive); \texttt{CONFLICT}, \texttt{NORM} (event types); \texttt{UNKNOWN} (sentinel).
+
+\subsection*{Relation Type Enumeration}
+The full relation type set $R$ (20 elements): \texttt{SANCTION}, \texttt{MILITARY\_STRIKE}, \texttt{COERCE}, \texttt{BLOCKADE} (coercive); \texttt{SUPPORT}, \texttt{ALLY}, \texttt{AID}, \texttt{AGREE} (cooperative); \texttt{DEPENDENCY}, \texttt{TRADE\_FLOW}, \texttt{SUPPLY}, \texttt{FINANCE} (dependency/flow); \texttt{SIGNAL}, \texttt{PROPAGANDA}, \texttt{LEGITIMIZE}, \texttt{DELEGITIMIZE}, \texttt{REGULATE}, \texttt{STANDARDIZE}, \texttt{EXCLUDE}, \texttt{INTEGRATE} (structural/institutional).
+
+\subsection*{OWL 2 Construct Listing}
+The ontology uses: \textbf{Classes}: \texttt{owl:Class} for \texttt{DynamicPattern}, \texttt{GeopoliticalDomain}, \texttt{MechanismClass}, \texttt{EntityType}, \texttt{RelationType}, \texttt{ProvenanceRecord}, \texttt{Trajectory}, \texttt{CompositionRule}; with \texttt{rdfs:subClassOf} hierarchies for seven domain and three mechanism subclasses. \textbf{Object Properties}: \texttt{hasDomain}, \texttt{hasMechanismClass}, \texttt{inversePattern} (\texttt{owl:SymmetricProperty}), \texttt{sourcePattern}, \texttt{contextPattern}, \texttt{resultPattern}. \textbf{Datatype Properties}: \texttt{confidencePrior} (\texttt{xsd:decimal}), \texttt{patternName} (\texttt{xsd:string}). \textbf{Named Individuals}: 21 \texttt{DynamicPattern} instances and 16 \texttt{CompositionRule} instances. Full Turtle serialisation: \path{paper/ontology/eldruin_ontology.ttl}.
+
+\section{Extended Calibration Comparison}
+\label{app:calibration}
+
+To illustrate the behavioral difference between 7-adic calibration and geometric decay at longer horizons, take $c_0 = 0.75$:
+\begin{itemize}
+  \item $T=7$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0 \cdot |7|_7 = c_0/7 \approx 0.107$; $c_{\mathrm{final}}^{\lambda} = 0.75 \cdot 0.85^7 \approx 0.268$.
+  \item $T=14$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0/7 \approx 0.107$ (unchanged, since $v_7(14)=1$); $c_{\mathrm{final}}^{\lambda} \approx 0.095$.
+\end{itemize}
+Geometric decay is \emph{monotone}; 7-adic calibration is \emph{structurally punctuated}---flat within a domain-period, then sharply discounted at multiples of 7. The current evaluation ($T=6$) lies within a single 7-domain period, so both formulas yield $c_{\mathrm{final}} = c_0$.
 
 \end{document}
