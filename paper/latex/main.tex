@@ -164,7 +164,7 @@ immaterial), and is large when the two orderings produce structurally
 distinct outcomes.
 
 \textit{An important structural property}: while each pattern vector $v_P$
-maps into the $(n-1)$-dimensional image of the hat map
+maps into a rank-at-most-2 subspace of $\mathfrak{so}(8)$ under the hat map
 $\hat{\cdot} \colon \mathbb{R}^8 \to \mathfrak{so}(8)$, the commutator
 $[X_A, X_B] = X_A X_B - X_B X_A$ lives in the full $\binom{8}{2}=28$-dimensional
 $\mathfrak{so}(8)$, outside the hat-map image. This is not a
@@ -370,8 +370,7 @@ using the following construct types:
     Military, Information, Legal, Social) and three mechanism subclasses (Coercive,
     Cooperative, Structural).
   \item \textbf{Object Properties}: \texttt{owl:ObjectProperty} declarations for
-    \texttt{hasDomain}, \texttt{hasMechanismClass}, \texttt{inversePattern} (declared
-    \texttt{owl:inverseOf} itself, encoding the symmetric inverse relation),
+    \texttt{hasDomain}, \texttt{hasMechanismClass}, \texttt{inversePattern} (declared \texttt{owl:SymmetricProperty}, encoding that if pattern $A$ is the inverse of pattern $B$, then $B$ is the inverse of $A$),
     \texttt{sourcePattern}, \texttt{contextPattern}, and \texttt{resultPattern}.
   \item \textbf{Datatype Properties}: \texttt{owl:DatatypeProperty} declarations for
     \texttt{confidencePrior} (\texttt{xsd:decimal}) and \texttt{patternName}
@@ -528,7 +527,7 @@ by:
 \[
   A \cdot B = \{ c \in S : \exists\, a \in A,\, b \in B
                \text{ s.t.\ } a \cdot b = c \}
-           \cup \{ a \in A : \mathit{inverse\_table}[a] \in A^c \}
+           \cup \{ a \in A : \mathit{inverse\_table}[a] \in S \setminus A \}
 \]
 (the second term accounts for low-probability inverse transitions). The
 forward simulation proceeds by iterating this operation from the initial
@@ -599,7 +598,7 @@ regime estimate.
 The revised \textbf{posterior weight} of transition $(A, B) \to C$ at step $t$ is:
 \[
   w_t(A, B \to C)
-    = \pi_t(A) \cdot \pi_t(B) \cdot \mathit{lie\_sim}(A, B, C) \cdot |t|_p
+    = \pi_t(A) \cdot \pi_t(B) \cdot \mathit{lie\_sim}(A, B, C) \cdot |t|_7
 \]
 replacing the previous $\lambda^t$ factor. This provides a principled,
 domain-sensitive alternative to the arbitrary decay constant, with confidence
