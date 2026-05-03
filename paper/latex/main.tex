@@ -300,8 +300,9 @@ from the 21 registered patterns.
   available in the open-source repository.}
 \label{tab:patterns}
 \small
-\begin{tabular}{@{}p{0.22\linewidth}p{0.10\linewidth}p{0.20\linewidth}
-                   p{0.05\linewidth}p{0.30\linewidth}@{}}
+{\renewcommand{\_}{\textunderscore\allowbreak}%
+\begin{tabular}{@{}p{0.21\linewidth}p{0.13\linewidth}p{0.24\linewidth}%
+                   p{0.055\linewidth}p{0.255\linewidth}@{}}
 \toprule
 Pattern Name & Domain & Mechanism Class & Prior & Inverse Pattern \\
 \midrule
@@ -327,6 +328,7 @@ Information Warfare / Narrative Control & information & epistemic\_warfare & 0.6
   & Information Environment Restoration \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 \subsection{Algebraic Consistency Validation}
@@ -845,7 +847,7 @@ news-analysis dataset are available in the repository under
 GPT-5 ($N=5$, OpenAI, April 2026) vs ablation variants. $\sigma$ denotes
 standard deviation across repeated runs on the same input.}
 \label{tab:baseline}
-\begin{tabular}{@{}p{0.28\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}@{}}
+\begin{tabular}{@{}p{0.28\linewidth}p{0.155\linewidth}p{0.155\linewidth}p{0.155\linewidth}p{0.155\linewidth}@{}}
 \toprule
 Metric & EL-DRUIN (Full) & B3: Rule-only & B4: Geom.\ decay & B1: LLM-only (GPT-5) \\
 \midrule
@@ -877,72 +879,37 @@ coding, explainable neuro-symbolic AI, and LLM-augmented KG systems.
 
 \section{Related Work}
 
-Formal ontologies represented in OWL 2~\cite{grau2008owl2,w3c2012owl2} provide the
-foundation for semantic web reasoning. Hogan et al.~\cite{hogan2021knowledge} survey knowledge
-graph construction and reasoning; Ji et al.~\cite{ji2021survey} cover embedding
-methods including RotatE~\cite{sun2019rotate}.
-Ontology Design Patterns~\cite{gangemi2005odp,gangemi2010odp} provide reusable
-modelling solutions for recurring ontological problems; EL-DRUIN instantiates a
-novel \emph{Trajectory Reasoning Pattern} in this tradition.
-The W3C PROV-O ontology~\cite{w3c2013provo,groth2013prov} defines a standard model
-for provenance; EL-DRUIN's \texttt{compute\_trace\_ref} mechanism is designed to be
-PROV-O-compatible, mapping \texttt{DynamicPattern} activations to \texttt{prov:Activity}
-and confidence posteriors to \texttt{prov:wasGeneratedBy} chains.
-Constraint validation via SHACL~\cite{w3c2017shacl} complements EL-DRUIN's
-startup-time algebraic closure checks: \texttt{validate\_inverses()} and
-\texttt{validate\_composition\_closure()} enforce structural integrity analogously
-to SHACL shape constraints over OWL graphs.
+EL-DRUIN builds on OWL~2 ontology engineering~\cite{grau2008owl2,w3c2012owl2} and
+instantiates a novel \emph{Trajectory Reasoning} Ontology Design Pattern~\cite{gangemi2005odp,gangemi2010odp};
+provenance is aligned with W3C PROV-O~\cite{w3c2013provo,groth2013prov}, and startup-time
+algebraic closure checks mirror SHACL~\cite{w3c2017shacl} shape constraints.
 
-CAMEO~\cite{schrodt2012cameo} provides the standard controlled vocabulary for
-political event types. Probabilistic graphical models for conflict prediction~\cite{ward2010perils} require
-labelled training data and lack symbolic interpretability; EL-DRUIN's inference is
-entirely symbolic and fully auditable.
+Neuro-symbolic systems such as DeepProbLog~\cite{manhaeve2018deepproblog} and
+neuro-symbolic concept learners~\cite{mao2019neuro} demonstrate that symbolic rules can
+constrain neural outputs; EL-DRUIN applies this separation of concerns to geopolitical
+reasoning, confining the LLM strictly to constrained verbalization of pre-computed
+structured results.
 
-DeepProbLog~\cite{manhaeve2018deepproblog}
-integrates probabilistic logic programming with neural networks, and
-neuro-symbolic concept learning~\cite{mao2019neuro} shows that symbolic programs can
-constrain neural predictions. EL-DRUIN applies this separation of concerns to
-geopolitical reasoning: ontology-defined rules govern all numerical outputs while the
-LLM handles natural-language rendering only, enforcing explanation fidelity at the
-architecture level.
-
-Pan et al.~\cite{pan2023unifying} identify complementary strengths of LLMs and KGs.
-Noy et al.~\cite{noy2019industry} highlight provenance tracking in
-industry-scale KGs---a property EL-DRUIN builds in at the ontology layer. Unlike these
-works, EL-DRUIN uses the LLM exclusively for constrained verbalization of pre-computed
-structured results, ensuring full reproducibility and determinism.
+Political event coding systems (CAMEO~\cite{schrodt2012cameo}, GDELT~\cite{leetaru2013gdelt},
+ICEWS~\cite{boschee2015icews}) and probabilistic conflict models~\cite{ward2010perils} provide
+large-scale event monitoring and statistical baselines; EL-DRUIN is designed to complement
+them by adding ontology-typed composition semantics, traceable Bayesian posteriors, and
+full provenance chains absent from frequency-based pipelines.
 
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{What EL-DRUIN Can and Cannot Claim}
+\subsection{Limitations and Scope}
 
-EL-DRUIN is a \textbf{system demonstration} paper: its primary contribution is a
-working, open-source, ontology-guided reasoning pipeline with demonstrable
-properties (determinism, provenance, auditability, constrained LLM verbalization).
-It is not a claim that geopolitical trajectories are fully predictable, nor that
-the algebraic structures described are the uniquely correct formalization of
-geopolitical dynamics.
-
-Specifically:
-
-Both the $7 \times 3$ domain--mechanism factorization and the 7-adic non-Archimedean confidence calibration are \emph{design-motivated formalizations}: the factorization is a structured heuristic inspired by groups of order 21, and the 7-adic calibration replaces $\lambda = 0.85$ with a domain-boundary-sensitive scheme. Neither constitutes an empirical claim about geopolitical structure.
-
-The \textbf{Lie algebra approximation} provides a continuous plausibility score for
-discrete composition steps, but the 8-dimensional vectors are manually annotated and
-introduce expert subjectivity; the commutator's geopolitical interpretation is
-heuristic. The \textbf{backtesting results} use curated ground-truth labels assigned
-by the authors from historical record---defensible but not produced by a blind
-annotation process with inter-annotator agreement measurement.
-
-\subsection{Limitations and Future Work}
-
-The 8-dimensional pattern vectors $\varphi(p)$ are currently expert-annotated,
-introducing potential subjectivity; future work should learn these vectors from
-labelled event data and measure inter-annotator agreement. The pattern registry,
-domain assignments, and confidence priors are manually curated; scaling to larger,
-independently curated datasets and incorporating human evaluation of explanation
-quality are priorities for future work.
+This is a \textbf{system demonstration} paper: the primary contribution is a working,
+open-source, ontology-guided reasoning pipeline with demonstrable properties
+(determinism, provenance, auditability, constrained LLM verbalization).
+The $7 \times 3$ factorization and 7-adic confidence calibration are
+\emph{design-motivated formalizations}---structured heuristics grounded in the ontology
+partition, not empirical claims about geopolitical dynamics.
+The 8-dimensional pattern vectors are manually annotated; future work will learn these
+from labelled event data and measure inter-annotator agreement.
+Scaling the registry to full GDELT/ICEWS coverage is identified as future work.
 
 \section{Conclusion}
 
@@ -957,9 +924,6 @@ Bayesian posterior---converging to attractor states that constitute the
 long-run structural prediction. The system is fully open-source, with a
 working frontend that exposes all computation traces, evaluated on fourteen
 geopolitical news scenarios against an LLM-only baseline.
-
-\paragraph{Positioning.}
-The non-Archimedean confidence and ultrametric components are \emph{design-motivated formalizations}: we implement a 7-based calibration on a finite ontology-partitioned pattern space as a principled alternative to $\lambda = 0.85$. The $7 \times 3$ factorization and Sylow-inspired scheme are best understood as a \emph{structured design heuristic} that makes confidence calibration interpretable and auditable.
 
 \paragraph{Demo availability.}
 The EL-DRUIN Streamlit frontend (five analysis tabs: Conclusion, Events, Patterns,
