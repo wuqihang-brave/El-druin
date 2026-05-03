@@ -1,13 +1,13 @@
 # EL-DRUIN Baseline Experiments
 
 This directory contains the reproducible experimental framework used in Section 7
-of the EL-DRUIN paper for the EL-DRUIN vs GPT-4 baseline comparison.
+of the EL-DRUIN paper for the EL-DRUIN vs GPT-5 baseline comparison.
 
 ---
 
 ## Quick Start
 
-### 1. Set your OpenAI API Key (required only for GPT-4 baseline)
+### 1. Set your OpenAI API Key (required only for GPT-5 baseline)
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -15,13 +15,13 @@ export OPENAI_API_KEY="sk-..."
 
 > **Never commit your API key.**  The key is read at runtime from the
 > environment variable above.  If `OPENAI_API_KEY` is not set, the script
-> skips the GPT-4 baseline and runs EL-DRUIN only.
+> skips the GPT-5 baseline and runs EL-DRUIN only.
 
 ### 2. Install dependencies
 
 ```bash
 pip install -r backend/requirements.txt
-pip install openai          # only needed for GPT-4 baseline
+pip install openai          # only needed for GPT-5 baseline
 ```
 
 ### 3. Run the full experiment
@@ -35,7 +35,7 @@ python experiments/run_baseline.py
 This will:
 - Load all samples from `experiments/news_samples.jsonl`
 - Run the EL-DRUIN evented pipeline on each excerpt (no API key needed)
-- Run the GPT-4 baseline N=5 times per excerpt (requires `OPENAI_API_KEY`)
+- Run the GPT-5 baseline N=5 times per excerpt (requires `OPENAI_API_KEY`)
 - Save per-sample JSON files under `experiments/results/`
 
 ### 4. Generate the comparison table
@@ -142,7 +142,7 @@ tanks as agreed in the experiment design.
 
 ## Metrics Explained
 
-| Metric                    | EL-DRUIN                                                      | GPT-4 Baseline                                   |
+| Metric                    | EL-DRUIN                                                      | GPT-5 Baseline                                   |
 |---------------------------|---------------------------------------------------------------|--------------------------------------------------|
 | **Traceability**          | `compute_trace_ref` field links every confidence to the algebraic derivation | No compute trace; confidence is a free-text assertion |
 | **Auditability**          | Full pipeline is deterministic; output can be reproduced from the same input | Stochastic; outputs differ across runs           |
@@ -159,13 +159,13 @@ The exact results in the paper were generated with:
 
 ```bash
 export OPENAI_API_KEY="<key used at submission time>"
-export GPT_MODEL=gpt-4o
+export GPT_MODEL=gpt-5
 export GPT_N_SAMPLES=5
 python experiments/run_baseline.py
 python experiments/compute_metrics.py
 ```
 
 The EL-DRUIN results are fully deterministic and will always reproduce
-identically.  The GPT-4 results may differ slightly due to model updates,
+identically.  The GPT-5 results may differ slightly due to model updates,
 but the aggregate statistics (mean confidence, standard deviation, violation
 counts) should remain in the same range.

@@ -18,7 +18,7 @@ for Geopolitical Trajectory Analysis}
 \author{Anonymous Author(s)}
 \institute{Anonymous Institution\\
 \email{anonymous@review.blind}\\
-\url{https://anonymous.4open.science/r/El-druin-BLIND}}
+\url{https://anonymous.4open.science/r/El-druin-F56D}}
 \date{}
 
 \begin{document}
@@ -638,12 +638,12 @@ We evaluate EL-DRUIN on two complementary experimental protocols:
 \textbf{(A) News analysis and baseline comparison.}
 Fourteen geopolitical news excerpts drawn from publicly accessible sources
 (Reuters, BBC News, Financial Times, Brookings Institution, CSIS, NATO, Wall
-Street Journal) are processed by the EL-DRUIN pipeline and by a GPT-4o
-baseline~\cite{openai2023gpt4}. The excerpts span nine thematic categories
+Street Journal) are processed by the EL-DRUIN pipeline and by a GPT-5
+baseline~\cite{openai2025gpt5}. The excerpts span nine thematic categories
 (technology export control, trade war, financial isolation, military coercion,
 energy weaponisation, military alliance, multilateral sanctions, supply-chain
 dependency, information warfare) and cover events from 2018 to 2024. EL-DRUIN
-is run in fully deterministic mode ($\sigma = 0$ across repeated runs). GPT-4o
+is run in fully deterministic mode ($\sigma = 0$ across repeated runs). GPT-5
 is queried $N = 5$ times per excerpt with identical prompts to measure output
 variance. The full dataset, collection protocol, and raw results are available
 in \texttt{experiments/news\_samples.jsonl} and
@@ -664,7 +664,7 @@ score $0.4 \times \text{direction} + 0.3 \times (1 - \text{Brier}) + 0.3 \times
 We compare four configurations to isolate the contribution of each pipeline
 component:
 \begin{itemize}
-  \item \textbf{Baseline 1 (LLM-only)}: GPT-4o receives the same news excerpt
+  \item \textbf{Baseline 1 (LLM-only)}: GPT-5 receives the same news excerpt
     and outputs a trajectory judgment directly, without ontology grounding.
   \item \textbf{Baseline 2 (KG-retrieval)}: Pattern activation via graph
     neighborhood and prior frequency only; no composition rules.
@@ -788,7 +788,7 @@ The full glossary of all 21 registered patterns is available in the open-source 
 \subsection{Baseline Comparison and Ablation}
 
 Table~\ref{tab:baseline} summarises the qualitative comparison between EL-DRUIN
-and the GPT-4o baseline on the properties most relevant to ontology-guided
+and the GPT-5 baseline on the properties most relevant to ontology-guided
 reasoning: traceability, auditability, stability, and constraint compliance.
 Baselines 3 and 4 (rule-only and geometric decay) are described in
 Section~\ref{sec:methodology}; their quantitative ablation results on the
@@ -798,12 +798,12 @@ news-analysis dataset are available in the repository under
 \begin{table}[h]
 \centering
 \caption{System comparison across five configurations. EL-DRUIN (Full) vs
-GPT-4o ($N=5$, OpenAI, April 2026) vs ablation variants. $\sigma$ denotes
+GPT-5 ($N=5$, OpenAI, April 2026) vs ablation variants. $\sigma$ denotes
 standard deviation across repeated runs on the same input.}
 \label{tab:baseline}
 \begin{tabular}{@{}p{0.28\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.13\linewidth}@{}}
 \toprule
-Metric & EL-DRUIN (Full) & B3: Rule-only & B4: Geom.\ decay & B1: LLM-only (GPT-4o) \\
+Metric & EL-DRUIN (Full) & B3: Rule-only & B4: Geom.\ decay & B1: LLM-only (GPT-5) \\
 \midrule
 Confidence source & Ontology prior $\times$ Bayes (deterministic) & Same & Same & Self-reported \\
 Compute trace & Full & Full & Full & None \\
@@ -837,7 +837,7 @@ statistical event aggregation systems; EL-DRUIN is the full system.}
 \small
 \begin{tabular}{@{}p{0.26\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.15\linewidth}@{}}
 \toprule
-Property & GDELT / ICEWS / CAMEO & LLM-only (GPT-4o) & EL-DRUIN (Full) \\
+Property & GDELT / ICEWS / CAMEO & LLM-only (GPT-5) & EL-DRUIN (Full) \\
 \midrule
 \textbf{Output type}
   & Event frequency counts / trend scores
@@ -1002,7 +1002,7 @@ organizational scheme are best understood as a \emph{structured design heuristic
 that makes confidence calibration interpretable and auditable.
 
 \section*{Declaration of Use of Generative AI}
-The authors used large language model assistance (GPT-4o) solely as a constrained natural-language renderer within the EL-DRUIN pipeline, as described in Section~3. No generative AI tools were used in the preparation of this manuscript text, figures, or experimental results.
+The authors used large language model assistance (GPT-5) solely as a constrained natural-language renderer within the EL-DRUIN pipeline, as described in Section~3. No generative AI tools were used in the preparation of this manuscript text, figures, or experimental results.
 
 \bibliographystyle{splncs04}
 \bibliography{main}
