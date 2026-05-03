@@ -281,14 +281,15 @@ from the 21 registered patterns.
 \caption{Selected Dynamic Patterns (10 of 21 shown). Full registry
   available in the open-source repository.}
 \label{tab:patterns}
-\begin{tabular}{@{}p{0.26\linewidth}p{0.11\linewidth}p{0.20\linewidth}
-                   p{0.07\linewidth}p{0.24\linewidth}@{}}
+\small
+\begin{tabular}{@{}p{0.24\linewidth}p{0.09\linewidth}p{0.19\linewidth}
+                   p{0.05\linewidth}p{0.26\linewidth}@{}}
 \toprule
 Pattern Name & Domain & Mechanism Class & Prior & Inverse Pattern \\
 \midrule
 Hegemonic Sanctions & geopolitics & coercive\_leverage & 0.78
   & Sanctions Relief / Normalisation \\
-Entity-List Technology Blockade & technology & tech\_denial & 0.80
+Entity-List Tech Blockade & technology & tech\_denial & 0.80
   & Technology Licence / Unblocking \\
 Interstate Military Conflict & military & kinetic\_escalation & 0.75
   & Ceasefire / Peace Agreement \\
@@ -296,7 +297,7 @@ Great-Power Coercion/Deterrence & geopolitics & coercive\_leverage & 0.70
   & Diplomatic Concession / De-escalation \\
 Multilateral Alliance Sanctions & geopolitics & multilateral\_pressure & 0.73
   & Multilateral Sanctions Relief \\
-Tech Decoupling / Technology Iron Curtain & technology & tech\_decoupling & 0.76
+Tech Decoupling / Iron Curtain & technology & tech\_decoupling & 0.76
   & Technology Cooperation Reintegration \\
 Financial Isolation / SWIFT Cut-Off & economics & financial\_exclusion & 0.79
   & Financial Reintegration \\
@@ -361,12 +362,6 @@ determined by the ontology and the symbolic pipeline; if the LLM call fails, a
 template fallback produces \texttt{conclusion.text} without degrading any
 numerical output.
 
-This architecture is a deliberate design choice: it ensures that the system's
-\emph{analytical conclusions} --- the patterns, transitions, posteriors, and
-attractor predictions --- are fully reproducible and auditable even in the absence
-of any LLM, while the LLM provides the linguistic fluency that makes those
-conclusions accessible to non-specialist users.
-
 \paragraph{The $7 \times 3$ factorization as reasoning semantics.}
 The \texttt{domain} $\times$ \texttt{mechanism\_class} factorization is not an
 external label applied post-hoc; it is a structural design choice with reasoning
@@ -404,7 +399,6 @@ pattern to one of three cross-domain mechanism classes (coercive, cooperative,
 structural), forming three groups of size 7. Together, these two partitions
 provide a \textbf{canonical domain $\times$ mechanism address} for each pattern,
 supporting structured confidence calibration and ontology-guided traversal.
-
 This $7 \times 3$ factorization is inspired by the algebraic structure of groups
 of order $21 = 3 \times 7$ (specifically, the semidirect product $\mathbb{Z}_7
 \rtimes \mathbb{Z}_3$), in which the order-7 and order-3 subgroups partition
@@ -701,7 +695,8 @@ valuation, where phase transitions occur at steps $T \in \{7, 14, 21,\ldots\}$.
 Since $\mathtt{horizon\_steps} = 6 < 7$, all scenarios have $|6|_7 = 1$ (no
 domain-level phase transition), so $c_{\mathrm{final}} = c_0$.}
 \label{tab:results}
-\begin{tabular}{@{}llllll@{}}
+\small
+\begin{tabular}{@{}p{0.17\linewidth}p{0.20\linewidth}p{0.04\linewidth}p{0.24\linewidth}p{0.07\linewidth}p{0.06\linewidth}@{}}
 \toprule
 Scenario & Primary Attractor & $P(\alpha)$ & Secondary Attractor & Bifurcation? & $c_{\mathrm{final}}$ \\
 \midrule
@@ -895,10 +890,7 @@ explainable neuro-symbolic AI, and LLM-augmented ontology and KG systems.
 \subsection{Knowledge Representation and Political Event Coding}
 
 Formal ontologies represented in OWL 2~\cite{grau2008owl2,w3c2012owl2} provide the
-foundation for semantic web reasoning. Large knowledge graphs such as
-DBpedia~\cite{bizer2009dbpedia}, Wikidata~\cite{vrandecic2014wikidata}, and
-YAGO~\cite{suchanek2007yago} demonstrate the scale at which entity-relation triples
-can be curated and queried. Hogan et al.~\cite{hogan2021knowledge} survey knowledge
+foundation for semantic web reasoning. Hogan et al.~\cite{hogan2021knowledge} survey knowledge
 graph construction and reasoning; Ji et al.~\cite{ji2021survey} cover embedding
 methods including RotatE~\cite{sun2019rotate}. Temporal knowledge
 graphs~\cite{trivedi2017know,lacroix2020tensor,li2021temporal} and Allen's interval
@@ -907,17 +899,13 @@ instead applies ontology-registered composition rules to derive forward-projecte
 attractor states without requiring labelled training data.
 
 CAMEO~\cite{schrodt2012cameo} provides the standard controlled vocabulary for
-political event types; GDELT~\cite{leetaru2013gdelt} and
-ICEWS~\cite{boschee2015icews} build on CAMEO to enable large-scale statistical
-monitoring but do not model pattern composition or produce provenance traces.
-Probabilistic graphical models for conflict prediction~\cite{ward2010perils} require
+political event types. Probabilistic graphical models for conflict prediction~\cite{ward2010perils} require
 labelled training data and lack symbolic interpretability; EL-DRUIN's inference is
 entirely symbolic and fully auditable.
 
 \subsection{Neuro-Symbolic AI and LLM--KG Integration}
 
-The neuro-symbolic AI programme~\cite{besold2017neural,garcez2020neural} combines
-neural pattern recognition with symbolic reasoning; DeepProbLog~\cite{manhaeve2018deepproblog}
+DeepProbLog~\cite{manhaeve2018deepproblog}
 integrates probabilistic logic programming with neural networks, and
 neuro-symbolic concept learning~\cite{mao2019neuro} shows that symbolic programs can
 constrain neural predictions. EL-DRUIN applies this separation of concerns to
@@ -949,13 +937,9 @@ geopolitical dynamics.
 
 Specifically:
 
-The \textbf{$7 \times 3$ factorization} and the \textbf{non-Archimedean confidence
-calibration} are both design-motivated formalizations. The factorization is an
-organizational choice that provides reasoning clarity and calibration structure, not
-an empirical claim that geopolitical reality has exactly 21 fundamental patterns; the
-7-based valuation is a principled alternative to the ad hoc constant $\lambda = 0.85$,
-motivated by the domain partition, not a claim of formal p-adic geometry. The
-\textbf{Lie algebra approximation} provides a continuous plausibility score for
+Both the $7 \times 3$ domain--mechanism factorization and the 7-adic non-Archimedean confidence calibration are \emph{design-motivated formalizations}: the factorization is a structured heuristic inspired by groups of order 21, and the 7-adic calibration replaces $\lambda = 0.85$ with a domain-boundary-sensitive scheme. Neither constitutes an empirical claim about geopolitical structure.
+
+The \textbf{Lie algebra approximation} provides a continuous plausibility score for
 discrete composition steps, but the 8-dimensional vectors are manually annotated and
 introduce expert subjectivity; the commutator's geopolitical interpretation is
 heuristic. The \textbf{backtesting results} use curated ground-truth labels assigned
@@ -966,15 +950,10 @@ annotation process with inter-annotator agreement measurement.
 
 The 8-dimensional pattern vectors $\varphi(p)$ are currently expert-annotated,
 introducing potential subjectivity; future work should learn these vectors from
-labelled event data and measure inter-annotator agreement. The composition table
-covers only 16 of 441 possible pattern pairs ($\approx 3.6\%$); forward simulation
-results should be interpreted as indicative until completeness is substantially
-improved, ideally by inferring rules from historical event co-occurrence data.
-The pattern registry, domain assignments, and confidence priors are all manually
-curated---a rigorous evaluation would require independent expert validation.
-The current evaluation covers 14 news excerpts and 8 backtesting events; scaling
-to larger independently curated datasets and incorporating human evaluation of
-explanation quality is a priority for future work.
+labelled event data and measure inter-annotator agreement. The pattern registry,
+domain assignments, and confidence priors are manually curated; scaling to larger,
+independently curated datasets and incorporating human evaluation of explanation
+quality are priorities for future work.
 
 \section{Conclusion}
 
@@ -991,18 +970,13 @@ working frontend that exposes all computation traces, evaluated on fourteen
 geopolitical news scenarios against an LLM-only baseline.
 
 \paragraph{Positioning.}
-We frame the non-Archimedean confidence and ultrametric components as
-\emph{design-motivated formalizations}: the formal connection to p-adic geometry
-lies beyond the scope of this work, and we make no claim that the partial
-composition table constitutes a full group structure. What we implement is a
-7-based non-Archimedean calibration on a finite ontology-partitioned pattern
-space, providing a principled, domain-sensitive alternative to the ad hoc decay
-constant $\lambda = 0.85$. The $7 \times 3$ factorization and the Sylow-inspired
-organizational scheme are best understood as a \emph{structured design heuristic}
-that makes confidence calibration interpretable and auditable.
+The non-Archimedean confidence and ultrametric components are \emph{design-motivated formalizations}: we implement a 7-based calibration on a finite ontology-partitioned pattern space as a principled alternative to $\lambda = 0.85$. The $7 \times 3$ factorization and Sylow-inspired scheme are best understood as a \emph{structured design heuristic} that makes confidence calibration interpretable and auditable.
 
 \section*{Declaration of Use of Generative AI}
-The authors used large language model assistance (GPT-5) solely as a constrained natural-language renderer within the EL-DRUIN pipeline, as described in Section~3. No generative AI tools were used in the preparation of this manuscript text, figures, or experimental results.
+The authors used large language model assistance (a GPT-5-class model accessed via an institutional AI platform) solely as a \emph{constrained natural-language renderer} within the EL-DRUIN pipeline, as described in Section~3. No generative AI tools were used in the preparation of this manuscript's text, figures, experimental results, or any numerical outputs.
+
+\section*{Supplemental Material Statement}
+The source code, ontology artefact (\texttt{paper/ontology/eldruin\_ontology.ttl}), experiment datasets, and computation traces are available at: \url{https://anonymous.4open.science/r/El-druin-F56D}. All results are reproducible without an API key (\texttt{LLM\_PROVIDER=none}).
 
 \bibliographystyle{splncs04}
 \bibliography{main}
