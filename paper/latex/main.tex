@@ -101,10 +101,9 @@ relations, and constraints. The CAMEO event coding system~\cite{schrodt2012cameo
 provides a controlled vocabulary of political event types widely used in
 computational political science. FIBO (Financial Industry Business
 Ontology)~\cite{fibo2023} provides analogous structure for financial relationships.
-EL-DRUIN draws on both, mapping typed entity pairs through relation
-predicates to named patterns registered in a Cartesian product registry:
-$E \times R \times E \to \mathrm{Pattern}$, where $E$ is the set of
-entity types and $R$ is the set of relation types.
+EL-DRUIN maps typed entity pairs through relation predicates to named
+patterns registered in a Cartesian product registry
+$E \times R \times E \to \mathrm{Pattern}$, grounding pattern activation in both vocabularies.
 
 \subsection{Finite Semigroups and Fixed Points}
 
@@ -117,13 +116,9 @@ eventually reaches a set of idempotents. These idempotents are the
 \textbf{attractors} of the system---they correspond to states from which no
 further composition moves the system to a genuinely new state.
 
-In EL-DRUIN, the set $S$ is the set of named Dynamic Patterns, and the
-partial binary operation is defined by
-$\mathit{composition\_table}[(A, B)] = C$, read as ``when pattern $A$ and
-pattern $B$ are simultaneously active, the system tends toward pattern
-$C$''. This table is validated for algebraic closure (all outputs $C$
-must be known patterns) and inverse consistency (if $\mathit{inverse}(A) = B$
-then $\mathit{inverse}(B) = A$) at application startup.
+In EL-DRUIN, $S$ is the set of 21 named Dynamic Patterns and the partial
+operation is the composition table $\mathit{composition\_table}[(A, B)] = C$.
+Algebraic closure and inverse consistency are enforced at startup (see Section~4).
 
 \subsection{Lie Algebra Approximation}
 
@@ -158,20 +153,11 @@ The \textbf{Lie bracket} is the matrix commutator
 \end{equation}
 which satisfies antisymmetry, bilinearity, and the Jacobi identity
 exactly~\cite{humphreys1972,hall2015}. The Frobenius norm
-$\|[X_A, X_B]\|_F$ measures non-commutativity: it equals zero if and
-only if $X_A$ and $X_B$ commute (i.e., pattern-activation order is
-immaterial), and is large when the two orderings produce structurally
-distinct outcomes.
-
-\textit{An important structural property}: while each pattern vector $v_P$
-maps into a rank-at-most-2 subspace of $\mathfrak{so}(8)$ under the hat map
-$\hat{\cdot} \colon \mathbb{R}^8 \to \mathfrak{so}(8)$, the commutator
-$[X_A, X_B] = X_A X_B - X_B X_A$ lives in the full $\binom{8}{2}=28$-dimensional
-$\mathfrak{so}(8)$, outside the hat-map image. This is not a
-defect---it is the feature that makes the Lie-algebra path genuinely
-independent of the Bayesian path: the bracket activates semantic
-directions unreachable by any single pattern vector, capturing
-interaction effects that the additive sum $v_A + v_B$ cannot represent.
+$\|[X_A, X_B]\|_F$ measures non-commutativity: it equals zero when
+$X_A$ and $X_B$ commute (pattern-activation order is immaterial), and is
+large when the two orderings produce structurally distinct outcomes.
+The role of the commutator as a path-independence diagnostic is discussed
+in Section~5.
 
 \section{System Architecture}
 
@@ -271,7 +257,11 @@ derivation via \texttt{compute\_trace\_ref}.}
 
 \subsection{Entity and Relation Type Enumerations}
 
-The entity type set $E$ contains 18 elements spanning five categories: geopolitical actors (\texttt{STATE}, \texttt{ALLIANCE}, \texttt{PARAMILITARY}, \texttt{IDEOLOGY}), economic actors (\texttt{FIRM}, \texttt{FINANCIAL\_ORG}, \texttt{RESOURCE}, \texttt{CURRENCY}, \texttt{SUPPLY\_CHAIN}), technological (\texttt{TECH}, \texttt{STANDARD}), social-cognitive (\texttt{PERSON}, \texttt{MEDIA}, \texttt{TRUST}, \texttt{INSTITUTION}), and event types (\texttt{CONFLICT}, \texttt{NORM}), plus \texttt{UNKNOWN}. The relation type set $R$ contains 20 elements across four mechanism categories: coercive (\texttt{SANCTION}, \texttt{MILITARY\_STRIKE}, \texttt{COERCE}, \texttt{BLOCKADE}), cooperative (\texttt{SUPPORT}, \texttt{ALLY}, \texttt{AID}, \texttt{AGREE}), dependency/flow (\texttt{DEPENDENCY}, \texttt{TRADE\_FLOW}, \texttt{SUPPLY}, \texttt{FINANCE}), and structural (\texttt{SIGNAL}, \texttt{PROPAGANDA}, \texttt{LEGITIMIZE}, \texttt{DELEGITIMIZE}, \texttt{REGULATE}, \texttt{STANDARDIZE}, \texttt{EXCLUDE}, \texttt{INTEGRATE}). Full enumerations are provided in Appendix~A.
+The entity type set $E$ (18 elements) and relation type set $R$ (20 elements) that
+ground the \texttt{CARTESIAN\_PATTERN\_REGISTRY} are enumerated in full in Appendix~A.
+The five entity categories span geopolitical, economic, technological, military, and
+informational actors; the relation types cover coercive, cooperative, and structural
+interaction classes.
 
 \subsection{Dynamic Pattern Registration}
 
@@ -322,30 +312,23 @@ Information Warfare / Narrative Control & information & epistemic\_warfare & 0.6
 
 \subsection{Algebraic Consistency Validation}
 
-Two static validators are executed at application startup:
-
-\textbf{validate\_inverses()}: Checks that for every $(A, B)$ pair in
-\texttt{inverse\_table}, the reverse pair $(B, A)$ is also present. This
-enforces the group-theoretic condition that the inverse of an inverse
-returns the original element.
-
-\textbf{validate\_composition\_closure()}: Checks that for every
-$(A, B) \to C$ in \texttt{composition\_table}, $C$ is a known pattern name in
-the registry. This enforces algebraic closure---the composition of two
-patterns must remain within the pattern set, preventing the system from
-producing unregistered states. A coupling-asymmetry metric is computed
-in the frontend for each active analysis to measure the concentration of
-active mechanism classes across semantic domains.\footnote{The frontend
-coupling-asymmetry metric uses the Herfindahl--Hirschman Index
-normalised against a fixed domain baseline of $n_d = 7$ (the total
-number of semantic domains in the ontology), not against the count of
-currently active domains, to avoid division by zero when a single domain
-is active.}
+Two static validators run at startup. \textbf{validate\_inverses()} checks that
+for every $(A, B)$ in \texttt{inverse\_table} the reverse pair $(B, A)$ is also
+present, enforcing the group-theoretic condition that the inverse of an inverse
+returns the original element. \textbf{validate\_composition\_closure()} checks
+that every output $C$ of the \texttt{composition\_table} is a known pattern name,
+enforcing algebraic closure. Both checks must pass before the pipeline accepts
+any analysis request.
 
 \subsection{OWL 2 Formal Representation}
 \label{sec:owl-representation}
 
-The ontology schema is formally expressed in OWL~2 \cite{grau2008owl2,w3c2012owl2} using \texttt{owl:Class} declarations for the eight core classes, \texttt{owl:ObjectProperty} for six object properties (including \texttt{inversePattern} as \texttt{owl:SymmetricProperty}), and 21 \texttt{owl:NamedIndividual} instances of \texttt{DynamicPattern}. The 16 composition rules are encoded as \texttt{CompositionRule} individuals using standard OWL~2 reification (ternary assertions via \texttt{sourcePattern}, \texttt{contextPattern}, \texttt{resultPattern}), compatible with SPARQL reasoning and Prot\'{e}g\'{e} visualisation. A complete Turtle serialisation is provided in \path{paper/ontology/eldruin_ontology.ttl} in the repository; full OWL construct listings are in Appendix~A.
+The ontology schema is formally expressed in OWL~2~\cite{grau2008owl2,w3c2012owl2}.
+Core constructs include \texttt{owl:Class} for the eight entity classes,
+\texttt{owl:ObjectProperty} for six object properties (including
+\texttt{activates}, \texttt{composesInto}, and \texttt{hasProvenance}),
+and \texttt{owl:DatatypeProperty} for confidence priors and mechanism labels.
+Full OWL axioms and class hierarchy listings are provided in Appendix~A.
 
 \subsection{Ontology Design Pattern: Trajectory Reasoning}
 \label{sec:design-pattern}
@@ -359,41 +342,24 @@ bridge event-level observations and trajectory-level reasoning.
 \paragraph{Why this is more than a pattern list.}
 Existing political event coding schemes (CAMEO, GDELT, ICEWS) register events
 as typed actor-action-target triples and aggregate them statistically. EL-DRUIN
-differs in three ways:
-\begin{enumerate}
-  \item \textbf{Composition semantics.} Each \texttt{DynamicPattern} participates
-    in a composition table that defines how pairs of active patterns interact to
-    produce derived patterns. This elevates patterns from database entries to
-    active inference nodes in a symbolic reasoning graph.
-  \item \textbf{Ontology-grounded confidence.} Each pattern carries a
-    \texttt{confidence\_prior} that is an ontology-defined belief about the
-    base rate of that pattern type, not a learned parameter or an arbitrary
-    constant. The prior participates directly in the Bayesian posterior
-    computation, making every confidence value traceable to an explicit
-    ontological assumption.
-  \item \textbf{Provenance-preserving structure.} Every numerical output is
-    anchored to a \texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}.
-    If the system changes a confidence value, the record changes too. This
-    satisfies the ISWC community's standard for auditable and reproducible
-    ontological inference.
-\end{enumerate}
+differs in three ways. First, each \texttt{DynamicPattern} participates in a
+composition table that defines how pairs of active patterns interact to produce
+derived patterns, elevating patterns from database entries to active inference
+nodes. Second, each pattern carries an ontology-defined \texttt{confidence\_prior}
+that participates directly in the Bayesian posterior computation, making every
+confidence value traceable to an explicit ontological assumption rather than a
+learned parameter. Third, every numerical output is anchored to a
+\texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}, satisfying the ISWC
+standard for auditable and reproducible ontological inference.
 
 \paragraph{Why LLM is needed, and where.}
-The LLM plays a strictly bounded role in EL-DRUIN:
-\begin{itemize}
-  \item \textbf{Not responsible for}: numerical reasoning, confidence computation,
-    pattern activation, composition, or attractor detection. These are entirely
-    determined by the ontology and the symbolic pipeline.
-  \item \textbf{Responsible for}: rendering the pre-computed structured output
-    into natural-language strategic interpretation (2--3 sentences).
-  \item \textbf{Locked fields}: the LLM prompt presents all numerical fields as
-    locked values that must not be changed. Any output that modifies a numerical
-    field, introduces an entity not present in the structured output, or produces
-    CJK characters triggers a guardrail fallback to template-based rendering.
-  \item \textbf{Failure isolation}: if the LLM call fails entirely, a template
-    fallback produces the \texttt{conclusion.text} field using pre-computed
-    driving-factor statements. No numerical output is degraded.
-\end{itemize}
+The LLM plays a strictly bounded role: it renders pre-computed structured output
+into 2--3 sentences of natural-language strategic interpretation, and is
+explicitly prohibited from modifying any numerical field. All computation—pattern
+activation, composition, confidence scoring, attractor detection—is entirely
+determined by the ontology and the symbolic pipeline; if the LLM call fails, a
+template fallback produces \texttt{conclusion.text} without degrading any
+numerical output.
 
 This architecture is a deliberate design choice: it ensures that the system's
 \emph{analytical conclusions} --- the patterns, transitions, posteriors, and
@@ -465,12 +431,10 @@ by:
                \text{ s.t.\ } a \cdot b = c \}
            \cup \{ a \in A : \mathit{inverse\_table}[a] \in S \setminus A \}
 \]
-(the second term accounts for low-probability inverse transitions). The
-forward simulation proceeds by iterating this operation from the initial
-pattern set $S_0$; a step is productive whenever
-$|S_{t+1} \setminus S_t| > 0$, i.e.\ when at least one genuinely new
-pattern enters the reachable set. Note that $(\mathcal{P}(S), \cdot)$ is itself
-a semigroup (the semigroup of subsets under the induced operation).
+where the second term accounts for low-probability inverse transitions.
+The forward simulation iterates this operation from $S_0$, terminating
+when $|S_{t+1} \setminus S_t| = 0$; $(\mathcal{P}(S), \cdot)$ is itself
+a semigroup under the induced operation.
 
 \subsection{Lie Algebra Embedding}
 
@@ -504,11 +468,12 @@ independence of the two inference paths. $\delta \approx 0$ indicates
 the Lie bracket interaction reinforces the same semantic direction as
 the additive sum (linear regime---the two paths are redundant);
 $\delta \approx 1$ indicates the bracket activates orthogonal dimensions
-absent from $v_A + v_B$ (nonlinear emergence regime). This diagnostic is
-the operational definition of ``structural novelty beyond additive
-inference'': a high-$\delta$ result is the strongest evidence that the
-dual-path architecture provides information not available to a purely
-Bayesian system.
+absent from $v_A + v_B$ (nonlinear emergence regime). Structurally, while
+each $v_P$ maps into a rank-at-most-2 subspace of $\mathfrak{so}(8)$, the
+commutator $[X_A, X_B]$ lives in the full 28-dimensional $\mathfrak{so}(8)$,
+outside the hat-map image---so a high-$\delta$ result is the strongest
+evidence that the dual-path architecture provides information not available
+to a purely additive system.
 
 \subsection{p-Adic Confidence and Revised Bayesian Posterior}
 \label{sec:padic}
@@ -568,16 +533,9 @@ $\mathit{consistency} = 1$, confidence is boosted by at most
 $\alpha / (1 + \alpha) \approx 23\%$.
 
 \paragraph{Ultrametric distance on pattern space.}
-\label{sec:ultrametric}
-The Sylow-7 partition induces a 7-adic ultrametric
-$d_7(A, B) = 7^{-v_7(\mathrm{graph\_dist}(A,B))}$
-on $S$, where $\mathrm{graph\_dist}(A,B)$ is the shortest path length in the
-composition graph $\Gamma = (S, E)$. Patterns in the same domain have distance
-$7^{-k} \ll 1$ (easy intra-domain propagation); cross-domain patterns have
-distance $1$ (maximum, requiring a phase transition). The ultrametric inequality
-$d_7(A,C) \leq \max(d_7(A,B), d_7(B,C))$ models the design intuition that
-geopolitical crises are either domain-contained or fully cross-domain.
-We use this as a design-motivated formalisation, not an empirical claim.
+A 7-adic ultrametric on the pattern space induced by the Sylow-7 partition is
+described in Appendix~B as a design-motivated formalisation of intra- vs.\ cross-domain
+propagation cost.
 
 \subsection{Attractor Detection}
 
@@ -592,43 +550,30 @@ operations remain within the already-activated set---the algebraic
 termination condition. In the limit $T \to \infty$, these correspond to
 the idempotent elements of the finite semigroup.
 
-\subsection{Phase Transition Detection}
+\subsection{Detection Criteria}
 
 A \textbf{phase transition} at step $t$ is flagged when the $L_2$ norm of
 the state vector shift exceeds a threshold $\theta$:
 \[
   \|v_t - v_{t-1}\|_2 > \theta, \quad \theta = 0.25
 \]
-(\emph{calibrated on unit-normalised embeddings; for unnormalised vectors
-with typical norm $\|v\| \approx 1.5$, the effective angular displacement
-is approximately $9.6^\circ$})
+where $v_t = \sum_i \pi_t(p_i) \cdot \varphi(p_i)$ is the weighted mean
+vector at step $t$. This detects when a continuous change in pattern weights
+has caused a discontinuous shift in the dominant semantic regime.
 
-\noindent where $v_t = \sum_i \pi_t(p_i) \cdot \varphi(p_i)$ is the
-weighted mean vector at step $t$. This condition detects when a
-continuous change in pattern weights has caused a discontinuous shift in
-the dominant semantic regime---i.e., the system has crossed a phase
-boundary in the Lie algebra space.
-
-\subsection{p-Adic Bifurcation Detection}
-\label{sec:bifurcation}
-
-The original bifurcation condition (posterior gap $< 0.15$) is replaced by a
-structurally motivated p-adic condition:
+A \textbf{p-adic bifurcation} at step $t$ is flagged by a structurally
+motivated condition:
 \[
   \text{bifurcation at step } t
   \iff
   v_p\!\left(\pi_t(p_{\mathrm{top1}}) - \pi_t(p_{\mathrm{top2}})\right) \geq k_0
 \]
-where $k_0 = 1$ is the minimum valuation threshold and $p = 7$.  A large
+where $k_0 = 1$ is the minimum valuation threshold and $p = 7$. A large
 valuation means the posterior weight difference is divisible by a high power
-of 7, making the two leading attractors \emph{p-adically indistinguishable}.
-This provides a domain-structure-aligned notion of near-tie: it detects when
-the system is at a bifurcation point \emph{at the granularity of the 7-domain
-partition}, complementing the real-valued threshold with a structurally motivated
-discrete criterion.
-
-Implementation uses exact rational arithmetic (\texttt{fractions.Fraction}) to
-avoid floating-point artefacts in the valuation computation.
+of 7, making the two leading attractors \emph{p-adically indistinguishable}
+at the granularity of the 7-domain partition. Implementation uses exact
+rational arithmetic (\texttt{fractions.Fraction}) to avoid floating-point
+artefacts in the valuation computation.
 
 \section{The Five-Stage Reasoning Pipeline}
 
@@ -663,29 +608,13 @@ pattern, generating low-probability inverse transitions at weight
 $0.20 \times \pi(A)$. All transitions are sorted by posterior weight;
 the top-5 are returned as the derived pattern set.
 
-\textit{Note on KG weight fall-back.} When no KG evidence is available
-($w_{\mathrm{KG}} = 0$), the trigger amplification formula reduces to
-$a = \operatorname{clamp}(w_{\mathrm{causal}} + \Delta_{\mathrm{domain}})$
-with $w_{\mathrm{causal}}$ receiving full effective weight; the 0.4 KG
-coefficient disappears rather than being redistributed. This is
-intentional: the formula is non-normalising by design, bounding the
-amplification factor within $[0, 1]$ via the clamp operation.
-
-\textbf{Stage 2c: State Vector Computation.}
-The weighted mean vector $v = \sum_i \pi(p_i) \cdot \varphi(p_i)$ is
-computed over all active patterns, producing the 8D ontological state
-vector. PCA (via \texttt{numpy.linalg.svd}) projects this to 2D for
-frontend scatter plot visualisation. The dominant semantic dimension is
-identified as $\operatorname{argmax}_d |v[d]|$.
-
-\textbf{Stage 2d: Driving Factor Aggregation.}
-Active patterns are grouped by \texttt{mechanism\_class}. For each group,
-the weighted sum $\sum \pi(p_i)$ gives a group weight, and the
-\texttt{typical\_outcomes} of all patterns in the group are weighted by
-their pattern's \texttt{confidence\_prior}. The top-3 outcomes per group
-are formatted as human-readable driving factor statements using a
-template library keyed by \texttt{mechanism\_class}. This step is entirely
-deterministic---no LLM call.
+\textbf{Stage 2c--2d: State Vector and Driving Factors.}
+The weighted mean vector $v = \sum_i \pi(p_i) \cdot \varphi(p_i)$ is computed over
+all active patterns (Stage~2c), yielding the 8D ontological state vector; PCA projects
+this to 2D for visualisation. Active patterns are then grouped by \texttt{mechanism\_class}
+(Stage~2d): for each group the weighted \texttt{typical\_outcomes} are ranked and
+formatted as human-readable driving factor statements via a deterministic template
+library---no LLM call is made.
 
 \textbf{Stage 3: Bayesian Conclusion Generation.}
 Alpha and beta paths are constructed from the top two transitions by
@@ -753,6 +682,15 @@ traceability (whether a full compute trace can be produced) and stability
 ($\sigma$ across repeated runs).
 
 \subsection{Results}
+
+Table~\ref{tab:results} summarises EL-DRUIN's forecasting outputs across six
+geopolitical scenarios run with \texttt{horizon\_steps}$=6$ in deterministic mode.
+All six scenarios produce a clearly identified primary attractor with Bayesian
+posterior $P(\alpha) \geq 0.51$; three scenarios trigger a bifurcation flag,
+indicating competing attractor regimes. Final confidence values
+$c_{\mathrm{final}}$ equal the ontology prior $c_0$ throughout, because the
+six-step horizon falls below the first 7-adic phase-transition boundary ($T < 7$).
+
 % --- Table 2 (from your markdown) ---
 \begin{table}[h]
 \centering
@@ -828,13 +766,20 @@ The 14 news excerpts and 8 historical events constitute a limited dataset by ML 
 
 \subsection{Interpretation of Selected Results}
 
-\textbf{US-China Technology Decoupling.} The composition (Entity-List Technology Blockade $\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership fires in Step~1. A bifurcation at Step~2 ($P$ difference $< 0.15$) reflects genuine uncertainty between a two-standards world and full decoupling---the empirically contested outcome of US-China tech competition.
-
-\textbf{China-Taiwan Invasion.} (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$ Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$. The system predicts convergence toward a multilateral sanctions coalition rather than sustained kinetic conflict, consistent with the post-2022 Russia-Ukraine pattern.
-
-\textbf{Confidence Calibration.} All $c_{\mathrm{final}}$ values equal $c_0$ (range 0.72--0.79) since $T=6 < 7$: no domain-level phase transition occurs within the six-step horizon. This contrasts with the previous geometric decay $\lambda^6 \approx 0.38$; the 7-adic formulation avoids artificial decay within a single domain period.
-
-Extended numerical comparison between 7-adic and geometric-decay calibration at horizons $T \in \{7, 14\}$ is provided in Appendix~B, illustrating the structurally punctuated behavior of the non-Archimedean formulation.
+In the US-China technology decoupling scenario, the composition (Entity-List
+Technology Blockade $\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership
+fires in Step~1; a bifurcation at Step~2 ($P$ difference $< 0.15$) reflects
+genuine uncertainty between a two-standards world and full decoupling---the
+empirically contested outcome of US-China tech competition. For the China-Taiwan
+invasion scenario, (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$
+Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$;
+the system converges toward a multilateral sanctions coalition rather than sustained
+kinetic conflict, consistent with the post-2022 Russia-Ukraine pattern.
+Regarding confidence calibration, all $c_{\mathrm{final}}$ values equal $c_0$
+(range 0.72--0.79) since $T=6 < 7$: no domain-level phase transition occurs
+within the six-step horizon, contrasting sharply with the previous geometric decay
+$\lambda^6 \approx 0.38$; the 7-adic formulation avoids artificial decay within
+a single domain period.
 
 \subsection{Pattern Glossary}
 
@@ -938,98 +883,57 @@ Property & GDELT / ICEWS / CAMEO & LLM-only (GPT-4o) & EL-DRUIN (Full) \\
 \end{tabular}
 \end{table}
 
-\noindent The key differentiator is not raw predictive accuracy (which would require
-large-scale ground-truth comparison beyond the scope of this paper) but rather the
-\textbf{auditability and structural grounding} of the outputs. GDELT and ICEWS provide
-indispensable large-scale event monitoring, but their confidence metrics are implicit
-in event frequencies and cannot be traced to ontology-defined prior beliefs or
-composition-rule derivations. EL-DRUIN is designed to complement, not replace, these
-systems: a GDELT alert can serve as an input trigger for EL-DRUIN's structured
-trajectory analysis.
-
-EL-DRUIN sits at the intersection of four research areas: ontology-based knowledge
-graph reasoning, political event coding and geopolitical analysis systems,
+\noindent The key differentiator is \textbf{auditability and structural grounding}:
+GDELT and ICEWS provide indispensable large-scale event monitoring, but their
+confidence metrics are implicit in event frequencies and cannot be traced to
+ontology-defined prior beliefs. EL-DRUIN is designed to complement, not replace,
+these systems---a GDELT alert can serve as an input trigger for EL-DRUIN's
+structured trajectory analysis. EL-DRUIN sits at the intersection of four research
+areas: ontology-based knowledge graph reasoning, political event coding,
 explainable neuro-symbolic AI, and LLM-augmented ontology and KG systems.
 
-\subsection{Ontology and Knowledge Graph Reasoning}
+\subsection{Knowledge Representation and Political Event Coding}
 
 Formal ontologies represented in OWL 2~\cite{grau2008owl2,w3c2012owl2} provide the
-foundation for semantic web reasoning, enabling inference over typed entities and relations. Large
-knowledge graphs such as DBpedia~\cite{bizer2009dbpedia}, Wikidata~\cite{vrandecic2014wikidata},
-and YAGO~\cite{suchanek2007yago} demonstrate the scale at which entity-relation triples
-can be curated and queried. Hogan et al.~\cite{hogan2021knowledge} provide a
-comprehensive survey of knowledge graph construction, representation, and reasoning.
-Ji et al.~\cite{ji2021survey} survey representation learning approaches for knowledge
-graphs, including embedding methods such as RotatE~\cite{sun2019rotate} that capture
-relational structure geometrically.
+foundation for semantic web reasoning. Large knowledge graphs such as
+DBpedia~\cite{bizer2009dbpedia}, Wikidata~\cite{vrandecic2014wikidata}, and
+YAGO~\cite{suchanek2007yago} demonstrate the scale at which entity-relation triples
+can be curated and queried. Hogan et al.~\cite{hogan2021knowledge} survey knowledge
+graph construction and reasoning; Ji et al.~\cite{ji2021survey} cover embedding
+methods including RotatE~\cite{sun2019rotate}. Temporal knowledge
+graphs~\cite{trivedi2017know,lacroix2020tensor,li2021temporal} and Allen's interval
+algebra~\cite{allen1983maintaining} address relational change over time; EL-DRUIN
+instead applies ontology-registered composition rules to derive forward-projected
+attractor states without requiring labelled training data.
 
-Temporal knowledge graphs extend static KGs with time-stamped facts and require
-reasoning about relational change over time~\cite{trivedi2017know,lacroix2020tensor,li2021temporal}.
-Allen's interval algebra~\cite{allen1983maintaining} provides a foundational formalism
-for temporal relation reasoning. EL-DRUIN addresses temporal trajectory reasoning
-differently: rather than learning embeddings from historical triples, it applies
-ontology-registered composition rules to derive forward-projected attractor states,
-without requiring labelled training data.
+CAMEO~\cite{schrodt2012cameo} provides the standard controlled vocabulary for
+political event types; GDELT~\cite{leetaru2013gdelt} and
+ICEWS~\cite{boschee2015icews} build on CAMEO to enable large-scale statistical
+monitoring but do not model pattern composition or produce provenance traces.
+Probabilistic graphical models for conflict prediction~\cite{ward2010perils} require
+labelled training data and lack symbolic interpretability; EL-DRUIN's inference is
+entirely symbolic and fully auditable.
 
-\subsection{Political Event Coding and Geopolitical Analysis Systems}
+\subsection{Neuro-Symbolic AI and LLM--KG Integration}
 
-Computational political science has developed structured event coding schemes to
-represent political interactions as typed actor-action-target triples.
-CAMEO~\cite{schrodt2012cameo} provides a widely used controlled vocabulary for
-political event types. GDELT~\cite{leetaru2013gdelt} and ICEWS~\cite{boschee2015icews}
-are large-scale event databases built on CAMEO coding, enabling statistical analysis
-of political trends at global scale. These systems aggregate events statistically;
-they do not model pattern composition or produce algebraically grounded trajectory
-predictions with provenance traces.
+The neuro-symbolic AI programme~\cite{besold2017neural,garcez2020neural} combines
+neural pattern recognition with symbolic reasoning; DeepProbLog~\cite{manhaeve2018deepproblog}
+integrates probabilistic logic programming with neural networks, and
+neuro-symbolic concept learning~\cite{mao2019neuro} shows that symbolic programs can
+constrain neural predictions. EL-DRUIN applies this separation of concerns to
+geopolitical reasoning: ontology-defined rules govern all numerical outputs while the
+LLM handles natural-language rendering only, enforcing explanation fidelity at the
+architecture level.
 
-Probabilistic graphical models have been applied to conflict
-prediction~\cite{ward2010perils}, but these require labelled training data and do
-not provide symbolic interpretability of the composition structure. EL-DRUIN requires
-no training data; its inference is entirely symbolic and determined by the manually
-curated pattern registry, making its reasoning process fully auditable.
-
-\subsection{Explainable Neuro-Symbolic AI}
-
-The neuro-symbolic AI research programme~\cite{besold2017neural,garcez2020neural}
-aims to combine the pattern recognition strengths of neural networks with the
-interpretability and compositionality of symbolic reasoning. DeepProbLog~\cite{manhaeve2018deepproblog}
-integrates probabilistic logic programming with neural networks, enabling
-differentiable learning over structured symbolic programs. EL-DRUIN is inspired by
-this separation of concerns: symbolic inference governs all numerical outputs while
-a neural component (the LLM) handles natural-language rendering only.
-
-Neuro-symbolic concept learning~\cite{mao2019neuro} demonstrates that structured
-symbolic programs can constrain neural predictions; EL-DRUIN applies an analogous
-principle to geopolitical reasoning, where ontology-defined composition rules
-constrain the space of valid trajectory transitions. Our system's constrained LLM verbalization
-mechanism extends this idea by structurally prohibiting the LLM from modifying
-pre-computed fields, ensuring that explanation fidelity is enforced at the
-architecture level rather than by prompt engineering alone.
-
-\subsection{LLMs for Ontology and Knowledge Graph Analysis}
-
-The intersection of LLMs and knowledge graphs is an active research frontier.
-Pan et al.~\cite{pan2023unifying} provide a roadmap for unifying LLMs and KGs,
-identifying complementary strengths: LLMs contribute linguistic flexibility and
-world knowledge, while KGs contribute structured, auditable, and provenance-rich
-representations. Agent-OM~\cite{fathallah2023agentom} and
-LLMs4OM~\cite{babaei2024llms4om} apply LLM agents to ontology matching, using
-syntactic, lexical, and semantic matching layers. EL-DRUIN borrows the multi-layer
-entity grounding approach from these works for its pattern activation stage.
-
-Maedche and Staab~\cite{maedche2001ontology} established ontology learning from
-text as a research direction; recent work on chain-of-thought prompting~\cite{wei2022chain}
-has shown that structured step-by-step reasoning can substantially improve LLM output
-quality, motivating the use of structured prompts with locked fields in EL-DRUIN's
-verbalization mechanism. In EL-DRUIN, the LLM is not used for ontology
-construction or numerical inference, but exclusively for natural-language
-verbalization of pre-computed structured results---a deliberate architectural
-constraint that separates concerns and ensures reproducibility.
-
-Noy et al.~\cite{noy2019industry} document lessons from deploying industry-scale
-knowledge graphs, highlighting the importance of provenance tracking and
-schema governance---properties that EL-DRUIN builds in at the ontology layer
-through its typed pattern registry and compute trace mechanism.
+Pan et al.~\cite{pan2023unifying} identify complementary strengths of LLMs and KGs;
+Agent-OM~\cite{fathallah2023agentom} and LLMs4OM~\cite{babaei2024llms4om} apply LLM
+agents to ontology matching. Maedche and Staab~\cite{maedche2001ontology} established
+ontology learning from text; chain-of-thought prompting~\cite{wei2022chain} motivates
+EL-DRUIN's structured prompts with locked fields. Noy et al.~\cite{noy2019industry}
+highlight provenance tracking in industry-scale KGs---a property EL-DRUIN builds in
+at the ontology layer. Unlike these works, EL-DRUIN uses the LLM exclusively for
+constrained verbalization of pre-computed structured results, ensuring full
+reproducibility and determinism.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -1044,72 +948,33 @@ the algebraic structures described are the uniquely correct formalization of
 geopolitical dynamics.
 
 Specifically:
-\begin{itemize}
-  \item \textbf{The $7 \times 3$ factorization} is a principled design choice, not
-    an empirical discovery. A different ontology designer might choose a different
-    partition. The factorization's value lies in its organizational clarity and
-    reasoning consequences, not in any claim that geopolitical reality has exactly
-    21 fundamental patterns.
-  \item \textbf{The non-Archimedean confidence calibration} is a design-motivated
-    formalization. We do not claim that geopolitical confidence follows the formal
-    theory of p-adic numbers, nor that the composition table constitutes a
-    mathematically complete group. The 7-based valuation is a principled
-    alternative to the ad hoc constant $\lambda = 0.85$, motivated by the domain
-    partition structure.
-  \item \textbf{The Lie algebra approximation} provides a continuous-valued
-    plausibility score for discrete composition steps, but the 8-dimensional
-    vectors are manually annotated and introduce expert subjectivity. The
-    commutator structure provides a mathematically well-defined path-independence
-    diagnostic; its geopolitical interpretation is heuristic.
-  \item \textbf{The backtesting results} use curated ground-truth labels assigned
-    by the authors based on historical record. While the events are well-documented
-    and the labels are defensible, they are not the product of a blind annotation
-    process with inter-annotator agreement measurement.
-\end{itemize}
+
+The \textbf{$7 \times 3$ factorization} and the \textbf{non-Archimedean confidence
+calibration} are both design-motivated formalizations. The factorization is an
+organizational choice that provides reasoning clarity and calibration structure, not
+an empirical claim that geopolitical reality has exactly 21 fundamental patterns; the
+7-based valuation is a principled alternative to the ad hoc constant $\lambda = 0.85$,
+motivated by the domain partition, not a claim of formal p-adic geometry. The
+\textbf{Lie algebra approximation} provides a continuous plausibility score for
+discrete composition steps, but the 8-dimensional vectors are manually annotated and
+introduce expert subjectivity; the commutator's geopolitical interpretation is
+heuristic. The \textbf{backtesting results} use curated ground-truth labels assigned
+by the authors from historical record---defensible but not produced by a blind
+annotation process with inter-annotator agreement measurement.
 
 \subsection{Limitations and Future Work}
 
-\textbf{Pattern vector assignment.}
-The 8-dimensional vectors $\varphi(p)$ are currently assigned by expert annotation,
-introducing potential subjectivity. Future work should learn these vectors from
-labelled event data or from comparative political analysis corpora, and measure
-inter-annotator agreement on the annotations.
-
-\textbf{Composition table completeness.}
-The current composition table contains 16 rules over the registered patterns
-(coverage $\approx 3.6\%$ of all possible pairs). The vast majority of compositions
-are undefined ($\bot$). Completeness could be improved by inferring additional
-rules from historical event co-occurrence data. Until the table is substantially
-more complete, forward simulation results should be interpreted as indicative
-rather than exhaustive.
-
-\textbf{Ontology curation subjectivity.}
-The pattern registry, domain assignments, mechanism classes, and confidence priors
-are all manually curated. Different domain experts might curate different registries.
-A rigorous ontology evaluation would require independent expert validation of the
-21 patterns and their properties.
-
-\textbf{No claim of geopolitical certainty.}
-EL-DRUIN produces attractor predictions with calibrated confidence values, but
-these should be understood as structured scenario projections from a symbolic
-model, not as probabilistic forecasts validated against historical base rates.
-The system does not model the full complexity of geopolitical systems; it provides
-a structured analytical scaffold.
-
-\textbf{Algebraic completeness.}
-As noted in Section~\ref{sec:pattern-algebra}, the composition table does not
-constitute a full group structure (only 16 of 441 possible pairs are defined). The
-$7 \times 3$ factorization and the Sylow-inspired organizational scheme are best
-understood as structured design heuristics. A rigorous algebraic treatment would
-require either (a) completing the Cayley table to fully define the group operation
-or (b) formally characterizing the partial algebra as a specific algebraic structure
-(e.g., a partial groupoid or a semigroup with zero).
-
-\textbf{Evaluation scope.}
-The current evaluation covers 14 news excerpts and 8 backtesting events. A more
-rigorous evaluation would use a larger, independently curated dataset, involve
-domain expert assessment of the structured outputs, and include human evaluation
-of explanation quality. We consider this a priority for future work.
+The 8-dimensional pattern vectors $\varphi(p)$ are currently expert-annotated,
+introducing potential subjectivity; future work should learn these vectors from
+labelled event data and measure inter-annotator agreement. The composition table
+covers only 16 of 441 possible pattern pairs ($\approx 3.6\%$); forward simulation
+results should be interpreted as indicative until completeness is substantially
+improved, ideally by inferring rules from historical event co-occurrence data.
+The pattern registry, domain assignments, and confidence priors are all manually
+curated---a rigorous evaluation would require independent expert validation.
+The current evaluation covers 14 news excerpts and 8 backtesting events; scaling
+to larger independently curated datasets and incorporating human evaluation of
+explanation quality is a priority for future work.
 
 \section{Conclusion}
 
@@ -1120,24 +985,10 @@ central contribution is a \textbf{provenance-preserving reasoning pipeline}:
 starting from typed event extraction, the system activates ontology-registered
 patterns, applies rule-based composition to derive trajectory transitions,
 scores transitions via Lie algebra similarity, and computes a fully auditable
-Bayesian posterior—converging to attractor states that constitute the
-long-run structural prediction. The 21 patterns are organized in a
-$7 \times 3$ domain--mechanism factorization that provides a canonical
-address for each pattern and grounds confidence calibration in the
-ontology structure. The \textbf{Lie algebra embedding}
-provides a continuous-valued plausibility weight ($\mathit{lie\_similarity}$)
-for each discrete composition step, coupling the discrete algebraic
-structure with a continuous geometric one. \textbf{Non-Archimedean confidence calibration}
-replaces the ad hoc geometric decay $\lambda^t$ with a 7-based valuation
-$|t|_7$, motivated by the seven-domain ontology partition: confidence
-remains stable within a domain-aligned horizon and updates sharply at
-domain-boundary multiples of 7. \textbf{Structured bifurcation detection}
-identifies instability via the 7-adic valuation of the posterior weight
-gap, providing a domain-granularity-aligned criterion for near-tie detection. The system is fully open-source, with a working frontend that exposes
-all computation traces. We believe this architecture---algebraic
-structure as the primary reasoning engine, language model as a
-constrained interpreter---represents a promising direction for the next
-generation of AI-assisted geopolitical analysis systems.
+Bayesian posterior---converging to attractor states that constitute the
+long-run structural prediction. The system is fully open-source, with a
+working frontend that exposes all computation traces, evaluated on fourteen
+geopolitical news scenarios against an LLM-only baseline.
 
 \paragraph{Positioning.}
 We frame the non-Archimedean confidence and ultrametric components as
