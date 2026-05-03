@@ -300,29 +300,29 @@ from the 21 registered patterns.
   available in the open-source repository.}
 \label{tab:patterns}
 \small
-\begin{tabular}{@{}p{0.24\linewidth}p{0.09\linewidth}p{0.19\linewidth}
-                   p{0.05\linewidth}p{0.26\linewidth}@{}}
+\begin{tabular}{@{}p{0.22\linewidth}p{0.10\linewidth}p{0.20\linewidth}
+                   p{0.05\linewidth}p{0.30\linewidth}@{}}
 \toprule
 Pattern Name & Domain & Mechanism Class & Prior & Inverse Pattern \\
 \midrule
 Hegemonic Sanctions & geopolitics & coercive\_leverage & 0.78
-  & Sanctions Relief / Normalisation \\
+  & Sanctions Relief / Normalisation \\[2pt]
 Entity-List Tech Blockade & technology & tech\_denial & 0.80
-  & Technology Licence / Unblocking \\
+  & Technology Licence / Unblocking \\[2pt]
 Interstate Military Conflict & military & kinetic\_escalation & 0.75
-  & Ceasefire / Peace Agreement \\
-Great-Power Coercion/Deterrence & geopolitics & coercive\_leverage & 0.70
-  & Diplomatic Concession / De-escalation \\
+  & Ceasefire / Peace Agreement \\[2pt]
+Great-Power Coercion / Deterrence & geopolitics & coercive\_leverage & 0.70
+  & Diplomatic Concession / De-escalation \\[2pt]
 Multilateral Alliance Sanctions & geopolitics & multilateral\_pressure & 0.73
-  & Multilateral Sanctions Relief \\
+  & Multilateral Sanctions Relief \\[2pt]
 Tech Decoupling / Iron Curtain & technology & tech\_decoupling & 0.76
-  & Technology Cooperation Reintegration \\
+  & Technology Cooperation Reintegration \\[2pt]
 Financial Isolation / SWIFT Cut-Off & economics & financial\_exclusion & 0.79
-  & Financial Reintegration \\
+  & Financial Reintegration \\[2pt]
 Bilateral Trade Dependency & economics & economic\_interdependence & 0.71
-  & Trade War / Decoupling \\
+  & Trade War / Decoupling \\[2pt]
 Technology Standards Leadership & technology & tech\_governance & 0.72
-  & Standard Competition Failure \\
+  & Standard Competition Failure \\[2pt]
 Information Warfare / Narrative Control & information & epistemic\_warfare & 0.68
   & Information Environment Restoration \\
 \bottomrule
@@ -379,7 +379,18 @@ the \textbf{Trajectory Reasoning Pattern} has the following specification:
     constants, with no changes to the pipeline logic.
 \end{itemize}
 
-Unlike existing political event coding schemes (CAMEO, GDELT, ICEWS) that register events as typed triples and aggregate them statistically, EL-DRUIN elevates \texttt{DynamicPattern} objects to \emph{active inference nodes}: each pattern participates in a composition table that defines how pairs of active patterns interact, carries an ontology-defined \texttt{confidence\_prior} traceable to an explicit ontological assumption, and anchors every numerical output to a \texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}. The LLM plays a strictly bounded role, rendering pre-computed structured output into natural-language interpretation; a template fallback preserves all numerical outputs if the LLM call fails. The $7 \times 3$ \texttt{domain} $\times$ \texttt{mechanism\_class} factorization makes cross-domain and cross-mechanism propagation explicit: coercive patterns escalate into sanctions or military action, cooperative patterns de-escalate into normalization, and an analyst can inspect exactly which composition rules fired when the system predicts a cross-domain transition.
+\paragraph{Design rationale.}
+Unlike CAMEO/GDELT event coding schemes that register typed triples and aggregate
+them statistically, each \texttt{DynamicPattern} in EL-DRUIN participates in a
+composition table (active inference node), carries an ontology-defined
+\texttt{confidence\_prior} traceable to an explicit ontological assumption, and is
+anchored to a \texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}.
+The LLM role is strictly bounded to verbalization of pre-computed outputs;
+a template fallback preserves all numerical fields if the LLM call fails.
+The $7 \times 3$ \texttt{domain} $\times$ \texttt{mechanism\_class} factorization
+makes cross-domain propagation explicit: when the system predicts a transition
+(e.g., economic sanctions to military coercion), the analyst can inspect exactly
+which composition rules fired.
 
 \section{Mathematical Formalisation}
 
@@ -718,27 +729,37 @@ indicating competing attractor regimes. Final confidence values
 $c_{\mathrm{final}}$ equal the ontology prior $c_0$ throughout, because the
 six-step horizon falls below the first 7-adic phase-transition boundary ($T < 7$).
 
-% --- Table 2 (from your markdown) ---
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Forecasting results across six geopolitical scenarios. $P(\alpha)$ is
 the primary attractor's normalised Bayesian posterior. $c_{\mathrm{final}} =
-c_0 \cdot |T|_7$ is the calibrated final confidence under the 7-adic
-valuation, where phase transitions occur at steps $T \in \{7, 14, 21,\ldots\}$.
-Since $\mathtt{horizon\_steps} = 6 < 7$, all scenarios have $|6|_7 = 1$ (no
-domain-level phase transition), so $c_{\mathrm{final}} = c_0$.}
+c_0 \cdot |T|_7$; since $\mathtt{horizon\_steps} = 6 < 7$, all scenarios have
+$|6|_7 = 1$ (no domain-level phase transition), so $c_{\mathrm{final}} = c_0$.}
 \label{tab:results}
 \small
-\begin{tabular}{@{}p{0.17\linewidth}p{0.20\linewidth}p{0.04\linewidth}p{0.24\linewidth}p{0.07\linewidth}p{0.06\linewidth}@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{0.16\linewidth}p{0.18\linewidth}p{0.06\linewidth}p{0.22\linewidth}p{0.10\linewidth}p{0.07\linewidth}@{}}
 \toprule
 Scenario & Primary Attractor & $P(\alpha)$ & Secondary Attractor & Bifurcation? & $c_{\mathrm{final}}$ \\
 \midrule
-US-China tech decoupling & Technology Standards Leadership & 0.51 & Tech Decoupling / Technology Iron Curtain & Step 2 & 0.76 \\
-US-China trade war & Hegemonic Sanctions & 0.58 & Trade War / Decoupling & No & 0.74 \\
-US-China financial isolation & Hegemonic Sanctions & 0.62 & Financial Reintegration & No & 0.79 \\
-China-Taiwan military coercion & Multilateral Alliance Sanctions & 0.54 & Non-State Armed Proxy Conflict & Step 3 & 0.72 \\
-China-Taiwan invasion & Multilateral Alliance Sanctions & 0.66 & Non-State Armed Proxy Conflict & No & 0.75 \\
-Russia-Ukraine war trajectory & Multilateral Alliance Sanctions & 0.61 & Resource Dependency / Energy Weaponisation & Step 4 & 0.73 \\
+US-China tech decoupling
+  & Technology Standards Leadership & 0.51
+  & Tech Decoupling / Iron Curtain & Step 2 & 0.76 \\[2pt]
+US-China trade war
+  & Hegemonic Sanctions & 0.58
+  & Trade War / Decoupling & No & 0.74 \\[2pt]
+US-China financial isolation
+  & Hegemonic Sanctions & 0.62
+  & Financial Reintegration & No & 0.79 \\[2pt]
+China-Taiwan military coercion
+  & Multilateral Alliance Sanctions & 0.54
+  & Non-State Armed Proxy Conflict & Step 3 & 0.72 \\[2pt]
+China-Taiwan invasion
+  & Multilateral Alliance Sanctions & 0.66
+  & Non-State Armed Proxy Conflict & No & 0.75 \\[2pt]
+Russia-Ukraine war trajectory
+  & Multilateral Alliance Sanctions & 0.61
+  & Resource Dependency / Energy Weaponisation & Step 4 & 0.73 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -794,24 +815,19 @@ The 14 news excerpts and 8 historical events constitute a limited dataset by ML 
 
 \subsection{Interpretation of Selected Results}
 
-In the US-China technology decoupling scenario, (Entity-List Technology Blockade
-$\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership fires in Step~1;
-a bifurcation at Step~2 ($P$ difference $< 0.15$) reflects genuine uncertainty
-between a two-standards world and full decoupling. For the China-Taiwan invasion
-scenario, (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$
-Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$,
-converging toward a multilateral sanctions coalition rather than sustained kinetic
-conflict.
+In the US-China technology decoupling scenario, the composition (Entity-List
+Technology Blockade $\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership
+fires in Step~1; a bifurcation at Step~2 ($P$ difference $< 0.15$) reflects genuine
+uncertainty between a two-standards world and full decoupling.
+For the China-Taiwan invasion scenario, (Hegemonic Sanctions $\oplus$ Formal Military
+Alliance) $\to$ Multilateral Alliance Sanctions fires immediately at $P(\alpha)
+\approx 0.66$, converging toward a multilateral sanctions coalition rather than
+sustained kinetic conflict---consistent with the post-2022 Russia-Ukraine pattern.
 
-Confidence calibration: all $c_{\mathrm{final}}$ values equal $c_0$ (range
-0.72--0.79) since $T=6 < 7$, no domain-level phase transition occurs within
-the six-step horizon. This contrasts sharply with geometric decay ($\lambda^6
-\approx 0.38$): the 7-adic formulation avoids artificial confidence erosion within
-a single domain period.
-
-\subsection{Pattern Glossary}
-
-The full glossary of all 21 registered patterns is available in the open-source repository at \texttt{backend/intelligence/pattern\_i18n.py}. Representative entries are shown in Table~\ref{tab:patterns}.
+All $c_{\mathrm{final}}$ values equal $c_0$ (range 0.72--0.79) since $T=6 < 7$:
+no domain-level phase transition occurs within the six-step horizon, contrasting
+with geometric decay $\lambda^6 \approx 0.38$; the 7-adic formulation avoids
+artificial decay within a single domain period.
 
 \subsection{Baseline Comparison and Ablation}
 
@@ -847,25 +863,17 @@ Entity invention guard & Enforced & Enforced & Enforced & Not enforced \\
 \subsection{Comparison with Statistical Event Coding Systems}
 \label{sec:system-comparison}
 
+Table~\ref{tab:system-comparison} (Appendix~C) extends the comparison to include
 GDELT-style statistical event coding systems (GDELT~\cite{leetaru2013gdelt},
-ICEWS~\cite{boschee2015icews}, and CAMEO-based pipelines~\cite{schrodt2012cameo}) are
-widely deployed for large-scale political event monitoring, but they differ
-fundamentally from EL-DRUIN in output semantics: they aggregate events statistically
-and do not produce per-analysis confidence derivations, provenance records, or
-trajectory composition chains. GDELT and ICEWS require historical training corpora and
-lack per-output auditability; EL-DRUIN requires no labelled data and produces a full
-\texttt{compute\_trace\_ref} provenance chain for every numerical output. The detailed
-property-by-property comparison is given in Table~\ref{tab:system-comparison} in
-Appendix~\ref{app:system-comparison}.
-
-\noindent The key differentiator is \textbf{auditability and structural grounding}:
-GDELT and ICEWS provide indispensable large-scale event monitoring, but their
+ICEWS~\cite{boschee2015icews}, and CAMEO-based pipelines~\cite{schrodt2012cameo}).
+The key differentiator is \textbf{auditability and structural grounding}:
+GDELT and ICEWS provide indispensable large-scale event monitoring but their
 confidence metrics are implicit in event frequencies and cannot be traced to
-ontology-defined prior beliefs. EL-DRUIN is designed to complement, not replace,
-these systems---a GDELT alert can serve as an input trigger for EL-DRUIN's
-structured trajectory analysis. EL-DRUIN sits at the intersection of four research
-areas: ontology-based knowledge graph reasoning, political event coding,
-explainable neuro-symbolic AI, and LLM-augmented ontology and KG systems.
+ontology-defined prior beliefs.
+EL-DRUIN is designed to complement these systems: a GDELT alert can serve as
+an input trigger for EL-DRUIN's structured trajectory analysis.
+EL-DRUIN sits at the intersection of ontology-based KG reasoning, political event
+coding, explainable neuro-symbolic AI, and LLM-augmented KG systems.
 
 \section{Related Work}
 
@@ -898,9 +906,8 @@ geopolitical reasoning: ontology-defined rules govern all numerical outputs whil
 LLM handles natural-language rendering only, enforcing explanation fidelity at the
 architecture level.
 
-Pan et al.~\cite{pan2023unifying} identify complementary strengths of LLMs and KGs;
-chain-of-thought prompting~\cite{wei2022chain} motivates EL-DRUIN's structured prompts
-with locked fields. Noy et al.~\cite{noy2019industry} highlight provenance tracking in
+Pan et al.~\cite{pan2023unifying} identify complementary strengths of LLMs and KGs.
+Noy et al.~\cite{noy2019industry} highlight provenance tracking in
 industry-scale KGs---a property EL-DRUIN builds in at the ontology layer. Unlike these
 works, EL-DRUIN uses the LLM exclusively for constrained verbalization of pre-computed
 structured results, ensuring full reproducibility and determinism.
