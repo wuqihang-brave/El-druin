@@ -340,39 +340,7 @@ we introduce a \textbf{trajectory reasoning design pattern} in which
 \emph{DynamicPattern} objects serve as typed mid-level semantic units that
 bridge event-level observations and trajectory-level reasoning.
 
-\paragraph{Why this is more than a pattern list.}
-Existing political event coding schemes (CAMEO, GDELT, ICEWS) register events
-as typed actor-action-target triples and aggregate them statistically. EL-DRUIN
-differs in three ways. First, each \texttt{DynamicPattern} participates in a
-composition table that defines how pairs of active patterns interact to produce
-derived patterns, elevating patterns from database entries to active inference
-nodes. Second, each pattern carries an ontology-defined \texttt{confidence\_prior}
-that participates directly in the Bayesian posterior computation, making every
-confidence value traceable to an explicit ontological assumption rather than a
-learned parameter. Third, every numerical output is anchored to a
-\texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}, satisfying the ISWC
-standard for auditable and reproducible ontological inference.
-
-\paragraph{Why LLM is needed, and where.}
-The LLM plays a strictly bounded role: it renders pre-computed structured output
-into 2--3 sentences of natural-language strategic interpretation, and is
-explicitly prohibited from modifying any numerical field. All computation—pattern
-activation, composition, confidence scoring, attractor detection—is entirely
-determined by the ontology and the symbolic pipeline; if the LLM call fails, a
-template fallback produces \texttt{conclusion.text} without degrading any
-numerical output.
-
-\paragraph{The $7 \times 3$ factorization as reasoning semantics.}
-The \texttt{domain} $\times$ \texttt{mechanism\_class} factorization is not an
-external label applied post-hoc; it is a structural design choice with reasoning
-consequences. Patterns in the same domain share a confidence-calibration
-baseline (the 7-based valuation period), while patterns of the same mechanism
-class tend to compose into predictable transition chains (coercive patterns
-escalate into sanctions or military action; cooperative patterns de-escalate into
-normalization). This factorization makes cross-domain and cross-mechanism
-propagation explicit, which is essential for explainability: when the system
-predicts a cross-domain transition (e.g., from economic sanctions to military
-coercion), the analyst can inspect exactly which composition rules fired and why.
+Unlike existing political event coding schemes (CAMEO, GDELT, ICEWS) that register events as typed triples and aggregate them statistically, EL-DRUIN elevates \texttt{DynamicPattern} objects to \emph{active inference nodes}: each pattern participates in a composition table that defines how pairs of active patterns interact, carries an ontology-defined \texttt{confidence\_prior} traceable to an explicit ontological assumption, and anchors every numerical output to a \texttt{ProvenanceRecord} via \texttt{compute\_trace\_ref}. The LLM plays a strictly bounded role, rendering pre-computed structured output into natural-language interpretation; a template fallback preserves all numerical outputs if the LLM call fails. The $7 \times 3$ \texttt{domain} $\times$ \texttt{mechanism\_class} factorization makes cross-domain and cross-mechanism propagation explicit: coercive patterns escalate into sanctions or military action, cooperative patterns de-escalate into normalization, and an analyst can inspect exactly which composition rules fired when the system predicts a cross-domain transition.
 
 \section{Mathematical Formalisation}
 
@@ -761,19 +729,19 @@ The 14 news excerpts and 8 historical events constitute a limited dataset by ML 
 
 \subsection{Interpretation of Selected Results}
 
-In the US-China technology decoupling scenario, the composition (Entity-List
-Technology Blockade $\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership
-fires in Step~1; a bifurcation at Step~2 ($P$ difference $< 0.15$) reflects
-genuine uncertainty between a two-standards world and full decoupling---the
-empirically contested outcome of US-China tech competition. For the China-Taiwan
-invasion scenario, (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$
-Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$;
-the system converges toward a multilateral sanctions coalition rather than sustained
-kinetic conflict, consistent with the post-2022 Russia-Ukraine pattern.
-Regarding confidence calibration, all $c_{\mathrm{final}}$ values equal $c_0$
-(range 0.72--0.79) since $T=6 < 7$: no domain-level phase transition occurs
-within the six-step horizon, contrasting sharply with the previous geometric decay
-$\lambda^6 \approx 0.38$; the 7-adic formulation avoids artificial decay within
+In the US-China technology decoupling scenario, (Entity-List Technology Blockade
+$\oplus$ Tech Decoupling) $\to$ Technology Standards Leadership fires in Step~1;
+a bifurcation at Step~2 ($P$ difference $< 0.15$) reflects genuine uncertainty
+between a two-standards world and full decoupling. For the China-Taiwan invasion
+scenario, (Hegemonic Sanctions $\oplus$ Formal Military Alliance) $\to$
+Multilateral Alliance Sanctions fires immediately, producing $P(\alpha) \approx 0.66$,
+converging toward a multilateral sanctions coalition rather than sustained kinetic
+conflict.
+
+Confidence calibration: all $c_{\mathrm{final}}$ values equal $c_0$ (range
+0.72--0.79) since $T=6 < 7$, no domain-level phase transition occurs within
+the six-step horizon. This contrasts sharply with geometric decay ($\lambda^6
+\approx 0.38$): the 7-adic formulation avoids artificial confidence erosion within
 a single domain period.
 
 \subsection{Pattern Glossary}
@@ -814,69 +782,16 @@ Entity invention guard & Enforced & Enforced & Enforced & Not enforced \\
 \subsection{Comparison with Statistical Event Coding Systems}
 \label{sec:system-comparison}
 
-Table~\ref{tab:system-comparison} extends the comparison to include
 GDELT-style statistical event coding systems (GDELT~\cite{leetaru2013gdelt},
-ICEWS~\cite{boschee2015icews}, and CAMEO-based pipelines~\cite{schrodt2012cameo}).
-These systems are widely deployed for large-scale political event monitoring, but
-they differ fundamentally from EL-DRUIN in their output semantics: they aggregate
-events statistically and do not produce per-analysis confidence derivations,
-provenance records, or trajectory composition chains.
-
-\begin{table}[h]
-\centering
-\caption{System-level comparison across four property dimensions. ``N/A'' indicates
-the property is not applicable or not produced by design; ``---'' indicates the system
-does not provide this output type. GDELT/ICEWS values represent the class of
-statistical event aggregation systems; EL-DRUIN is the full system.}
-\label{tab:system-comparison}
-\small
-\begin{tabular}{@{}p{0.26\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.15\linewidth}@{}}
-\toprule
-Property & GDELT / ICEWS / CAMEO & LLM-only (GPT-5) & EL-DRUIN (Full) \\
-\midrule
-\textbf{Output type}
-  & Event frequency counts / trend scores
-  & Free-text trajectory judgment
-  & Structured attractor + posterior \\
-\textbf{Confidence source}
-  & Implicit (event count / CAMEO score)
-  & Self-reported (no derivation)
-  & Ontology prior $\times$ Bayesian posterior \\
-\textbf{Compute trace / provenance}
-  & --- (no per-analysis trace)
-  & --- (no trace)
-  & Full \texttt{compute\_trace\_ref} per output \\
-\textbf{Verifiable outputs}
-  & No (aggregate statistics)
-  & No (LLM assertion)
-  & Yes (deterministic formula) \\
-\textbf{Stability $\sigma$}
-  & Deterministic (historical DB)
-  & $> 0$ (stochastic)
-  & 0.000 (deterministic) \\
-\textbf{Trajectory composition}
-  & No (event counts only)
-  & Implicit (unstructured)
-  & Yes (rule-based + Lie similarity) \\
-\textbf{Training data required}
-  & Yes (historical event DB)
-  & Yes (LLM pre-training)
-  & No (ontology-only) \\
-\textbf{Explanation generation}
-  & No
-  & Yes (unstructured)
-  & Yes (constrained, locked fields) \\
-\textbf{Real-time news analysis}
-  & Partial (batch pipelines)
-  & Yes
-  & Yes \\
-\textbf{Ontology-typed patterns}
-  & CAMEO codes (flat vocabulary)
-  & None
-  & 21 typed patterns, $7 \times 3$ factorization \\
-\bottomrule
-\end{tabular}
-\end{table}
+ICEWS~\cite{boschee2015icews}, and CAMEO-based pipelines~\cite{schrodt2012cameo}) are
+widely deployed for large-scale political event monitoring, but they differ
+fundamentally from EL-DRUIN in output semantics: they aggregate events statistically
+and do not produce per-analysis confidence derivations, provenance records, or
+trajectory composition chains. GDELT and ICEWS require historical training corpora and
+lack per-output auditability; EL-DRUIN requires no labelled data and produces a full
+\texttt{compute\_trace\_ref} provenance chain for every numerical output. The detailed
+property-by-property comparison is given in Table~\ref{tab:system-comparison} in
+Appendix~\ref{app:system-comparison}.
 
 \noindent The key differentiator is \textbf{auditability and structural grounding}:
 GDELT and ICEWS provide indispensable large-scale event monitoring, but their
@@ -887,23 +802,17 @@ structured trajectory analysis. EL-DRUIN sits at the intersection of four resear
 areas: ontology-based knowledge graph reasoning, political event coding,
 explainable neuro-symbolic AI, and LLM-augmented ontology and KG systems.
 
-\subsection{Knowledge Representation and Political Event Coding}
+\section{Related Work}
 
 Formal ontologies represented in OWL 2~\cite{grau2008owl2,w3c2012owl2} provide the
 foundation for semantic web reasoning. Hogan et al.~\cite{hogan2021knowledge} survey knowledge
 graph construction and reasoning; Ji et al.~\cite{ji2021survey} cover embedding
-methods including RotatE~\cite{sun2019rotate}. Temporal knowledge
-graphs~\cite{trivedi2017know,lacroix2020tensor,li2021temporal} and Allen's interval
-algebra~\cite{allen1983maintaining} address relational change over time; EL-DRUIN
-instead applies ontology-registered composition rules to derive forward-projected
-attractor states without requiring labelled training data.
+methods including RotatE~\cite{sun2019rotate}.
 
 CAMEO~\cite{schrodt2012cameo} provides the standard controlled vocabulary for
 political event types. Probabilistic graphical models for conflict prediction~\cite{ward2010perils} require
 labelled training data and lack symbolic interpretability; EL-DRUIN's inference is
 entirely symbolic and fully auditable.
-
-\subsection{Neuro-Symbolic AI and LLM--KG Integration}
 
 DeepProbLog~\cite{manhaeve2018deepproblog}
 integrates probabilistic logic programming with neural networks, and
@@ -914,14 +823,11 @@ LLM handles natural-language rendering only, enforcing explanation fidelity at t
 architecture level.
 
 Pan et al.~\cite{pan2023unifying} identify complementary strengths of LLMs and KGs;
-Agent-OM~\cite{fathallah2023agentom} and LLMs4OM~\cite{babaei2024llms4om} apply LLM
-agents to ontology matching. Maedche and Staab~\cite{maedche2001ontology} established
-ontology learning from text; chain-of-thought prompting~\cite{wei2022chain} motivates
-EL-DRUIN's structured prompts with locked fields. Noy et al.~\cite{noy2019industry}
-highlight provenance tracking in industry-scale KGs---a property EL-DRUIN builds in
-at the ontology layer. Unlike these works, EL-DRUIN uses the LLM exclusively for
-constrained verbalization of pre-computed structured results, ensuring full
-reproducibility and determinism.
+chain-of-thought prompting~\cite{wei2022chain} motivates EL-DRUIN's structured prompts
+with locked fields. Noy et al.~\cite{noy2019industry} highlight provenance tracking in
+industry-scale KGs---a property EL-DRUIN builds in at the ontology layer. Unlike these
+works, EL-DRUIN uses the LLM exclusively for constrained verbalization of pre-computed
+structured results, ensuring full reproducibility and determinism.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -1005,5 +911,64 @@ To illustrate the behavioral difference between 7-adic calibration and geometric
   \item $T=14$: $c_{\mathrm{final}}^{\text{7-adic}} = c_0/7 \approx 0.107$ (unchanged, since $v_7(14)=1$); $c_{\mathrm{final}}^{\lambda} \approx 0.095$.
 \end{itemize}
 Geometric decay is \emph{monotone}; 7-adic calibration is \emph{structurally punctuated}---flat within a domain-period, then sharply discounted at multiples of 7. The current evaluation ($T=6$) lies within a single 7-domain period, so both formulas yield $c_{\mathrm{final}} = c_0$.
+
+\section{System Comparison Table}
+\label{app:system-comparison}
+
+\begin{table}[h]
+\centering
+\caption{System-level comparison across four property dimensions. ``N/A'' indicates
+the property is not applicable or not produced by design; ``---'' indicates the system
+does not provide this output type. GDELT/ICEWS values represent the class of
+statistical event aggregation systems; EL-DRUIN is the full system.}
+\label{tab:system-comparison}
+\small
+\begin{tabular}{@{}p{0.26\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.17\linewidth}p{0.15\linewidth}@{}}
+\toprule
+Property & GDELT / ICEWS / CAMEO & LLM-only (GPT-5) & EL-DRUIN (Full) \\
+\midrule
+\textbf{Output type}
+  & Event frequency counts / trend scores
+  & Free-text trajectory judgment
+  & Structured attractor + posterior \\
+\textbf{Confidence source}
+  & Implicit (event count / CAMEO score)
+  & Self-reported (no derivation)
+  & Ontology prior $\times$ Bayesian posterior \\
+\textbf{Compute trace / provenance}
+  & --- (no per-analysis trace)
+  & --- (no trace)
+  & Full \texttt{compute\_trace\_ref} per output \\
+\textbf{Verifiable outputs}
+  & No (aggregate statistics)
+  & No (LLM assertion)
+  & Yes (deterministic formula) \\
+\textbf{Stability $\sigma$}
+  & Deterministic (historical DB)
+  & $> 0$ (stochastic)
+  & 0.000 (deterministic) \\
+\textbf{Trajectory composition}
+  & No (event counts only)
+  & Implicit (unstructured)
+  & Yes (rule-based + Lie similarity) \\
+\textbf{Training data required}
+  & Yes (historical event DB)
+  & Yes (LLM pre-training)
+  & No (ontology-only) \\
+\textbf{Explanation generation}
+  & No
+  & Yes (unstructured)
+  & Yes (constrained, locked fields) \\
+\textbf{Real-time news analysis}
+  & Partial (batch pipelines)
+  & Yes
+  & Yes \\
+\textbf{Ontology-typed patterns}
+  & CAMEO codes (flat vocabulary)
+  & None
+  & 21 typed patterns, $7 \times 3$ factorization \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \end{document}
