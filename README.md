@@ -14,7 +14,7 @@
 
 EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces LLM-generated confidence scores with **provably traceable, algebraically derived** confidence values.
 
-| Property | EL-DRUIN | GPT-4 Baseline |
+| Property | EL-DRUIN | GPT-5 Baseline |
 |---|---|---|
 | Confidence source | Ontology priors × Bayesian posterior (deterministic formula) | Self-reported by LLM |
 | Verifiable? | **Yes** — every value anchored to a `compute_trace_ref` | **No** — free-text assertion |
@@ -39,7 +39,7 @@ EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces 
 - [x] **Knowledge Graph Layer** — KuzuDB-backed entity and relationship storage with fuzzy deduplication
 - [x] **Five-Tab Streamlit UI** — Conclusion / Events / Pattern Activation / Probability Tree / Object Explorer
 - [ ] Learned pattern vectors (currently expert-annotated)
-- [ ] Historical backtesting against labelled outcome data
+- [x] Historical backtesting against 8 curated events with known outcomes (see Section 7 of the paper)
 - [ ] Extended composition table coverage (currently ~4% of all pattern pairs)
 
 ---
@@ -56,13 +56,13 @@ EL-DRUIN is an ontology-driven geopolitical intelligence platform that replaces 
 
 | Service | URL |
 |---|---|
-| **Streamlit frontend demo** | https://eldruin-intelligence.streamlit.app |
-| **FastAPI docs (live API)** | https://el-druin-production.up.railway.app/docs |
+| **Streamlit frontend demo** | *(available in camera-ready version)* |
+| **FastAPI docs (live API)** | *(available in camera-ready version)* |
 
 ### Option B: Local — Streamlit frontend
 
 ```bash
-git clone https://github.com/wuqihang-brave/El-druin.git
+git clone <repository URL — see anonymous submission link>
 cd El-druin
 python -m venv venv && source venv/bin/activate
 pip install -r frontend/requirements.txt
@@ -85,7 +85,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ### Option D: Docker (full stack)
 
 ```bash
-git clone https://github.com/wuqihang-brave/El-druin.git
+git clone <repository URL — see anonymous submission link>
 cd El-druin
 cp .env.example .env
 # Edit .env: add OPENAI_API_KEY and other keys as needed
@@ -128,8 +128,8 @@ print(json.dumps({
 
 | Service | Link |
 |---|---|
-| **Live Streamlit frontend** | https://eldruin-intelligence.streamlit.app |
-| **Live FastAPI docs** | https://el-druin-production.up.railway.app/docs |
+| **Live Streamlit frontend** | *(available in camera-ready version)* |
+| **Live FastAPI docs** | *(available in camera-ready version)* |
 
 To run the Streamlit demo locally:
 
@@ -177,7 +177,7 @@ El-druin/
 │       └── proof_panel.py
 ├── experiments/                 # Reproducible baseline experiments
 │   ├── news_samples.jsonl       # 10 public news excerpts (URL + metadata)
-│   ├── run_baseline.py          # EL-DRUIN + GPT-4 runner
+│   ├── run_baseline.py          # EL-DRUIN + GPT-5 runner
 │   ├── compute_metrics.py       # Metrics table generator
 │   └── README.md                # Experiment instructions
 └── tests/                       # Pytest test suite
@@ -261,7 +261,7 @@ python experiments/run_baseline.py --skip-gpt
 python experiments/compute_metrics.py
 ```
 
-**Full run with GPT-4:**
+**Full run with GPT-5:**
 ```bash
 export OPENAI_API_KEY="sk-..."
 python experiments/run_baseline.py
@@ -301,7 +301,7 @@ Results are saved to `experiments/results/` and a Markdown comparison table is w
 - [x] Numeric consistency guardrail + test
 - [x] KuzuDB knowledge graph with fuzzy entity deduplication
 - [x] Five-tab Streamlit UI
-- [x] Reproducible baseline experiment framework (EL-DRUIN vs GPT-4)
+- [x] Reproducible baseline experiment framework (EL-DRUIN vs GPT-5)
 - [x] 10-sample geopolitical news dataset (public URLs + short excerpts)
 - [x] Comparison metrics table (traceability / stability / constraint compliance)
 
@@ -329,13 +329,12 @@ This project is licensed under the **Apache License 2.0** — see [LICENSE](LICE
 If you use EL-DRUIN in your research, please cite:
 
 ```bibtex
-@misc{wu2024eldruin,
-  title  = {Ontological Trajectory Forecasting via Finite Semigroup Iteration
-             and Lie Algebra Approximation in Geopolitical Knowledge Graphs},
-  author = {Wu, Qihang},
-  year   = {2024},
-  institution = {The Hong Kong Polytechnic University},
-  url    = {https://github.com/wuqihang-brave/El-druin}
+@misc{wu2026eldruin,
+  title  = {An Ontology-Guided, Provenance-Preserving Reasoning Framework
+             for Geopolitical Trajectory Analysis},
+  author = {Anonymous Author(s)},
+  year   = {2026},
+  note   = {Submitted to ISWC 2026. Anonymous repository: \url{https://anonymous.4open.science/r/El-druin-F56D}}
 }
 ```
 
